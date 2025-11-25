@@ -39,7 +39,38 @@ class TicketRequest extends FormRequest
             'tag_ids.*' => ['integer', 'exists:tags,id'],
             'watcher_ids' => ['sometimes', 'array'],
             'watcher_ids.*' => ['integer', 'exists:users,id'],
+            'custom_fields' => ['sometimes', 'array'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            if ($this->has('custom_fields') && is_array($this->custom_fields)) {
+                $customFields = \App\Models\CustomField::active()->get()->keyBy('id');
+                
+                foreach ($this->custom_fields as $fieldId => $value) {
+                    $field = $customFields->get($fieldId);
+                    if (!$field) {
+                        continue;
+                    }
+
+                    $rules = $field->getValidationRules();
+                    $fieldName = "custom_fields.{$fieldId}";
+                    
+                    $fieldValidator = \Illuminate\Support\Facades\Validator::make(
+                        [$fieldName => $value],
+                        [$fieldName => $rules]
+                    );
+
+                    if ($fieldValidator->fails()) {
+                        foreach ($fieldValidator->errors()->get($fieldName) as $error) {
+                            $validator->errors()->add($fieldName, $error);
+                        }
+                    }
+                }
+            }
+        });
     }
 }
 

@@ -122,6 +122,16 @@ class Ticket extends Model
         return $this->hasMany(TicketHistory::class);
     }
 
+    public function timeEntries(): HasMany
+    {
+        return $this->hasMany(TimeEntry::class);
+    }
+
+    public function customFieldValues(): HasMany
+    {
+        return $this->hasMany(TicketCustomFieldValue::class);
+    }
+
     public function tags(): BelongsToMany
     {
         return $this->belongsToMany(Tag::class, 'ticket_tag')->withPivot('created_at');

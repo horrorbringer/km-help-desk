@@ -1,0 +1,86 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+
+class EmailTemplate extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    protected $fillable = [
+        'name',
+        'slug',
+        'event_type',
+        'subject',
+        'body_html',
+        'body_text',
+        'variables',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'variables' => 'array',
+        'is_active' => 'boolean',
+    ];
+
+    public const EVENT_TYPES = [
+        'ticket_created',
+        'ticket_assigned',
+        'ticket_updated',
+        'ticket_resolved',
+        'ticket_closed',
+        'ticket_commented',
+        'ticket_mentioned',
+        'sla_breached',
+        'sla_warning',
+    ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($template) {
+            if (empty($template->slug)) {
+                $template->slug = Str::slug($template->name);
+            }
+        });
+    }
+
+    /**
+     * Replace variables in template with actual values
+     */
+    public function render(array $data): array
+    {
+        $subject = $this->subject;
+        $bodyHtml = $this->body_html ?? '';
+        $bodyText = $this->body_text ?? '';
+
+        foreach ($data as $key => $value) {
+            $placeholder = "{{{$key}}}";
+            $subject = str_replace($placeholder, $value, $subject);
+            $bodyHtml = str_replace($placeholder, $value, $bodyHtml);
+            $bodyText = str_replace($placeholder, $value, $bodyText);
+        }
+
+        return [
+            'subject' => $subject,
+            'body_html' => $bodyHtml,
+            'body_text' => $bodyText,
+        ];
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeForEvent($query, string $eventType)
+    {
+        return $query->where('event_type', $eventType);
+    }
+}
+

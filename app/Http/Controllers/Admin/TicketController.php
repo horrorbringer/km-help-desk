@@ -5,16 +5,21 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\TicketRequest;
 use App\Http\Resources\TicketResource;
+use App\Models\CustomField;
 use App\Models\Department;
 use App\Models\Project;
 use App\Models\SlaPolicy;
 use App\Models\Tag;
 use App\Models\Ticket;
 use App\Models\TicketCategory;
+use App\Models\TicketCustomFieldValue;
 use App\Models\User;
+use App\Services\AutomationService;
+use App\Services\NotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -72,6 +77,14 @@ class TicketController extends Controller
 
         $this->syncRelations($ticket, $request->validated());
 
+        // Execute automation rules
+        $automationService = app(AutomationService::class);
+        $automationService->onTicketCreated($ticket);
+
+        // Send notifications
+        $notificationService = app(NotificationService::class);
+        $notificationService->notifyTicketCreated($ticket);
+
         return redirect()
             ->route('admin.tickets.show', $ticket)
             ->with('success', 'Ticket created successfully.');
@@ -91,6 +104,7 @@ class TicketController extends Controller
             'comments.user',
             'attachments.uploader',
             'histories.user',
+            'customFieldValues.customField',
         ]);
 
         return Inertia::render('Admin/Tickets/Show', [
@@ -109,6 +123,7 @@ class TicketController extends Controller
             'slaPolicy:id,name',
             'tags:id,name,color',
             'watchers:id,name',
+            'customFieldValues.customField',
         ]);
 
         return Inertia::render('Admin/Tickets/Form', [
@@ -119,11 +134,44 @@ class TicketController extends Controller
 
     public function update(TicketRequest $request, Ticket $ticket): RedirectResponse
     {
+        $originalData = $ticket->getOriginal();
         $data = $this->preparePayload($request->validated(), $ticket);
 
+        // Track changes
+        $changes = [];
+        foreach ($data as $key => $value) {
+            if (isset($originalData[$key]) && $originalData[$key] != $value) {
+                $changes[$key] = [
+                    'old' => $originalData[$key],
+                    'new' => $value,
+                ];
+            }
+        }
+
+        $statusChanged = isset($changes['status']);
+        
         $ticket->update($data);
 
         $this->syncRelations($ticket, $request->validated());
+
+        // Execute automation rules
+        $automationService = app(AutomationService::class);
+        $automationService->onTicketUpdated($ticket);
+        
+        if ($statusChanged) {
+            $automationService->onTicketStatusChanged($ticket);
+        }
+
+        // Send notifications if there were changes
+        if (!empty($changes)) {
+            $notificationService = app(NotificationService::class);
+            $notificationService->notifyTicketUpdated($ticket, Auth::user(), $changes);
+
+            // Check if ticket was resolved
+            if (isset($changes['status']) && $changes['status']['new'] === 'resolved') {
+                $notificationService->notifyTicketResolved($ticket, Auth::user());
+            }
+        }
 
         return redirect()
             ->route('admin.tickets.show', $ticket)
@@ -168,6 +216,44 @@ class TicketController extends Controller
         if (array_key_exists('watcher_ids', $data)) {
             $ticket->watchers()->sync($data['watcher_ids'] ?? []);
         }
+
+        // Sync custom field values
+        if (array_key_exists('custom_fields', $data) && is_array($data['custom_fields'])) {
+            foreach ($data['custom_fields'] as $fieldId => $value) {
+                $customField = CustomField::find($fieldId);
+                if (!$customField) {
+                    continue;
+                }
+
+                // Handle empty values
+                if ($value === null || $value === '' || (is_array($value) && empty($value))) {
+                    TicketCustomFieldValue::where('ticket_id', $ticket->id)
+                        ->where('custom_field_id', $fieldId)
+                        ->delete();
+                    continue;
+                }
+
+                // Handle multiselect (array)
+                if ($customField->field_type === 'multiselect' && is_array($value)) {
+                    $value = json_encode($value);
+                }
+
+                // Handle boolean
+                if ($customField->field_type === 'boolean') {
+                    $value = $value ? '1' : '0';
+                }
+
+                TicketCustomFieldValue::updateOrCreate(
+                    [
+                        'ticket_id' => $ticket->id,
+                        'custom_field_id' => $fieldId,
+                    ],
+                    [
+                        'value' => $value,
+                    ]
+                );
+            }
+        }
     }
 
     protected function filterOptions(): array
@@ -196,6 +282,17 @@ class TicketController extends Controller
             'requesters' => User::select('id', 'name')->orderBy('name')->get(),
             'sla_policies' => SlaPolicy::select('id', 'name')->orderBy('name')->get(),
             'tags' => Tag::select('id', 'name', 'color')->orderBy('name')->get(),
+            'customFields' => CustomField::active()->ordered()->get()->map(fn ($field) => [
+                'id' => $field->id,
+                'name' => $field->name,
+                'label' => $field->label,
+                'field_type' => $field->field_type,
+                'options' => $field->options ?? [],
+                'default_value' => $field->default_value,
+                'is_required' => $field->is_required,
+                'placeholder' => $field->placeholder,
+                'help_text' => $field->help_text,
+            ]),
         ];
     }
 }

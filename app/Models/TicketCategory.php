@@ -51,6 +51,21 @@ class TicketCategory extends Model
     {
         return $this->hasMany(CannedResponse::class, 'category_id');
     }
+
+    /**
+     * Get all descendant categories (recursive)
+     */
+    public function descendants(): \Illuminate\Database\Eloquent\Collection
+    {
+        $descendants = collect();
+        
+        foreach ($this->children as $child) {
+            $descendants->push($child);
+            $descendants = $descendants->merge($child->descendants());
+        }
+        
+        return $descendants;
+    }
 }
 
 

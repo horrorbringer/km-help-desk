@@ -1,5 +1,5 @@
-import { FormEvent, useMemo } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { CustomFieldsForm } from '@/components/custom-fields-form';
 import { cn } from '@/lib/utils';
 
 type BaseOption = { id: number; name: string };
@@ -38,6 +39,22 @@ type TicketFormProps = {
     resolution_sla_breached?: boolean;
     tags?: { id: number; name: string; color: string }[];
     watchers?: BaseOption[];
+    custom_field_values?: {
+      id: number;
+      custom_field_id: number;
+      value: any;
+      custom_field: {
+        id: number;
+        name: string;
+        label: string;
+        field_type: string;
+        options?: { label: string; value: string }[];
+        default_value?: string;
+        is_required: boolean;
+        placeholder?: string;
+        help_text?: string;
+      };
+    }[];
   } | null;
   formOptions: {
     statuses: string[];
@@ -48,6 +65,17 @@ type TicketFormProps = {
     categories: BaseOption[];
     projects: BaseOption[];
     requesters: BaseOption[];
+    customFields?: {
+      id: number;
+      name: string;
+      label: string;
+      field_type: string;
+      options?: { label: string; value: string }[];
+      default_value?: string;
+      is_required: boolean;
+      placeholder?: string;
+      help_text?: string;
+    }[];
     sla_policies: BaseOption[];
     tags: { id: number; name: string; color: string }[];
   };
@@ -87,6 +115,28 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     resolution_sla_breached: ticket?.resolution_sla_breached ?? false,
     tag_ids: ticket?.tags?.map((tag) => tag.id) ?? [],
     watcher_ids: ticket?.watchers?.map((user) => user.id) ?? [],
+    custom_fields: useMemo(() => {
+      const customFields: Record<number, any> = {};
+      if (ticket?.custom_field_values) {
+        ticket.custom_field_values.forEach((cfv) => {
+          let value = cfv.value;
+          // Parse multiselect values
+          if (cfv.custom_field.field_type === 'multiselect') {
+            try {
+              value = JSON.parse(value);
+            } catch {
+              value = [];
+            }
+          }
+          // Parse boolean values
+          if (cfv.custom_field.field_type === 'boolean') {
+            value = value === '1' || value === true;
+          }
+          customFields[cfv.custom_field_id] = value;
+        });
+      }
+      return customFields;
+    }, [ticket?.custom_field_values]),
   });
 
   const handleSubmit = (event: FormEvent) => {
@@ -106,7 +156,57 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     );
   };
 
+  const handleCustomFieldChange = (fieldId: number, value: any) => {
+    setData('custom_fields', {
+      ...data.custom_fields,
+      [fieldId]: value,
+    });
+  };
+
   const priority = useMemo(() => data.priority, [data.priority]);
+
+  // Template selector
+  const [templates, setTemplates] = useState<Array<{ id: number; name: string; description?: string }>>([]);
+  const [loadingTemplate, setLoadingTemplate] = useState(false);
+
+  useEffect(() => {
+    if (!isEdit) {
+      // Fetch active templates
+      fetch(route('admin.ticket-templates.active'))
+        .then((res) => res.json())
+        .then((data) => setTemplates(data.templates || []))
+        .catch(() => {});
+    }
+  }, [isEdit]);
+
+  const applyTemplate = async (templateId: number) => {
+    if (isEdit) return;
+    
+    setLoadingTemplate(true);
+    try {
+      const response = await fetch(route('admin.ticket-templates.data', templateId));
+      const result = await response.json();
+      const templateData = result.data || {};
+
+      // Apply template data to form
+      if (templateData.subject) setData('subject', templateData.subject);
+      if (templateData.description) setData('description', templateData.description);
+      if (templateData.category_id) setData('category_id', templateData.category_id);
+      if (templateData.project_id) setData('project_id', templateData.project_id);
+      if (templateData.assigned_team_id) setData('assigned_team_id', templateData.assigned_team_id);
+      if (templateData.assigned_agent_id) setData('assigned_agent_id', templateData.assigned_agent_id);
+      if (templateData.priority) setData('priority', templateData.priority);
+      if (templateData.status) setData('status', templateData.status);
+      if (templateData.source) setData('source', templateData.source);
+      if (templateData.sla_policy_id) setData('sla_policy_id', templateData.sla_policy_id);
+      if (templateData.tag_ids) setData('tag_ids', templateData.tag_ids);
+      if (templateData.custom_fields) setData('custom_fields', templateData.custom_fields);
+    } catch (error) {
+      console.error('Failed to load template:', error);
+    } finally {
+      setLoadingTemplate(false);
+    }
+  };
 
   return (
     <AppLayout>
@@ -131,6 +231,40 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
           )}
         </div>
       </div>
+
+      {/* Quick Template Selector */}
+      {!isEdit && templates.length > 0 && (
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium">Quick Templates</Label>
+                <p className="text-xs text-muted-foreground">
+                  Select a template to pre-fill ticket data
+                </p>
+              </div>
+              <Select
+                value=""
+                onValueChange={(value) => {
+                  if (value) applyTemplate(parseInt(value));
+                }}
+                disabled={loadingTemplate}
+              >
+                <SelectTrigger className="w-[250px]">
+                  <SelectValue placeholder="Choose a template..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={String(template.id)}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -423,6 +557,23 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
               </div>
             </CardContent>
           </Card>
+
+          {formOptions.customFields && formOptions.customFields.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Custom Fields</CardTitle>
+                <CardDescription>Additional information specific to your organization.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CustomFieldsForm
+                  fields={formOptions.customFields}
+                  values={data.custom_fields}
+                  onChange={handleCustomFieldChange}
+                  errors={errors}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

@@ -30,6 +30,22 @@ class TicketResource extends JsonResource
             'sla_policy' => $this->whenLoaded('slaPolicy'),
             'tags' => $this->whenLoaded('tags'),
             'watchers' => $this->whenLoaded('watchers'),
+            'custom_field_values' => $this->whenLoaded('customFieldValues', function () {
+                return $this->customFieldValues->map(function ($cfv) {
+                    return [
+                        'id' => $cfv->id,
+                        'custom_field_id' => $cfv->custom_field_id,
+                        'value' => $cfv->value,
+                        'custom_field' => [
+                            'id' => $cfv->customField->id,
+                            'name' => $cfv->customField->name,
+                            'label' => $cfv->customField->label,
+                            'field_type' => $cfv->customField->field_type,
+                            'options' => $cfv->customField->options,
+                        ],
+                    ];
+                });
+            }),
             'comments' => $this->whenLoaded('comments'),
             'attachments' => $this->whenLoaded('attachments'),
             'histories' => $this->whenLoaded('histories'),

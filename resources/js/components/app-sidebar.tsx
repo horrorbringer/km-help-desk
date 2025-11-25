@@ -1,5 +1,6 @@
 import * as React from "react"
 import {
+  IconBell,
   IconCamera,
   IconChartBar,
   IconDashboard,
@@ -10,6 +11,7 @@ import {
   IconFolder,
   IconHelp,
   IconInnerShadowTop,
+  IconMail,
   IconReport,
   IconSearch,
   IconSettings,
@@ -43,19 +45,103 @@ const getNavMain = () => [
     icon: IconTicket,
   },
   {
-    title: "Analytics",
-    url: "#",
-    icon: IconChartBar,
+    title: "Ticket Templates",
+    url: route("admin.ticket-templates.index"),
+    icon: IconFileWord,
   },
   {
-    title: "Projects",
-    url: route("admin.projects.index"),
-    icon: IconFolder,
-  },
-  {
-    title: "Team",
-    url: "#",
+    title: "Management",
     icon: IconUsers,
+    items: [
+      {
+        title: "Users",
+        url: route("admin.users.index"),
+        icon: IconUsers,
+      },
+      {
+        title: "Departments",
+        url: route("admin.departments.index"),
+        icon: IconFolder,
+      },
+      {
+        title: "Projects",
+        url: route("admin.projects.index"),
+        icon: IconFolder,
+      },
+    ],
+  },
+  {
+    title: "Configuration",
+    icon: IconSettings,
+    items: [
+      {
+        title: "Categories",
+        url: route("admin.categories.index"),
+        icon: IconFileDescription,
+      },
+      {
+        title: "Tags",
+        url: route("admin.tags.index"),
+        icon: IconSearch,
+      },
+      {
+        title: "SLA Policies",
+        url: route("admin.sla-policies.index"),
+        icon: IconReport,
+      },
+      {
+        title: "Canned Responses",
+        url: route("admin.canned-responses.index"),
+        icon: IconMail,
+      },
+      {
+        title: "Email Templates",
+        url: route("admin.email-templates.index"),
+        icon: IconMail,
+      },
+      {
+        title: "Automation Rules",
+        url: route("admin.automation-rules.index"),
+        icon: IconSettings,
+      },
+      {
+        title: "Custom Fields",
+        url: route("admin.custom-fields.index"),
+        icon: IconFileDescription,
+      },
+    ],
+  },
+  {
+    title: "Content",
+    icon: IconHelp,
+    items: [
+      {
+        title: "Knowledge Base",
+        url: route("admin.knowledge-base.index"),
+        icon: IconHelp,
+      },
+    ],
+  },
+  {
+    title: "Analytics",
+    icon: IconChartBar,
+    items: [
+      {
+        title: "Reports",
+        url: route("admin.reports.index"),
+        icon: IconReport,
+      },
+      {
+        title: "Time Entries",
+        url: route("admin.time-entries.index"),
+        icon: IconChartBar,
+      },
+      {
+        title: "Notifications",
+        url: route("admin.notifications.index"),
+        icon: IconBell,
+      },
+    ],
   },
 ];
 
@@ -116,7 +202,7 @@ const data = {
   navSecondary: [
     {
       title: "Settings",
-      url: "#",
+      url: route("admin.settings.index"),
       icon: IconSettings,
     },
     {
@@ -169,7 +255,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={getNavMain()} />
-        <NavDocuments items={data.documents} />
+        {/* <NavDocuments items={data.documents} /> */}
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

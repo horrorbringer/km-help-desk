@@ -27,6 +27,18 @@ type TicketShowProps = {
     sla_policy?: BaseOption;
     tags: { id: number; name: string; color: string }[];
     watchers: BaseOption[];
+    custom_field_values?: {
+      id: number;
+      custom_field_id: number;
+      value: any;
+      custom_field: {
+        id: number;
+        name: string;
+        label: string;
+        field_type: string;
+        options?: { label: string; value: string }[];
+      };
+    }[];
     comments: {
       id: number;
       body: string;
@@ -160,6 +172,48 @@ export default function TicketShow({ ticket }: TicketShowProps) {
                 <p className="text-sm font-medium">{ticket.sla_policy?.name ?? 'No SLA'}</p>
               </div>
             </div>
+
+            {(ticket.custom_field_values?.length ?? 0) > 0 && (
+              <div>
+                <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                  Custom Fields
+                </h3>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {(ticket.custom_field_values ?? []).map((cfv) => {
+                    let displayValue = cfv.value;
+                    
+                    // Format value based on field type
+                    if (cfv.custom_field.field_type === 'multiselect') {
+                      try {
+                        const values = JSON.parse(cfv.value);
+                        const options = cfv.custom_field.options || [];
+                        displayValue = values
+                          .map((v: string) => options.find((opt: any) => opt.value === v)?.label || v)
+                          .join(', ');
+                      } catch {
+                        displayValue = cfv.value;
+                      }
+                    } else if (cfv.custom_field.field_type === 'boolean') {
+                      displayValue = cfv.value === '1' || cfv.value === true ? 'Yes' : 'No';
+                    } else if (cfv.custom_field.field_type === 'select') {
+                      const option = cfv.custom_field.options?.find(
+                        (opt: any) => opt.value === cfv.value
+                      );
+                      displayValue = option?.label || cfv.value;
+                    }
+
+                    return (
+                      <div key={cfv.id}>
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {cfv.custom_field.label}
+                        </p>
+                        <p className="text-sm font-medium">{displayValue || '—'}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {(ticket.tags?.length ?? 0) > 0 && (
               <div>
