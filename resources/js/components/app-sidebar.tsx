@@ -31,39 +31,40 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
+const getNavMain = () => [
+  {
+    title: "Dashboard",
+    url: route("dashboard"),
+    icon: IconDashboard,
+  },
+  {
+    title: "Tickets",
+    url: route("admin.tickets.index"),
+    icon: IconTicket,
+  },
+  {
+    title: "Analytics",
+    url: "#",
+    icon: IconChartBar,
+  },
+  {
+    title: "Projects",
+    url: route("admin.projects.index"),
+    icon: IconFolder,
+  },
+  {
+    title: "Team",
+    url: "#",
+    icon: IconUsers,
+  },
+];
+
 const data = {
   user: {
     name: "shadcn",
     email: "m@example.com",
     avatar: "/avatars/shadcn.jpg",
   },
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "/admin/dashboard",
-      icon: IconDashboard,
-    },
-    {
-      title: "Tickets",
-      url: route("admin.tickets.index"),
-      icon: IconTicket,
-    },
-    {
-      title: "Analytics",
-      url: "#",
-      icon: IconChartBar,
-    },
-    {
-      title: "Projects",
-      url: route("admin.projects.index"),
-      icon: IconFolder,
-    },
-    {
-      title: "Team",
-      url: "#",
-      icon: IconUsers,
-    },
-  ],
   navClouds: [
     {
       title: "Capture",
@@ -167,7 +168,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
+        <NavMain items={getNavMain()} />
         <NavDocuments items={data.documents} />
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
