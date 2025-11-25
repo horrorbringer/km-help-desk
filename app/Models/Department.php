@@ -4,39 +4,40 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Project extends Model
+class Department extends Model
 {
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'name',
         'code',
-        'description',
-        'location',
-        'project_manager_id',
-        'status',
-        'start_date',
-        'end_date',
+        'is_support_team',
         'is_active',
+        'description',
     ];
 
     protected $casts = [
-        'start_date' => 'date',
-        'end_date' => 'date',
+        'is_support_team' => 'boolean',
         'is_active' => 'boolean',
     ];
 
-    public function manager(): BelongsTo
+    public function users(): HasMany
     {
-        return $this->belongsTo(User::class, 'project_manager_id');
+        return $this->hasMany(User::class);
+    }
+
+    public function ticketCategories(): HasMany
+    {
+        return $this->hasMany(TicketCategory::class, 'default_team_id');
     }
 
     public function tickets(): HasMany
     {
-        return $this->hasMany(Ticket::class);
+        return $this->hasMany(Ticket::class, 'assigned_team_id');
     }
 }
+
+
