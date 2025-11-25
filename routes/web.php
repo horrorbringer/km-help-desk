@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Frontend\ProjectFrontendController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -10,20 +12,15 @@ Route::get('/', function () {
         'canRegister' => Features::enabled(Features::registration()),
     ]);
 })->name('home');
-// Public projects pages
-Route::get('/projects', [ProjectFrontendController::class, 'index'])
-    ->name('projects.index');
-
-Route::get('/projects/{slug}', [ProjectFrontendController::class, 'show'])
-    ->name('projects.show');
 
 Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
-    Route::get('dashboard', function () {
-        return Inertia::render('dashboard');
-    })->name('dashboard');
+    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::resource('projects', \App\Http\Controllers\Admin\ProjectController::class)
         ->names('admin.projects');
+
+    Route::resource('tickets', TicketController::class)
+        ->names('admin.tickets');
 });
 
 require __DIR__.'/settings.php';

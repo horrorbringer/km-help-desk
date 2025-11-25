@@ -11,6 +11,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Ticket extends Model
 {
+    public const STATUSES = ['open', 'assigned', 'in_progress', 'pending', 'resolved', 'closed', 'cancelled'];
+    public const PRIORITIES = ['low', 'medium', 'high', 'critical'];
+    public const SOURCES = ['web', 'email', 'phone', 'mobile_app', 'walk_in'];
+
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
@@ -44,6 +48,34 @@ class Ticket extends Model
         'response_sla_breached' => 'boolean',
         'resolution_sla_breached' => 'boolean',
     ];
+
+    public static function generateTicketNumber(): string
+    {
+        do {
+            $number = 'KT-' . random_int(10000, 99999);
+        } while (self::where('ticket_number', $number)->exists());
+
+        return $number;
+    }
+
+    public function scopeFilter($query, array $filters)
+    {
+        return $query
+            ->when($filters['q'] ?? null, function ($query, $q) {
+                $query->where(function ($sub) use ($q) {
+                    $sub->where('ticket_number', 'like', "%{$q}%")
+                        ->orWhere('subject', 'like', "%{$q}%")
+                        ->orWhere('description', 'like', "%{$q}%");
+                });
+            })
+            ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when($filters['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
+            ->when($filters['team'] ?? null, fn ($query, $team) => $query->where('assigned_team_id', $team))
+            ->when($filters['agent'] ?? null, fn ($query, $agent) => $query->where('assigned_agent_id', $agent))
+            ->when($filters['category'] ?? null, fn ($query, $category) => $query->where('category_id', $category))
+            ->when($filters['project'] ?? null, fn ($query, $project) => $query->where('project_id', $project))
+            ->when($filters['requester'] ?? null, fn ($query, $requester) => $query->where('requester_id', $requester));
+    }
 
     public function requester(): BelongsTo
     {

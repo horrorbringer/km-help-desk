@@ -47,6 +47,7 @@ export function NavUser({
     const handleLogout = () => {
         cleanup();
         router.flushAll();
+        router.post(route("logout"));
     };
   return (
     <SidebarMenu>
@@ -88,17 +89,19 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <Settings />
-                Account
+              <DropdownMenuItem asChild>
+                <button onClick={() => router.visit(route("appearance.edit"))} className="w-full block">
+                  <Settings className="mr-2" />
+                  Settings
+                </button>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-                <Link href={route("logout")} method="post" onClick={handleLogout}>
-                    <LogOut />
-                    Log out
-                </Link>
+                <button type="button" className="w-full" onClick={handleLogout}>
+                  <LogOut className="mr-2" />
+                  Log out
+                </button>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
