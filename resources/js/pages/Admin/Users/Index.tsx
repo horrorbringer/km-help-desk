@@ -1,13 +1,19 @@
-import React from 'react';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import React, { useState } from 'react';
+import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
+import { ChevronDown, ChevronUp, Download, Upload } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { usePermissions } from '@/hooks/use-permissions';
+import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import type { PageProps } from '@/types';
 
 interface User {
@@ -34,11 +40,30 @@ interface UsersIndexProps extends PageProps {
     is_active?: string;
   };
   departments: Array<{ id: number; name: string }>;
+  roles: Array<{ id: number; name: string }>;
+  stats: {
+    total: number;
+    active: number;
+    inactive: number;
+    with_department: number;
+  };
 }
 
 export default function UsersIndex() {
-  const { users, filters, departments, flash } = usePage<UsersIndexProps>().props;
+  const pageProps = usePage<UsersIndexProps>().props;
+  const { users, filters, departments, roles, stats } = pageProps;
   const { can } = usePermissions();
+  useToast(); // Initialize toast notifications
+  const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+  const [bulkAction, setBulkAction] = useState<string>('');
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
+  const [bulkDialogValue, setBulkDialogValue] = useState<string>('');
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  
+  const { data: importData, setData: setImportData, post: importPost, processing: importProcessing, errors: importErrors } = useForm({
+    file: null as File | null,
+  });
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -48,7 +73,94 @@ export default function UsersIndex() {
       newFilters[key as keyof typeof filters] = value;
     }
     router.get(route('admin.users.index'), newFilters, { preserveState: true, replace: true });
+    setSelectedUsers([]); // Clear selection when filters change
   };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedUsers(users.data.map((user) => user.id));
+    } else {
+      setSelectedUsers([]);
+    }
+  };
+
+  const handleSelectUser = (userId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedUsers([...selectedUsers, userId]);
+    } else {
+      setSelectedUsers(selectedUsers.filter((id) => id !== userId));
+    }
+  };
+
+  const handleBulkAction = (action: string) => {
+    if (selectedUsers.length === 0) {
+      return;
+    }
+
+    setBulkDialogAction(action);
+    setBulkDialogValue('');
+    setBulkDialogOpen(true);
+  };
+
+  const handleBulkSubmit = () => {
+    if (selectedUsers.length === 0) {
+      return;
+    }
+
+    if (bulkDialogAction === 'delete') {
+      if (confirm(`Are you sure you want to delete ${selectedUsers.length} user(s)?`)) {
+        router.post(
+          route('admin.users.bulk-delete'),
+          { user_ids: selectedUsers },
+          {
+            onSuccess: () => {
+              toast.success(`Successfully deleted ${selectedUsers.length} user(s).`);
+              setSelectedUsers([]);
+              setBulkDialogOpen(false);
+            },
+            onError: () => {
+              toast.error('Failed to delete users.');
+            },
+          }
+        );
+      }
+    } else {
+      router.post(
+        route('admin.users.bulk-update'),
+        {
+          user_ids: selectedUsers,
+          action: bulkDialogAction,
+          value: bulkDialogValue,
+        },
+        {
+          onSuccess: () => {
+            toast.success(`Successfully updated ${selectedUsers.length} user(s).`);
+            setSelectedUsers([]);
+            setBulkDialogOpen(false);
+            setBulkDialogValue('');
+          },
+          onError: () => {
+            toast.error('Failed to update users.');
+          },
+        }
+      );
+    }
+  };
+
+  const handleToggleActive = (user: User) => {
+    router.post(route('admin.users.toggle-active', { user: user.id }), {}, {
+      preserveScroll: true,
+      onSuccess: () => {
+        toast.success(`User ${user.name} has been ${user.is_active ? 'deactivated' : 'activated'}.`);
+      },
+      onError: () => {
+        toast.error('Failed to update user status.');
+      },
+    });
+  };
+
+  const allSelected = users.data.length > 0 && selectedUsers.length === users.data.length;
+  const someSelected = selectedUsers.length > 0 && selectedUsers.length < users.data.length;
 
   return (
     <AppLayout>
@@ -61,19 +173,61 @@ export default function UsersIndex() {
             <h1 className="text-3xl font-bold">Users</h1>
             <p className="text-muted-foreground">Manage system users, agents, and requesters</p>
           </div>
-          {can('users.create') && (
-            <Button asChild>
-              <Link href={route('admin.users.create')}>+ New User</Link>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                window.location.href = route('admin.users.export', filters);
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
             </Button>
-          )}
+            {can('users.create') && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setImportDialogOpen(true)}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import CSV
+                </Button>
+                <Button asChild>
+                  <Link href={route('admin.users.create')}>+ New User</Link>
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Flash Message */}
-        {flash?.success && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {flash.success}
-          </div>
-        )}
+        {/* Statistics Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold">{stats.total}</div>
+              <p className="text-xs text-muted-foreground">Total Users</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-emerald-600">{stats.active}</div>
+              <p className="text-xs text-muted-foreground">Active Users</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-orange-600">{stats.inactive}</div>
+              <p className="text-xs text-muted-foreground">Inactive Users</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-blue-600">{stats.with_department}</div>
+              <p className="text-xs text-muted-foreground">With Department</p>
+            </CardContent>
+          </Card>
+        </div>
+
 
         {/* Filters */}
         <Card>
@@ -125,8 +279,49 @@ export default function UsersIndex() {
 
         {/* Users Table */}
         <Card>
-          <CardHeader>
-            <CardTitle>Users ({users.total})</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-4">
+              <CardTitle>Users ({users.total})</CardTitle>
+              {selectedUsers.length > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">
+                    {selectedUsers.length} selected
+                  </span>
+                  {can('users.edit') && (
+                    <div className="flex items-center gap-2">
+                      <Select value={bulkAction} onValueChange={handleBulkAction}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Bulk Actions" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="activate">Activate</SelectItem>
+                          <SelectItem value="deactivate">Deactivate</SelectItem>
+                          <SelectItem value="assign_department">Assign Department</SelectItem>
+                          <SelectItem value="assign_role">Assign Role</SelectItem>
+                          <SelectItem value="remove_role">Remove Role</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {can('users.delete') && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleBulkAction('delete')}
+                    >
+                      Delete Selected
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedUsers([])}
+                  >
+                    Clear Selection
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {users.data.length === 0 ? (
@@ -136,6 +331,17 @@ export default function UsersIndex() {
                 <table className="min-w-full text-sm">
                   <thead className="bg-muted text-xs uppercase text-muted-foreground">
                     <tr>
+                      <th className="px-4 py-3 text-left w-12">
+                        <Checkbox
+                          checked={allSelected}
+                          onCheckedChange={handleSelectAll}
+                          ref={(el) => {
+                            if (el) {
+                              (el as any).indeterminate = someSelected;
+                            }
+                          }}
+                        />
+                      </th>
                       <th className="px-4 py-3 text-left">Name</th>
                       <th className="px-4 py-3 text-left">Email</th>
                       <th className="px-4 py-3 text-left">Employee ID</th>
@@ -149,6 +355,12 @@ export default function UsersIndex() {
                   <tbody>
                     {users.data.map((user) => (
                       <tr key={user.id} className="border-t hover:bg-muted/50 transition">
+                        <td className="px-4 py-3">
+                          <Checkbox
+                            checked={selectedUsers.includes(user.id)}
+                            onCheckedChange={(checked) => handleSelectUser(user.id, checked as boolean)}
+                          />
+                        </td>
                         <td className="px-4 py-3 font-medium">{user.name}</td>
                         <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                         <td className="px-4 py-3 text-muted-foreground">
@@ -172,33 +384,57 @@ export default function UsersIndex() {
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{user.phone ?? '—'}</td>
                         <td className="px-4 py-3">
-                          <Badge
-                            variant={user.is_active ? 'default' : 'secondary'}
-                            className={user.is_active ? 'bg-emerald-100 text-emerald-800' : ''}
-                          >
-                            {user.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
+                          {can('users.edit') ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleToggleActive(user)}
+                              className="h-auto p-1"
+                            >
+                              <Badge
+                                variant={user.is_active ? 'default' : 'secondary'}
+                                className={user.is_active ? 'bg-emerald-100 text-emerald-800 cursor-pointer hover:bg-emerald-200' : 'cursor-pointer'}
+                              >
+                                {user.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </Button>
+                          ) : (
+                            <Badge
+                              variant={user.is_active ? 'default' : 'secondary'}
+                              className={user.is_active ? 'bg-emerald-100 text-emerald-800' : ''}
+                            >
+                              {user.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {can('users.edit') && (
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={route('admin.users.edit', user.id)}>Edit</Link>
-                            </Button>
-                          )}
-                          {can('users.delete') && (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              className="ml-2"
-                              onClick={() => {
-                                if (confirm('Are you sure you want to delete this user?')) {
-                                  router.delete(route('admin.users.destroy', user.id));
-                                }
-                              }}
-                            >
-                              Delete
-                            </Button>
-                          )}
+                          <div className="flex justify-end gap-2">
+                            {can('users.edit') && (
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={route('admin.users.edit', { user: user.id })}>Edit</Link>
+                              </Button>
+                            )}
+                            {can('users.delete') && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm('Are you sure you want to delete this user?')) {
+                                    router.delete(route('admin.users.destroy', { user: user.id }), {
+                                      onSuccess: () => {
+                                        toast.success(`User ${user.name} has been deleted.`);
+                                      },
+                                      onError: () => {
+                                        toast.error('Failed to delete user.');
+                                      },
+                                    });
+                                  }
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -225,6 +461,193 @@ export default function UsersIndex() {
             )}
           </CardContent>
         </Card>
+
+        {/* Bulk Action Dialog */}
+        <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {bulkDialogAction === 'activate' && 'Activate Users'}
+                {bulkDialogAction === 'deactivate' && 'Deactivate Users'}
+                {bulkDialogAction === 'assign_department' && 'Assign Department'}
+                {bulkDialogAction === 'assign_role' && 'Assign Role'}
+                {bulkDialogAction === 'remove_role' && 'Remove Role'}
+                {bulkDialogAction === 'delete' && 'Delete Users'}
+              </DialogTitle>
+              <DialogDescription>
+                This will affect {selectedUsers.length} user(s).
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {bulkDialogAction === 'assign_department' && (
+                <Select value={bulkDialogValue} onValueChange={setBulkDialogValue}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No Department</SelectItem>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id.toString()}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {bulkDialogAction === 'assign_role' && (
+                <Select value={bulkDialogValue} onValueChange={setBulkDialogValue}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id.toString()}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {bulkDialogAction === 'remove_role' && (
+                <Select value={bulkDialogValue} onValueChange={setBulkDialogValue}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Role to Remove" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id.toString()}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {(bulkDialogAction === 'activate' || bulkDialogAction === 'deactivate') && (
+                <p className="text-sm text-muted-foreground">
+                  {bulkDialogAction === 'activate'
+                    ? 'Selected users will be activated and can log in to the system.'
+                    : 'Selected users will be deactivated and cannot log in to the system.'}
+                </p>
+              )}
+
+              {bulkDialogAction === 'delete' && (
+                <p className="text-sm text-muted-foreground">
+                  Are you sure you want to delete {selectedUsers.length} user(s)? This action cannot be undone.
+                </p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleBulkSubmit}
+                disabled={
+                  bulkDialogAction !== 'delete' &&
+                  bulkDialogAction !== 'activate' &&
+                  bulkDialogAction !== 'deactivate' &&
+                  !bulkDialogValue
+                }
+              >
+                {bulkDialogAction === 'delete' ? 'Delete' : 'Apply'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Import Dialog */}
+        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Import Users from CSV</DialogTitle>
+              <DialogDescription>
+                Upload a CSV file to import users. The file should have the following columns:
+                Name, Email, Employee ID, Phone, Department, Roles, Status
+                <br />
+                <Button
+                  type="button"
+                  variant="link"
+                  className="p-0 h-auto text-xs mt-2"
+                  onClick={() => {
+                    const csvContent = 'Name,Email,Employee ID,Phone,Department,Roles,Status\nJohn Doe,john@example.com,EMP-001,+855 12 345 678,IT,Agent,Active\nJane Smith,jane@example.com,EMP-002,+855 12 345 679,HR,Requester,Active';
+                    const blob = new Blob([csvContent], { type: 'text/csv' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'users_template.csv';
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                  }}
+                >
+                  Download CSV Template
+                </Button>
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (importData.file) {
+                  importPost(route('admin.users.import'), {
+                    forceFormData: true,
+                    onSuccess: () => {
+                      toast.success('Users imported successfully!');
+                      setImportDialogOpen(false);
+                      setImportData('file', null);
+                    },
+                    onError: () => {
+                      toast.error('Failed to import users. Please check the file format.');
+                    },
+                  });
+                }
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <label htmlFor="file" className="text-sm font-medium">
+                  CSV File
+                </label>
+                <Input
+                  id="file"
+                  type="file"
+                  accept=".csv,.txt"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setImportData('file', file);
+                  }}
+                  required
+                />
+                {importErrors.file && (
+                  <p className="text-xs text-red-500">{importErrors.file}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Maximum file size: 2MB. Format: CSV with headers: Name, Email, Employee ID, Phone, Department, Roles, Status
+                </p>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setImportDialogOpen(false);
+                    setImportData('file', null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={importProcessing || !importData.file}>
+                  {importProcessing ? 'Importing...' : 'Import Users'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );

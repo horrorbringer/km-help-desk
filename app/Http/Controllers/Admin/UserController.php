@@ -10,8 +10,10 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UserController extends Controller
 {
@@ -57,10 +59,20 @@ class UserController extends Controller
 
         $departments = Department::select('id', 'name')->orderBy('name')->get();
 
+        // Get user statistics
+        $stats = [
+            'total' => User::count(),
+            'active' => User::where('is_active', true)->count(),
+            'inactive' => User::where('is_active', false)->count(),
+            'with_department' => User::whereNotNull('department_id')->count(),
+        ];
+
         return Inertia::render('Admin/Users/Index', [
             'users' => $users,
             'filters' => $filters,
             'departments' => $departments,
+            'roles' => Role::orderBy('name')->get(['id', 'name']),
+            'stats' => $stats,
         ]);
     }
 
@@ -96,6 +108,32 @@ class UserController extends Controller
         return redirect()
             ->route('admin.users.index')
             ->with('success', 'User created successfully.');
+    }
+
+    public function show(User $user): Response
+    {
+        $user->load(['department:id,name', 'roles:id,name']);
+
+        return Inertia::render('Admin/Users/Show', [
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'employee_id' => $user->employee_id,
+                'department' => $user->department ? [
+                    'id' => $user->department->id,
+                    'name' => $user->department->name,
+                ] : null,
+                'roles' => $user->roles->map(fn ($role) => [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                ]),
+                'is_active' => $user->is_active,
+                'created_at' => $user->created_at->toDateTimeString(),
+                'updated_at' => $user->updated_at->toDateTimeString(),
+            ],
+        ]);
     }
 
     public function edit(User $user): Response
@@ -150,6 +188,299 @@ class UserController extends Controller
         return redirect()
             ->route('admin.users.index')
             ->with('success', 'User deleted successfully.');
+    }
+
+    public function bulkUpdate(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['exists:users,id'],
+            'action' => ['required', 'string', 'in:activate,deactivate,assign_department,assign_role,remove_role'],
+            'value' => ['required'],
+        ]);
+
+        $userIds = $request->input('user_ids');
+        $action = $request->input('action');
+        $value = $request->input('value');
+
+        $users = User::whereIn('id', $userIds)->get();
+        $updatedCount = 0;
+
+        foreach ($users as $user) {
+            $changed = false;
+
+            switch ($action) {
+                case 'activate':
+                    if (!$user->is_active) {
+                        $user->is_active = true;
+                        $user->save();
+                        $changed = true;
+                    }
+                    break;
+
+                case 'deactivate':
+                    if ($user->is_active) {
+                        $user->is_active = false;
+                        $user->save();
+                        $changed = true;
+                    }
+                    break;
+
+                case 'assign_department':
+                    if ($value === '__none' || $value === '') {
+                        $user->department_id = null;
+                        $user->save();
+                        $changed = true;
+                    } else {
+                        $department = Department::find($value);
+                        if ($department) {
+                            $user->department_id = $value;
+                            $user->save();
+                            $changed = true;
+                        }
+                    }
+                    break;
+
+                case 'assign_role':
+                    $role = Role::find($value);
+                    if ($role && !$user->hasRole($role->name)) {
+                        $user->assignRole($role);
+                        $changed = true;
+                    }
+                    break;
+
+                case 'remove_role':
+                    $role = Role::find($value);
+                    if ($role && $user->hasRole($role->name)) {
+                        $user->removeRole($role);
+                        $changed = true;
+                    }
+                    break;
+            }
+
+            if ($changed) {
+                $updatedCount++;
+            }
+        }
+
+        $message = $updatedCount > 0
+            ? "Successfully updated {$updatedCount} user(s)."
+            : "No users were updated.";
+
+        return redirect()
+            ->route('admin.users.index')
+            ->with('success', $message);
+    }
+
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['exists:users,id'],
+        ]);
+
+        $userIds = $request->input('user_ids');
+        $count = User::whereIn('id', $userIds)->delete();
+
+        return redirect()
+            ->route('admin.users.index')
+            ->with('success', "Successfully deleted {$count} user(s).");
+    }
+
+    public function toggleActive(User $user): RedirectResponse
+    {
+        $user->is_active = !$user->is_active;
+        $user->save();
+
+        return redirect()
+            ->route('admin.users.index')
+            ->with('success', "User {$user->name} has been " . ($user->is_active ? 'activated' : 'deactivated') . '.');
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        $filters = $request->only(['q', 'department', 'is_active']);
+
+        $users = User::query()
+            ->with(['department:id,name', 'roles:id,name'])
+            ->when($filters['q'] ?? null, function ($query, $q) {
+                $query->where(function ($qry) use ($q) {
+                    $qry->where('name', 'like', "%{$q}%")
+                        ->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('employee_id', 'like', "%{$q}%");
+                });
+            })
+            ->when(isset($filters['department']), function ($query) use ($filters) {
+                $query->where('department_id', $filters['department']);
+            })
+            ->when(isset($filters['is_active']), function ($query) use ($filters) {
+                $query->where('is_active', $filters['is_active'] === '1');
+            })
+            ->latest()
+            ->get();
+
+        $filename = 'users_' . now()->format('Y-m-d_His') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0',
+        ];
+
+        $callback = function () use ($users) {
+            $file = fopen('php://output', 'w');
+
+            // Add CSV headers
+            fputcsv($file, [
+                'Name',
+                'Email',
+                'Employee ID',
+                'Phone',
+                'Department',
+                'Roles',
+                'Status',
+                'Created At',
+            ]);
+
+            // Add data rows
+            foreach ($users as $user) {
+                fputcsv($file, [
+                    $user->name,
+                    $user->email,
+                    $user->employee_id ?? '',
+                    $user->phone ?? '',
+                    $user->department?->name ?? '',
+                    $user->roles->pluck('name')->join(', '),
+                    $user->is_active ? 'Active' : 'Inactive',
+                    $user->created_at->format('Y-m-d H:i:s'),
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function import(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt', 'max:2048'],
+        ]);
+
+        $file = $request->file('file');
+        $path = $file->getRealPath();
+        $data = array_map('str_getcsv', file($path));
+        
+        // Remove header row
+        $headers = array_shift($data);
+        
+        $imported = 0;
+        $updated = 0;
+        $errors = [];
+
+        foreach ($data as $index => $row) {
+            $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
+
+            // Skip empty rows
+            if (empty(array_filter($row))) {
+                continue;
+            }
+
+            // Map CSV columns (assuming: Name, Email, Employee ID, Phone, Department, Roles, Status)
+            $name = $row[0] ?? '';
+            $email = $row[1] ?? '';
+            $employeeId = $row[2] ?? '';
+            $phone = $row[3] ?? '';
+            $departmentName = $row[4] ?? '';
+            $rolesString = $row[5] ?? '';
+            $status = strtolower(trim($row[6] ?? 'active'));
+
+            // Validate required fields
+            if (empty($name) || empty($email)) {
+                $errors[] = "Row {$rowNumber}: Name and Email are required.";
+                continue;
+            }
+
+            // Validate email format
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = "Row {$rowNumber}: Invalid email format ({$email}).";
+                continue;
+            }
+
+            // Find or create user
+            $user = User::where('email', $email)->first();
+
+            if ($user) {
+                // Update existing user
+                $user->name = $name;
+                $user->employee_id = $employeeId ?: $user->employee_id;
+                $user->phone = $phone ?: $user->phone;
+                $user->is_active = in_array($status, ['active', '1', 'true', 'yes']);
+                
+                // Update department
+                if ($departmentName) {
+                    $department = Department::where('name', $departmentName)->first();
+                    if ($department) {
+                        $user->department_id = $department->id;
+                    }
+                }
+
+                $user->save();
+                $updated++;
+
+                // Update roles
+                if ($rolesString) {
+                    $roleNames = array_map('trim', explode(',', $rolesString));
+                    $roles = Role::whereIn('name', $roleNames)->get();
+                    if ($roles->isNotEmpty()) {
+                        $user->syncRoles($roles);
+                    }
+                }
+            } else {
+                // Create new user (password will need to be set separately)
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email,
+                    'employee_id' => $employeeId,
+                    'phone' => $phone,
+                    'password' => Hash::make('password'), // Default password - should be changed
+                    'is_active' => in_array($status, ['active', '1', 'true', 'yes']),
+                ]);
+
+                // Assign department
+                if ($departmentName) {
+                    $department = Department::where('name', $departmentName)->first();
+                    if ($department) {
+                        $user->department_id = $department->id;
+                        $user->save();
+                    }
+                }
+
+                // Assign roles
+                if ($rolesString) {
+                    $roleNames = array_map('trim', explode(',', $rolesString));
+                    $roles = Role::whereIn('name', $roleNames)->get();
+                    if ($roles->isNotEmpty()) {
+                        $user->syncRoles($roles);
+                    }
+                }
+
+                $imported++;
+            }
+        }
+
+        $message = "Import completed: {$imported} new user(s) imported, {$updated} user(s) updated.";
+        if (!empty($errors)) {
+            $message .= " " . count($errors) . " error(s) occurred.";
+        }
+
+        return redirect()
+            ->route('admin.users.index')
+            ->with('success', $message)
+            ->with('import_errors', $errors);
     }
 }
 

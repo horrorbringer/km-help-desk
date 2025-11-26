@@ -45,8 +45,21 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::post('tickets/bulk-delete', [TicketController::class, 'bulkDelete'])
         ->name('admin.tickets.bulk-delete');
 
+    // User export/import routes must be defined BEFORE resource route
+    Route::get('users/export', [UserController::class, 'export'])
+        ->name('admin.users.export');
+    Route::post('users/import', [UserController::class, 'import'])
+        ->name('admin.users.import');
+    
     Route::resource('users', UserController::class)
         ->names('admin.users');
+    
+    Route::post('users/bulk-update', [UserController::class, 'bulkUpdate'])
+        ->name('admin.users.bulk-update');
+    Route::post('users/bulk-delete', [UserController::class, 'bulkDelete'])
+        ->name('admin.users.bulk-delete');
+    Route::post('users/{user}/toggle-active', [UserController::class, 'toggleActive'])
+        ->name('admin.users.toggle-active');
 
     Route::resource('departments', DepartmentController::class)
         ->names('admin.departments');

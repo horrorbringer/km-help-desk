@@ -115,6 +115,9 @@ class RolePermissionSeeder extends Seeder
             // Reports
             'reports.view',
             
+            // Notifications
+            'notifications.view',
+            
             // Settings
             'settings.view',
             'settings.edit',

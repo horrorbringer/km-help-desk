@@ -14,6 +14,8 @@ class RoleController extends Controller
 {
     public function index(Request $request): Response
     {
+        abort_unless(auth()->user()->can('roles.view'), 403);
+
         $roles = Role::with('permissions')
             ->withCount('users')
             ->orderBy('name')
@@ -33,6 +35,8 @@ class RoleController extends Controller
 
     public function create(): Response
     {
+        abort_unless(auth()->user()->can('roles.create'), 403);
+
         $permissions = Permission::orderBy('name')->get()->groupBy(function ($permission) {
             return explode('.', $permission->name)[0];
         });
@@ -52,6 +56,8 @@ class RoleController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        abort_unless(auth()->user()->can('roles.create'), 403);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', 'unique:roles,name'],
             'permissions' => ['nullable', 'array'],
@@ -72,6 +78,8 @@ class RoleController extends Controller
 
     public function edit(Role $role): Response
     {
+        abort_unless(auth()->user()->can('roles.edit'), 403);
+
         $permissions = Permission::orderBy('name')->get()->groupBy(function ($permission) {
             return explode('.', $permission->name)[0];
         });
@@ -95,6 +103,8 @@ class RoleController extends Controller
 
     public function update(Request $request, Role $role): RedirectResponse
     {
+        abort_unless(auth()->user()->can('roles.edit'), 403);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', 'unique:roles,name,' . $role->id],
             'permissions' => ['nullable', 'array'],
@@ -115,6 +125,8 @@ class RoleController extends Controller
 
     public function destroy(Role $role): RedirectResponse
     {
+        abort_unless(auth()->user()->can('roles.delete'), 403);
+
         // Prevent deletion of Super Admin role
         if ($role->name === 'Super Admin') {
             return redirect()

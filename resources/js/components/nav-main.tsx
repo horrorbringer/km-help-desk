@@ -19,8 +19,10 @@ import { cn } from "@/lib/utils"
 type NavItem = {
   title: string
   url?: string
-  icon?: Icon
+  icon?: Icon | React.ComponentType<{ className?: string }>
   items?: NavItem[]
+  permission?: string
+  permissions?: string[]
 }
 
 export function NavMain({

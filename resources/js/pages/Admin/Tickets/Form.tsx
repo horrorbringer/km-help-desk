@@ -168,7 +168,7 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     event.preventDefault();
 
     if (isEdit && ticket) {
-      put(route('admin.tickets.update', ticket.id));
+      put(route('admin.tickets.update', { ticket: ticket.id }));
     } else {
       post(route('admin.tickets.store'));
     }
@@ -360,6 +360,28 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
               </div>
             </div>
 
+            <div>
+              <Label>Team *</Label>
+              <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {formOptions.departments.map((team) => (
+                    <SelectItem key={team.id} value={team.id.toString()}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.assigned_team_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_team_id}</p>}
+              {defaultTeamId && !isEdit && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Auto-filled from your department
+                </p>
+              )}
+            </div>
+
             <div className="grid gap-4 md:grid-cols-3">
               <div>
                 <Label>Status</Label>
@@ -445,25 +467,8 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
                 <CardContent className="space-y-6">
                   {/* Assignment Section */}
                   <div className="space-y-4">
-                    <Label className="text-base font-semibold">Assignment & Routing</Label>
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div>
-                        <Label>Team *</Label>
-                        <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select team" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {formOptions.departments.map((team) => (
-                              <SelectItem key={team.id} value={team.id.toString()}>
-                                {team.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.assigned_team_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_team_id}</p>}
-                      </div>
-
+                    <Label className="text-base font-semibold">Additional Assignment</Label>
+                    <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <Label>Agent (optional)</Label>
                         <Select

@@ -420,6 +420,14 @@ class TicketController extends Controller
 
     protected function preparePayload(array $data, ?Ticket $ticket = null): array
     {
+        // Convert empty strings to null for optional fields
+        $optionalFields = ['assigned_agent_id', 'project_id', 'sla_policy_id', 'ticket_number'];
+        foreach ($optionalFields as $field) {
+            if (isset($data[$field]) && $data[$field] === '') {
+                $data[$field] = null;
+            }
+        }
+
         if (empty($data['ticket_number'])) {
             $data['ticket_number'] = $ticket?->ticket_number ?? Ticket::generateTicketNumber();
         }
