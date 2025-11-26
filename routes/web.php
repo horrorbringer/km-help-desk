@@ -39,6 +39,11 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
 
     Route::resource('tickets', TicketController::class)
         ->names('admin.tickets');
+    
+    Route::post('tickets/bulk-update', [TicketController::class, 'bulkUpdate'])
+        ->name('admin.tickets.bulk-update');
+    Route::post('tickets/bulk-delete', [TicketController::class, 'bulkDelete'])
+        ->name('admin.tickets.bulk-delete');
 
     Route::resource('users', UserController::class)
         ->names('admin.users');

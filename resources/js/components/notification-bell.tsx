@@ -121,7 +121,7 @@ export function NotificationBell() {
                       handleMarkAsRead(notification.id);
                     }
                     if (notification.ticket) {
-                      window.location.href = route('admin.tickets.show', notification.ticket.id);
+                      window.location.href = route('admin.tickets.show', { ticket: notification.ticket.id });
                     }
                   }}
                 >

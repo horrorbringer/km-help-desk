@@ -108,7 +108,7 @@ export default function TicketShow({ ticket }: TicketShowProps) {
           </Button>
           {can('tickets.edit') && (
             <Button asChild>
-              <Link href={route('admin.tickets.edit', ticket.id)}>Edit Ticket</Link>
+              <Link href={route('admin.tickets.edit', { ticket: ticket.id })}>Edit Ticket</Link>
             </Button>
           )}
           {can('tickets.delete') && (
@@ -116,7 +116,7 @@ export default function TicketShow({ ticket }: TicketShowProps) {
               variant="destructive"
               onClick={() => {
                 if (confirm('Are you sure you want to delete this ticket?')) {
-                  router.delete(route('admin.tickets.destroy', ticket.id));
+                  router.delete(route('admin.tickets.destroy', { ticket: ticket.id }));
                 }
               }}
             >

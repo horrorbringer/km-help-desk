@@ -207,6 +207,217 @@ class TicketController extends Controller
             ->with('success', 'Ticket deleted.');
     }
 
+    public function bulkUpdate(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('tickets.edit'), 403);
+
+        $request->validate([
+            'ticket_ids' => ['required', 'array', 'min:1'],
+            'ticket_ids.*' => ['exists:tickets,id'],
+            'action' => ['required', 'string', 'in:status,priority,assign_agent,assign_team,add_tags,remove_tags'],
+            'value' => ['required'],
+        ]);
+
+        $ticketIds = $request->input('ticket_ids');
+        $action = $request->input('action');
+        $value = $request->input('value');
+
+        $tickets = Ticket::whereIn('id', $ticketIds)->get();
+        $updatedCount = 0;
+
+        foreach ($tickets as $ticket) {
+            $changed = false;
+
+            switch ($action) {
+                case 'status':
+                    if (in_array($value, Ticket::STATUSES)) {
+                        $oldStatus = $ticket->status;
+                        $ticket->status = $value;
+                        
+                        // Update resolved_at or closed_at based on status
+                        if ($value === 'resolved' && !$ticket->resolved_at) {
+                            $ticket->resolved_at = now();
+                        } elseif ($value === 'closed' && !$ticket->closed_at) {
+                            $ticket->closed_at = now();
+                        } elseif (!in_array($value, ['resolved', 'closed'])) {
+                            $ticket->resolved_at = null;
+                            $ticket->closed_at = null;
+                        }
+                        
+                        $ticket->save();
+                        $changed = true;
+
+                        // Record history
+                        $ticket->histories()->create([
+                            'user_id' => Auth::id(),
+                            'action' => 'status_changed',
+                            'field_name' => 'status',
+                            'old_value' => $oldStatus,
+                            'new_value' => $value,
+                            'description' => "Status changed from {$oldStatus} to {$value}",
+                            'created_at' => now(),
+                        ]);
+
+                        // Execute automation
+                        $automationService = app(AutomationService::class);
+                        $automationService->onTicketStatusChanged($ticket);
+                    }
+                    break;
+
+                case 'priority':
+                    if (in_array($value, Ticket::PRIORITIES)) {
+                        $oldPriority = $ticket->priority;
+                        $ticket->priority = $value;
+                        $ticket->save();
+                        $changed = true;
+
+                        // Record history
+                        $ticket->histories()->create([
+                            'user_id' => Auth::id(),
+                            'action' => 'priority_changed',
+                            'field_name' => 'priority',
+                            'old_value' => $oldPriority,
+                            'new_value' => $value,
+                            'description' => "Priority changed from {$oldPriority} to {$value}",
+                            'created_at' => now(),
+                        ]);
+                    }
+                    break;
+
+                case 'assign_agent':
+                    $agent = User::find($value);
+                    if ($agent) {
+                        $oldAgent = $ticket->assigned_agent_id;
+                        $ticket->assigned_agent_id = $value;
+                        $ticket->assigned_team_id = null; // Clear team assignment when assigning agent
+                        $ticket->save();
+                        $changed = true;
+
+                        // Record history
+                        $ticket->histories()->create([
+                            'user_id' => Auth::id(),
+                            'action' => 'assigned',
+                            'field_name' => 'assigned_agent_id',
+                            'old_value' => $oldAgent,
+                            'new_value' => $value,
+                            'description' => "Assigned to {$agent->name}",
+                            'created_at' => now(),
+                        ]);
+
+                        // Send notification
+                        $notificationService = app(NotificationService::class);
+                        $notificationService->notifyAgent(
+                            $ticket,
+                            'ticket_assigned',
+                            'Ticket Assigned',
+                            "You have been assigned to ticket {$ticket->ticket_number}: {$ticket->subject}"
+                        );
+                    }
+                    break;
+
+                case 'assign_team':
+                    $team = Department::find($value);
+                    if ($team) {
+                        $oldTeam = $ticket->assigned_team_id;
+                        $ticket->assigned_team_id = $value;
+                        $ticket->assigned_agent_id = null; // Clear agent assignment when assigning team
+                        $ticket->save();
+                        $changed = true;
+
+                        // Record history
+                        $ticket->histories()->create([
+                            'user_id' => Auth::id(),
+                            'action' => 'assigned',
+                            'field_name' => 'assigned_team_id',
+                            'old_value' => $oldTeam,
+                            'new_value' => $value,
+                            'description' => "Assigned to team {$team->name}",
+                            'created_at' => now(),
+                        ]);
+                    }
+                    break;
+
+                case 'add_tags':
+                    $tagIds = is_array($value) ? $value : [$value];
+                    $existingTagIds = $ticket->tags()->pluck('tags.id')->toArray();
+                    $newTagIds = array_diff($tagIds, $existingTagIds);
+                    
+                    if (!empty($newTagIds)) {
+                        $ticket->tags()->attach($newTagIds);
+                        $changed = true;
+
+                        $tagNames = Tag::whereIn('id', $newTagIds)->pluck('name')->join(', ');
+                        $ticket->histories()->create([
+                            'user_id' => Auth::id(),
+                            'action' => 'tagged',
+                            'field_name' => 'tags',
+                            'old_value' => null,
+                            'new_value' => $tagNames,
+                            'description' => "Added tags: {$tagNames}",
+                            'created_at' => now(),
+                        ]);
+                    }
+                    break;
+
+                case 'remove_tags':
+                    $tagIds = is_array($value) ? $value : [$value];
+                    $removedTags = $ticket->tags()->whereIn('tags.id', $tagIds)->get();
+                    
+                    if ($removedTags->isNotEmpty()) {
+                        $ticket->tags()->detach($tagIds);
+                        $changed = true;
+
+                        $tagNames = $removedTags->pluck('name')->join(', ');
+                        $ticket->histories()->create([
+                            'user_id' => Auth::id(),
+                            'action' => 'untagged',
+                            'field_name' => 'tags',
+                            'old_value' => $tagNames,
+                            'new_value' => null,
+                            'description' => "Removed tags: {$tagNames}",
+                            'created_at' => now(),
+                        ]);
+                    }
+                    break;
+            }
+
+            if ($changed) {
+                $updatedCount++;
+            }
+        }
+
+        // Clear search cache
+        app(SearchService::class)->clearCache();
+
+        $message = $updatedCount > 0
+            ? "Successfully updated {$updatedCount} ticket(s)."
+            : "No tickets were updated.";
+
+        return redirect()
+            ->route('admin.tickets.index')
+            ->with('success', $message);
+    }
+
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('tickets.delete'), 403);
+
+        $request->validate([
+            'ticket_ids' => ['required', 'array', 'min:1'],
+            'ticket_ids.*' => ['exists:tickets,id'],
+        ]);
+
+        $ticketIds = $request->input('ticket_ids');
+        $count = Ticket::whereIn('id', $ticketIds)->delete();
+
+        // Clear search cache
+        app(SearchService::class)->clearCache();
+
+        return redirect()
+            ->route('admin.tickets.index')
+            ->with('success', "Successfully deleted {$count} ticket(s).");
+    }
+
     protected function preparePayload(array $data, ?Ticket $ticket = null): array
     {
         if (empty($data['ticket_number'])) {

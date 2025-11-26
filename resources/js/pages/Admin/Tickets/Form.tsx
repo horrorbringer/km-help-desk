@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Head, Link, useForm, router } from '@inertiajs/react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { CustomFieldsForm } from '@/components/custom-fields-form';
 import { cn } from '@/lib/utils';
 
@@ -92,13 +94,36 @@ const defaultDate = (value?: string | null) => (value ? value.substring(0, 16) :
 
 export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
   const isEdit = Boolean(ticket?.id);
+  const pageProps = usePage().props as { auth?: { user?: { id: number; department_id?: number | null } | null } };
+  const auth = pageProps.auth;
+  const subjectInputRef = useRef<HTMLInputElement>(null);
+  
+  // Auto-select current user as requester if creating new ticket
+  const defaultRequesterId = useMemo(() => {
+    if (isEdit) return ticket?.requester?.id ?? '';
+    if (auth?.user?.id) {
+      const currentUserInList = formOptions.requesters.find((r) => r.id === auth.user!.id);
+      return currentUserInList ? currentUserInList.id : '';
+    }
+    return '';
+  }, [isEdit, ticket?.requester?.id, auth?.user?.id, formOptions.requesters]);
+
+  // Auto-fill team from user's department if creating new ticket
+  const defaultTeamId = useMemo(() => {
+    if (isEdit) return ticket?.assigned_team?.id ?? '';
+    if (auth?.user?.department_id) {
+      const userDepartment = formOptions.departments.find((d) => d.id === auth.user!.department_id);
+      return userDepartment ? userDepartment.id : '';
+    }
+    return '';
+  }, [isEdit, ticket?.assigned_team?.id, auth?.user?.department_id, formOptions.departments]);
 
   const { data, setData, post, put, processing, errors } = useForm({
     ticket_number: ticket?.ticket_number ?? '',
     subject: ticket?.subject ?? '',
     description: ticket?.description ?? '',
-    requester_id: ticket?.requester?.id ?? '',
-    assigned_team_id: ticket?.assigned_team?.id ?? '',
+    requester_id: ticket?.requester?.id ?? defaultRequesterId,
+    assigned_team_id: ticket?.assigned_team?.id ?? defaultTeamId,
     assigned_agent_id: ticket?.assigned_agent?.id ?? '',
     category_id: ticket?.category?.id ?? '',
     project_id: ticket?.project?.id ?? '',
@@ -168,6 +193,19 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
   // Template selector
   const [templates, setTemplates] = useState<Array<{ id: number; name: string; description?: string }>>([]);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
+  
+  // Collapsible states for advanced sections
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showSLA, setShowSLA] = useState(false);
+  const [showTags, setShowTags] = useState(false);
+  const [showWatchers, setShowWatchers] = useState(false);
+  
+  // Auto-focus subject field on mount for new tickets
+  useEffect(() => {
+    if (!isEdit && subjectInputRef.current) {
+      subjectInputRef.current.focus();
+    }
+  }, [isEdit]);
 
   useEffect(() => {
     if (!isEdit) {
@@ -273,49 +311,22 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
             <CardDescription>Subject, requester, routing, and SLA data.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="ticket_number">Ticket Number</Label>
-                <Input
-                  id="ticket_number"
-                  value={data.ticket_number}
-                  onChange={(e) => setData('ticket_number', e.target.value)}
-                  placeholder="Auto-generated if left blank"
-                />
-                {errors.ticket_number && <p className="text-xs text-red-500 mt-1">{errors.ticket_number}</p>}
-              </div>
-              <div>
-                <Label htmlFor="subject">Subject</Label>
-                <Input
-                  id="subject"
-                  value={data.subject}
-                  onChange={(e) => setData('subject', e.target.value)}
-                  placeholder="Short summary"
-                />
-                {errors.subject && <p className="text-xs text-red-500 mt-1">{errors.subject}</p>}
-              </div>
+            <div>
+              <Label htmlFor="subject">Subject *</Label>
+              <Input
+                ref={subjectInputRef}
+                id="subject"
+                value={data.subject}
+                onChange={(e) => setData('subject', e.target.value)}
+                placeholder="Short summary of the issue"
+                className="text-base"
+              />
+              {errors.subject && <p className="text-xs text-red-500 mt-1">{errors.subject}</p>}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>Requester</Label>
-                <Select value={data.requester_id?.toString()} onValueChange={(value) => setData('requester_id', Number(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select requester" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.requesters.map((user) => (
-                      <SelectItem key={user.id} value={user.id.toString()}>
-                        {user.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.requester_id && <p className="text-xs text-red-500 mt-1">{errors.requester_id}</p>}
-              </div>
-
-              <div>
-                <Label>Category</Label>
+                <Label>Category *</Label>
                 <Select value={data.category_id?.toString()} onValueChange={(value) => setData('category_id', Number(value))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
@@ -330,70 +341,22 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
                 </Select>
                 {errors.category_id && <p className="text-xs text-red-500 mt-1">{errors.category_id}</p>}
               </div>
-            </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
               <div>
-                <Label>Team</Label>
-                <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
+                <Label>Requester *</Label>
+                <Select value={data.requester_id?.toString()} onValueChange={(value) => setData('requester_id', Number(value))}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select team" />
+                    <SelectValue placeholder="Select requester" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formOptions.departments.map((team) => (
-                      <SelectItem key={team.id} value={team.id.toString()}>
-                        {team.name}
+                    {formOptions.requesters.map((user) => (
+                      <SelectItem key={user.id} value={user.id.toString()}>
+                        {user.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.assigned_team_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_team_id}</p>}
-              </div>
-
-              <div>
-                <Label>Agent (optional)</Label>
-                <Select
-                  value={data.assigned_agent_id ? data.assigned_agent_id.toString() : ''}
-                  onValueChange={(value) =>
-                    setData('assigned_agent_id', value === '__none' ? '' : Number(value))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">Unassigned</SelectItem>
-                    {formOptions.agents.map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id.toString()}>
-                        {agent.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.assigned_agent_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_agent_id}</p>}
-              </div>
-
-              <div>
-                <Label>Project (optional)</Label>
-                <Select
-                  value={data.project_id ? data.project_id.toString() : ''}
-                  onValueChange={(value) =>
-                    setData('project_id', value === '__none' ? '' : Number(value))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="No project" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">No project</SelectItem>
-                    {formOptions.projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id.toString()}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.project_id && <p className="text-xs text-red-500 mt-1">{errors.project_id}</p>}
+                {errors.requester_id && <p className="text-xs text-red-500 mt-1">{errors.requester_id}</p>}
               </div>
             </div>
 
@@ -449,13 +412,14 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
             </div>
 
             <div>
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">Description *</Label>
               <Textarea
                 id="description"
                 rows={6}
                 value={data.description}
                 onChange={(e) => setData('description', e.target.value)}
-                placeholder="Describe what is happening..."
+                placeholder="Describe what is happening... (be as detailed as possible)"
+                className="text-base"
               />
               {errors.description && <p className="text-xs text-red-500 mt-1">{errors.description}</p>}
             </div>
@@ -463,11 +427,101 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
         </Card>
 
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>SLA & Timelines</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          {/* Advanced Options Collapsible */}
+          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+            <Card>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer hover:bg-muted/50 transition">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Advanced Options</CardTitle>
+                      <CardDescription>SLA, Tags, Watchers, and more</CardDescription>
+                    </div>
+                    {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </div>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-6">
+                  {/* Assignment Section */}
+                  <div className="space-y-4">
+                    <Label className="text-base font-semibold">Assignment & Routing</Label>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div>
+                        <Label>Team *</Label>
+                        <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select team" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {formOptions.departments.map((team) => (
+                              <SelectItem key={team.id} value={team.id.toString()}>
+                                {team.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.assigned_team_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_team_id}</p>}
+                      </div>
+
+                      <div>
+                        <Label>Agent (optional)</Label>
+                        <Select
+                          value={data.assigned_agent_id ? data.assigned_agent_id.toString() : ''}
+                          onValueChange={(value) =>
+                            setData('assigned_agent_id', value === '__none' ? '' : Number(value))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Unassigned" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none">Unassigned</SelectItem>
+                            {formOptions.agents.map((agent) => (
+                              <SelectItem key={agent.id} value={agent.id.toString()}>
+                                {agent.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.assigned_agent_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_agent_id}</p>}
+                      </div>
+
+                      <div>
+                        <Label>Project (optional)</Label>
+                        <Select
+                          value={data.project_id ? data.project_id.toString() : ''}
+                          onValueChange={(value) =>
+                            setData('project_id', value === '__none' ? '' : Number(value))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="No project" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none">No project</SelectItem>
+                            {formOptions.projects.map((project) => (
+                              <SelectItem key={project.id} value={project.id.toString()}>
+                                {project.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.project_id && <p className="text-xs text-red-500 mt-1">{errors.project_id}</p>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SLA Section */}
+                  <Collapsible open={showSLA} onOpenChange={setShowSLA}>
+                    <div>
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between cursor-pointer mb-2">
+                          <Label className="text-base font-semibold cursor-pointer">SLA & Timelines</Label>
+                          {showSLA ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="space-y-4 pt-2">
               <div>
                 <Label>SLA Policy</Label>
                 <Select
@@ -555,67 +609,97 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
                   <Label htmlFor="resolution_sla_breached">Resolution SLA breached</Label>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+                      </CollapsibleContent>
+                    </div>
+                  </Collapsible>
 
-          {formOptions.customFields && formOptions.customFields.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Custom Fields</CardTitle>
-                <CardDescription>Additional information specific to your organization.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <CustomFieldsForm
-                  fields={formOptions.customFields}
-                  values={data.custom_fields}
-                  onChange={handleCustomFieldChange}
-                  errors={errors}
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Tags</CardTitle>
-              <CardDescription>Helps classify tickets and trigger automations.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {formOptions.tags.map((tag) => (
-                <button
-                  type="button"
-                  key={tag.id}
-                  onClick={() => toggleArrayValue('tag_ids', tag.id)}
-                  className={cn(
-                    'px-3 py-1 rounded-full text-sm font-medium transition',
-                    data.tag_ids.includes(tag.id) ? 'ring-2 ring-offset-2' : 'opacity-70'
+                  {/* Custom Fields */}
+                  {formOptions.customFields && formOptions.customFields.length > 0 && (
+                    <div>
+                      <Label className="text-base font-semibold mb-2 block">Custom Fields</Label>
+                      <CardDescription className="mb-3">Additional information specific to your organization.</CardDescription>
+                      <CustomFieldsForm
+                        fields={formOptions.customFields}
+                        values={data.custom_fields}
+                        onChange={handleCustomFieldChange}
+                        errors={errors}
+                      />
+                    </div>
                   )}
-                  style={{ backgroundColor: tag.color, color: '#fff' }}
-                >
-                  {tag.name}
-                </button>
-              ))}
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Watchers</CardTitle>
-              <CardDescription>Users who should receive updates.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {formOptions.requesters.map((user) => (
-                <label key={user.id} className="flex items-center gap-2 text-sm">
-                  <Checkbox checked={data.watcher_ids.includes(user.id)} onCheckedChange={() => toggleArrayValue('watcher_ids', user.id)} />
-                  {user.name}
-                </label>
-              ))}
-            </CardContent>
-          </Card>
+                  {/* Tags Section */}
+                  <Collapsible open={showTags} onOpenChange={setShowTags}>
+                    <div>
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between cursor-pointer mb-2">
+                          <div>
+                            <Label className="text-base font-semibold cursor-pointer">Tags</Label>
+                            <CardDescription className="text-xs">Helps classify tickets and trigger automations.</CardDescription>
+                          </div>
+                          {showTags ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-2">
+                        <div className="flex flex-wrap gap-2">
+                          {formOptions.tags.map((tag) => (
+                            <button
+                              type="button"
+                              key={tag.id}
+                              onClick={() => toggleArrayValue('tag_ids', tag.id)}
+                              className={cn(
+                                'px-3 py-1 rounded-full text-sm font-medium transition',
+                                data.tag_ids.includes(tag.id) ? 'ring-2 ring-offset-2' : 'opacity-70'
+                              )}
+                              style={{ backgroundColor: tag.color, color: '#fff' }}
+                            >
+                              {tag.name}
+                            </button>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </div>
+                  </Collapsible>
 
+                  {/* Watchers Section */}
+                  <Collapsible open={showWatchers} onOpenChange={setShowWatchers}>
+                    <div>
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between cursor-pointer mb-2">
+                          <div>
+                            <Label className="text-base font-semibold cursor-pointer">Watchers</Label>
+                            <CardDescription className="text-xs">Users who should receive updates.</CardDescription>
+                          </div>
+                          {showWatchers ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-2">
+                        <div className="space-y-2">
+                          {formOptions.requesters.map((user) => (
+                            <label key={user.id} className="flex items-center gap-2 text-sm">
+                              <Checkbox checked={data.watcher_ids.includes(user.id)} onCheckedChange={() => toggleArrayValue('watcher_ids', user.id)} />
+                              {user.name}
+                            </label>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </div>
+                  </Collapsible>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+
+          {/* Submit Button Card */}
           <Card>
-            <CardFooter className="flex justify-end">
-              <Button type="submit" disabled={processing}>
+            <CardFooter className="flex justify-between items-center">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                {showAdvanced ? 'Hide' : 'Show'} Advanced Options
+              </Button>
+              <Button type="submit" disabled={processing} size="lg" className="min-w-[140px]">
                 {processing ? 'Saving...' : isEdit ? 'Update Ticket' : 'Create Ticket'}
               </Button>
             </CardFooter>
@@ -625,5 +709,3 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     </AppLayout>
   );
 }
-
-
