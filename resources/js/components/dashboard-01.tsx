@@ -2,7 +2,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
 import { Link } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Users, Ticket, CheckCircle, Clock } from 'lucide-react';
@@ -87,7 +93,7 @@ const priorityColorMap: Record<string, string> = {
 export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props) {
   // Prepare chart data
   const trendData = stats.ticket_trends.map((trend) => ({
-    date: new Date(trend.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    date: trend.date,
     tickets: trend.count,
   }));
 
@@ -100,6 +106,28 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
     priority: priority.charAt(0).toUpperCase() + priority.slice(1),
     count,
   }));
+
+  // Chart configurations
+  const trendChartConfig = {
+    tickets: {
+      label: 'Tickets',
+      color: 'hsl(var(--chart-1))',
+    },
+  } satisfies ChartConfig;
+
+  const statusChartConfig = {
+    count: {
+      label: 'Count',
+      color: 'hsl(var(--chart-2))',
+    },
+  } satisfies ChartConfig;
+
+  const priorityChartConfig = {
+    count: {
+      label: 'Count',
+      color: 'hsl(var(--chart-3))',
+    },
+  } satisfies ChartConfig;
 
   return (
     <div className="space-y-6">
@@ -124,49 +152,61 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
 
       {/* Overview Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Tickets</CardTitle>
-            <Ticket className="h-4 w-4 text-muted-foreground" />
+            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <Ticket className="h-4 w-4 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.overview.total}</div>
-            <p className="text-xs text-muted-foreground">All tickets in period</p>
+            <div className="text-3xl font-bold">{stats.overview.total.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">All tickets in period</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.overview.open}</div>
-            <p className="text-xs text-muted-foreground">Requiring attention</p>
+            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+              {stats.overview.open.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Requiring attention</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Resolved</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center">
+              <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{stats.overview.resolved}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.overview.resolution_rate}% resolution rate
+            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+              {stats.overview.resolved.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.overview.resolution_rate.toFixed(1)}% resolution rate
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg Resolution</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <div className="h-8 w-8 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.overview.avg_resolution_hours}h</div>
-            <p className="text-xs text-muted-foreground">Average time to resolve</p>
+            <div className="text-3xl font-bold">{stats.overview.avg_resolution_hours.toFixed(1)}h</div>
+            <p className="text-xs text-muted-foreground mt-1">Average time to resolve</p>
           </CardContent>
         </Card>
       </div>
@@ -175,49 +215,98 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="col-span-4">
           <CardHeader>
-            <CardTitle>Ticket Trends</CardTitle>
+            <CardTitle className="text-xl">Ticket Trends</CardTitle>
             <CardDescription>Daily ticket creation over time</CardDescription>
           </CardHeader>
-          <CardContent className="pl-2">
-            <ResponsiveContainer width="100%" height={350}>
+          <CardContent>
+            <ChartContainer config={trendChartConfig} className="h-[350px] w-full">
               <AreaChart data={trendData}>
                 <defs>
-                  <linearGradient id="colorTickets" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  <linearGradient id="fillTickets" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="5%"
+                      stopColor="var(--color-tickets)"
+                      stopOpacity={0.8}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="var(--color-tickets)"
+                      stopOpacity={0.1}
+                    />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tickFormatter={(value) => {
+                    const date = new Date(value);
+                    return date.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    });
+                  }}
+                />
+                <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+                <ChartTooltip
+                  cursor={false}
+                  content={
+                    <ChartTooltipContent
+                      indicator="dot"
+                      labelFormatter={(value) => {
+                        return new Date(value).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        });
+                      }}
+                    />
+                  }
+                />
                 <Area
-                  type="monotone"
+                  type="natural"
                   dataKey="tickets"
-                  stroke="#3b82f6"
+                  stroke="var(--color-tickets)"
+                  fill="url(#fillTickets)"
                   fillOpacity={1}
-                  fill="url(#colorTickets)"
                 />
               </AreaChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
         <Card className="col-span-3">
           <CardHeader>
-            <CardTitle>Status Distribution</CardTitle>
+            <CardTitle className="text-xl">Status Distribution</CardTitle>
             <CardDescription>Breakdown by ticket status</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={350}>
+            <ChartContainer config={statusChartConfig} className="h-[350px] w-full">
               <BarChart data={statusData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="status" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#3b82f6" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="status"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+                <ChartTooltip
+                  cursor={false}
+                  content={<ChartTooltipContent indicator="dot" />}
+                />
+                <Bar
+                  dataKey="count"
+                  fill="var(--color-count)"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
       </div>
@@ -226,28 +315,47 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="col-span-3">
           <CardHeader>
-            <CardTitle>Priority Distribution</CardTitle>
+            <CardTitle className="text-xl">Priority Distribution</CardTitle>
             <CardDescription>Breakdown by priority level</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ChartContainer config={priorityChartConfig} className="h-[300px] w-full">
               <BarChart data={priorityData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis dataKey="priority" type="category" width={80} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#8b5cf6" />
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                />
+                <YAxis
+                  dataKey="priority"
+                  type="category"
+                  width={80}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                />
+                <ChartTooltip
+                  cursor={false}
+                  content={<ChartTooltipContent indicator="dot" />}
+                />
+                <Bar
+                  dataKey="count"
+                  fill="var(--color-count)"
+                  radius={[0, 4, 4, 0]}
+                />
               </BarChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
         <Card className="col-span-4">
           <CardHeader>
-            <CardTitle>SLA Compliance</CardTitle>
+            <CardTitle className="text-xl">SLA Compliance</CardTitle>
             <CardDescription>Service level agreement performance</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">Response Compliance</span>
@@ -311,29 +419,38 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Team Performance</CardTitle>
+            <CardTitle className="text-xl">Team Performance</CardTitle>
             <CardDescription>Resolution rates by team</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-5">
               {stats.team_performance.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No team data available</p>
+                <div className="text-center py-8">
+                  <p className="text-sm text-muted-foreground">No team data available</p>
+                </div>
               ) : (
                 stats.team_performance.map((team) => (
-                  <div key={team.team_id}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">{team.team_name}</span>
-                      <span className="text-sm font-bold">{team.resolution_rate}%</span>
+                  <div key={team.team_id} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold">{team.team_name}</span>
+                      <span className="text-sm font-bold text-primary">{team.resolution_rate.toFixed(1)}%</span>
                     </div>
-                    <div className="w-full bg-secondary rounded-full h-2">
+                    <div className="w-full bg-secondary rounded-full h-2.5">
                       <div
-                        className="h-2 rounded-full bg-primary transition-all"
+                        className={cn(
+                          'h-2.5 rounded-full transition-all',
+                          team.resolution_rate >= 90
+                            ? 'bg-emerald-500'
+                            : team.resolution_rate >= 70
+                              ? 'bg-amber-500'
+                              : 'bg-red-500'
+                        )}
                         style={{
                           width: `${team.resolution_rate}%`,
                         }}
                       />
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground">
                       {team.resolved_tickets} resolved / {team.total_tickets} total
                     </p>
                   </div>
@@ -345,29 +462,34 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
 
         <Card>
           <CardHeader>
-            <CardTitle>Recent Tickets</CardTitle>
+            <CardTitle className="text-xl">Recent Tickets</CardTitle>
             <CardDescription>Latest ticket activity</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-2">
               {stats.recent_tickets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No recent tickets</p>
+                <div className="text-center py-8">
+                  <p className="text-sm text-muted-foreground">No recent tickets</p>
+                </div>
               ) : (
                 stats.recent_tickets.slice(0, 5).map((ticket) => (
                   <Link
                     key={ticket.id}
-                    href={route('admin.tickets.show', ticket.id)}
-                    className="block p-3 rounded-lg border hover:bg-accent transition-colors"
+                    href={route('admin.tickets.show', { ticket: ticket.id })}
+                    className="block p-3 rounded-lg border hover:border-primary/50 hover:bg-accent/50 transition-all"
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{ticket.ticket_number}</p>
-                        <p className="text-xs text-muted-foreground truncate">{ticket.subject}</p>
+                        <p className="text-sm font-semibold truncate">{ticket.ticket_number}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{ticket.subject}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(ticket.created_at).toLocaleDateString()}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-1 ml-2">
+                      <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                         <Badge
                           variant="outline"
-                          className={cn('text-xs', statusColorMap[ticket.status] ?? '')}
+                          className={cn('text-xs capitalize', statusColorMap[ticket.status] ?? '')}
                         >
                           {ticket.status.replace('_', ' ')}
                         </Badge>

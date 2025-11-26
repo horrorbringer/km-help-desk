@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
+import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -97,6 +98,7 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
   const pageProps = usePage().props as { auth?: { user?: { id: number; department_id?: number | null } | null } };
   const auth = pageProps.auth;
   const subjectInputRef = useRef<HTMLInputElement>(null);
+  useToast(); // Handle flash messages
   
   // Auto-select current user as requester if creating new ticket
   const defaultRequesterId = useMemo(() => {
@@ -118,12 +120,36 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     return '';
   }, [isEdit, ticket?.assigned_team?.id, auth?.user?.department_id, formOptions.departments]);
 
+  // Prepare custom fields data
+  const initialCustomFields = useMemo(() => {
+    const customFields: Record<number, any> = {};
+    if (ticket?.custom_field_values) {
+      ticket.custom_field_values.forEach((cfv) => {
+        let value = cfv.value;
+        // Parse multiselect values
+        if (cfv.custom_field.field_type === 'multiselect') {
+          try {
+            value = JSON.parse(value);
+          } catch {
+            value = [];
+          }
+        }
+        // Parse boolean values
+        if (cfv.custom_field.field_type === 'boolean') {
+          value = value === '1' || value === true;
+        }
+        customFields[cfv.custom_field_id] = value;
+      });
+    }
+    return customFields;
+  }, [ticket?.custom_field_values]);
+
   const { data, setData, post, put, processing, errors } = useForm({
     ticket_number: ticket?.ticket_number ?? '',
     subject: ticket?.subject ?? '',
     description: ticket?.description ?? '',
-    requester_id: ticket?.requester?.id ?? defaultRequesterId,
-    assigned_team_id: ticket?.assigned_team?.id ?? defaultTeamId,
+    requester_id: isEdit && ticket?.requester?.id ? ticket.requester.id : (defaultRequesterId || ''),
+    assigned_team_id: isEdit && ticket?.assigned_team?.id ? ticket.assigned_team.id : (defaultTeamId || ''),
     assigned_agent_id: ticket?.assigned_agent?.id ?? '',
     category_id: ticket?.category?.id ?? '',
     project_id: ticket?.project?.id ?? '',
@@ -140,37 +166,30 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     resolution_sla_breached: ticket?.resolution_sla_breached ?? false,
     tag_ids: ticket?.tags?.map((tag) => tag.id) ?? [],
     watcher_ids: ticket?.watchers?.map((user) => user.id) ?? [],
-    custom_fields: useMemo(() => {
-      const customFields: Record<number, any> = {};
-      if (ticket?.custom_field_values) {
-        ticket.custom_field_values.forEach((cfv) => {
-          let value = cfv.value;
-          // Parse multiselect values
-          if (cfv.custom_field.field_type === 'multiselect') {
-            try {
-              value = JSON.parse(value);
-            } catch {
-              value = [];
-            }
-          }
-          // Parse boolean values
-          if (cfv.custom_field.field_type === 'boolean') {
-            value = value === '1' || value === true;
-          }
-          customFields[cfv.custom_field_id] = value;
-        });
-      }
-      return customFields;
-    }, [ticket?.custom_field_values]),
+    custom_fields: initialCustomFields,
   });
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
 
+    // Convert empty strings to null for optional fields before submission
+    const submitData = {
+      ...data,
+      assigned_agent_id: data.assigned_agent_id === '' ? null : data.assigned_agent_id,
+      project_id: data.project_id === '' ? null : data.project_id,
+      sla_policy_id: data.sla_policy_id === '' ? null : data.sla_policy_id,
+      first_response_at: data.first_response_at || null,
+      first_response_due_at: data.first_response_due_at || null,
+      resolution_due_at: data.resolution_due_at || null,
+      resolved_at: data.resolved_at || null,
+      closed_at: data.closed_at || null,
+    };
+
+    // Use router directly to submit with transformed data
     if (isEdit && ticket) {
-      put(route('admin.tickets.update', { ticket: ticket.id }));
+      router.put(route('admin.tickets.update', ticket.id), submitData);
     } else {
-      post(route('admin.tickets.store'));
+      router.post(route('admin.tickets.store'), submitData);
     }
   };
 
@@ -250,21 +269,23 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     <AppLayout>
       <Head title={isEdit ? `Edit Ticket ${ticket?.ticket_number}` : 'New Ticket'} />
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-semibold">{isEdit ? 'Edit Ticket' : 'Create Ticket'}</h1>
-          <p className="text-sm text-muted-foreground">
-            Capture the details of a new issue or update an existing ticket.
+          <h1 className="text-2xl sm:text-3xl font-bold">{isEdit ? 'Edit Ticket' : 'Create Ticket'}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isEdit
+              ? `Update ticket ${ticket?.ticket_number} details and information.`
+              : 'Capture the details of a new issue or request.'}
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link href={route('admin.tickets.index')}>Back to Tickets</Link>
+            <Link href={route('admin.tickets.index')}>← Back to Tickets</Link>
           </Button>
           {isEdit && ticket && (
             <Button asChild variant="default">
-              <Link href={route('admin.tickets.show', ticket.id)}>View Ticket</Link>
+              <Link href={route('admin.tickets.show', { ticket: ticket.id })}>View Ticket</Link>
             </Button>
           )}
         </div>
@@ -307,7 +328,7 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Ticket Information</CardTitle>
+            <CardTitle className="text-xl">Ticket Information</CardTitle>
             <CardDescription>Subject, requester, routing, and SLA data.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

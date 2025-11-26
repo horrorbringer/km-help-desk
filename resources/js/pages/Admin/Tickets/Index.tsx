@@ -2,6 +2,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 
 import AppLayout from '@/layouts/app-layout';
+import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -84,6 +85,7 @@ const priorityColorMap: Record<string, string> = {
 
 export default function TicketIndex({ tickets, filters, options }: Props) {
   const { can } = usePermissions();
+  useToast(); // Handle flash messages
   const [selectedTickets, setSelectedTickets] = useState<number[]>([]);
   const [bulkAction, setBulkAction] = useState<string>('');
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
@@ -245,7 +247,19 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
         </CardHeader>
         <CardContent className="space-y-4">
           {tickets.data.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tickets found.</p>
+            <div className="text-center py-12">
+              <p className="text-lg font-medium text-muted-foreground mb-2">No tickets found</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                {Object.keys(filters).length > 0
+                  ? 'Try adjusting your filters to see more results.'
+                  : 'Get started by creating your first ticket.'}
+              </p>
+              {can('tickets.create') && Object.keys(filters).length === 0 && (
+                <Button asChild>
+                  <Link href={route('admin.tickets.create')}>Create Ticket</Link>
+                </Button>
+              )}
+            </div>
           ) : (
             <>
               {/* Select All Checkbox */}
@@ -264,78 +278,145 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
                 </span>
               </div>
 
-              {tickets.data.map((ticket) => (
-                <div key={ticket.id} className="p-4 border rounded-lg hover:bg-muted/50 transition">
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={selectedTickets.includes(ticket.id)}
-                      onCheckedChange={(checked) => handleSelectTicket(ticket.id, checked as boolean)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <Link href={route('admin.tickets.show', { ticket: ticket.id })} className="font-medium text-primary">
-                      {ticket.ticket_number} &mdash; {ticket.subject}
-                    </Link>
-                    <div className="text-sm text-muted-foreground">
-                      {ticket.category?.name} · {ticket.project?.name ?? 'No project'}
-                    </div>
-                  </div>
+              <div className="space-y-3">
+                {tickets.data.map((ticket) => (
+                  <div
+                    key={ticket.id}
+                    className="group p-4 border rounded-lg hover:border-primary/50 hover:shadow-sm transition-all duration-200 bg-card"
+                  >
+                    <div className="flex items-start gap-4">
+                      <Checkbox
+                        checked={selectedTickets.includes(ticket.id)}
+                        onCheckedChange={(checked) => handleSelectTicket(ticket.id, checked as boolean)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+                          <div className="flex-1 min-w-0">
+                            <Link
+                              href={route('admin.tickets.show', { ticket: ticket.id })}
+                              className="font-semibold text-base text-primary hover:underline block mb-1"
+                            >
+                              {ticket.ticket_number} &mdash; {ticket.subject}
+                            </Link>
+                            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                              {ticket.category && (
+                                <span className="inline-flex items-center">
+                                  <span className="mr-1">📁</span>
+                                  {ticket.category.name}
+                                </span>
+                              )}
+                              {ticket.project && (
+                                <span className="inline-flex items-center">
+                                  <span className="mx-1">·</span>
+                                  <span className="mr-1">📂</span>
+                                  {ticket.project.name}
+                                </span>
+                              )}
+                              {!ticket.project && ticket.category && (
+                                <span className="text-muted-foreground/60">· No project</span>
+                              )}
+                            </div>
+                          </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <Badge className={cn('capitalize', statusColorMap[ticket.status] ?? '')}>{ticket.status.replace('_', ' ')}</Badge>
-                    <Badge className={cn('capitalize', priorityColorMap[ticket.priority] ?? '')}>{ticket.priority}</Badge>
-                    {ticket.tags.map((tag) => (
-                      <Badge key={tag.id} style={{ backgroundColor: tag.color }} className="text-white">
-                        {tag.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              className={cn(
+                                'capitalize font-medium',
+                                statusColorMap[ticket.status] ?? 'bg-gray-100 text-gray-800'
+                              )}
+                            >
+                              {ticket.status.replace('_', ' ')}
+                            </Badge>
+                            <Badge
+                              className={cn(
+                                'capitalize font-medium',
+                                priorityColorMap[ticket.priority] ?? 'bg-gray-100 text-gray-800'
+                              )}
+                            >
+                              {ticket.priority}
+                            </Badge>
+                            {ticket.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {ticket.tags.slice(0, 3).map((tag) => (
+                                  <Badge
+                                    key={tag.id}
+                                    style={{ backgroundColor: tag.color, color: '#fff' }}
+                                    className="text-xs font-medium"
+                                  >
+                                    {tag.name}
+                                  </Badge>
+                                ))}
+                                {ticket.tags.length > 3 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    +{ticket.tags.length - 3}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="text-sm text-muted-foreground grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
-                    <div>
-                      <div className="text-xs uppercase tracking-wider">Requester</div>
-                      <div>{ticket.requester?.name ?? '—'}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs uppercase tracking-wider">Assigned</div>
-                      <div>{ticket.assigned_agent?.name ?? ticket.assigned_team?.name ?? 'Unassigned'}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs uppercase tracking-wider">Opened</div>
-                      <div>{new Date(ticket.created_at).toLocaleString()}</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t">
+                          <div>
+                            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Requester
+                            </div>
+                            <div className="text-sm font-medium">{ticket.requester?.name ?? '—'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Assigned To
+                            </div>
+                            <div className="text-sm font-medium">
+                              {ticket.assigned_agent?.name ?? ticket.assigned_team?.name ?? (
+                                <span className="text-muted-foreground italic">Unassigned</span>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                              Created
+                            </div>
+                            <div className="text-sm font-medium">
+                              {new Date(ticket.created_at).toLocaleDateString()}
+                              <span className="text-muted-foreground ml-1">
+                                {new Date(ticket.created_at).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {(can('tickets.edit') || can('tickets.delete')) && (
+                          <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t">
+                            {can('tickets.edit') && (
+                              <Button variant="outline" size="sm" asChild>
+                                <Link href={route('admin.tickets.edit', { ticket: ticket.id })}>Edit</Link>
+                              </Button>
+                            )}
+                            {can('tickets.delete') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm('Are you sure you want to delete this ticket?')) {
+                                    router.delete(route('admin.tickets.destroy', { ticket: ticket.id }));
+                                  }
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  {(can('tickets.edit') || can('tickets.delete')) && (
-                    <div className="flex gap-2 ml-4">
-                      {can('tickets.edit') && (
-                        <Button variant="outline" size="sm" asChild>
-                          <Link href={route('admin.tickets.edit', { ticket: ticket.id })}>Edit</Link>
-                        </Button>
-                      )}
-                      {can('tickets.delete') && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to delete this ticket?')) {
-                              router.delete(route('admin.tickets.destroy', { ticket: ticket.id }));
-                            }
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </>
           )}
 

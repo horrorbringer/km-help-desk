@@ -2,6 +2,7 @@ import { Head, router } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Dashboard01 } from '@/components/dashboard-01';
+import { useToast } from '@/hooks/use-toast';
 
 type DashboardStats = {
   overview: {
@@ -63,6 +64,8 @@ type Props = {
 };
 
 export default function Dashboard({ stats, period }: Props) {
+  useToast(); // Handle flash messages
+
   const handlePeriodChange = (value: string) => {
     router.get(route('dashboard'), { period: value }, { preserveState: true, replace: true });
   };
