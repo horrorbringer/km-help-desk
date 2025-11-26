@@ -40,6 +40,8 @@ class UserRequest extends FormRequest
             ],
             'department_id' => ['nullable', 'exists:departments,id'],
             'is_active' => ['boolean'],
+            'role_ids' => ['nullable', 'array'],
+            'role_ids.*' => ['exists:roles,id'],
         ];
     }
 }

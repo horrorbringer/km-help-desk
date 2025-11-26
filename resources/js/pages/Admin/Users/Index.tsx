@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { usePermissions } from '@/hooks/use-permissions';
 import type { PageProps } from '@/types';
 
 interface User {
@@ -16,6 +17,7 @@ interface User {
   phone?: string | null;
   employee_id?: string | null;
   department?: { id: number; name: string } | null;
+  roles?: Array<{ id: number; name: string }>;
   is_active: boolean;
   created_at: string;
 }
@@ -36,6 +38,7 @@ interface UsersIndexProps extends PageProps {
 
 export default function UsersIndex() {
   const { users, filters, departments, flash } = usePage<UsersIndexProps>().props;
+  const { can } = usePermissions();
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -58,9 +61,11 @@ export default function UsersIndex() {
             <h1 className="text-3xl font-bold">Users</h1>
             <p className="text-muted-foreground">Manage system users, agents, and requesters</p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.users.create')}>+ New User</Link>
-          </Button>
+          {can('users.create') && (
+            <Button asChild>
+              <Link href={route('admin.users.create')}>+ New User</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -135,6 +140,7 @@ export default function UsersIndex() {
                       <th className="px-4 py-3 text-left">Email</th>
                       <th className="px-4 py-3 text-left">Employee ID</th>
                       <th className="px-4 py-3 text-left">Department</th>
+                      <th className="px-4 py-3 text-left">Roles</th>
                       <th className="px-4 py-3 text-left">Phone</th>
                       <th className="px-4 py-3 text-left">Status</th>
                       <th className="px-4 py-3 text-right">Actions</th>
@@ -151,6 +157,19 @@ export default function UsersIndex() {
                         <td className="px-4 py-3 text-muted-foreground">
                           {user.department?.name ?? '—'}
                         </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {user.roles && user.roles.length > 0 ? (
+                              user.roles.map((role) => (
+                                <Badge key={role.id} variant="outline" className="text-xs">
+                                  {role.name}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-muted-foreground">{user.phone ?? '—'}</td>
                         <td className="px-4 py-3">
                           <Badge
@@ -161,9 +180,25 @@ export default function UsersIndex() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button asChild variant="outline" size="sm">
-                            <Link href={route('admin.users.edit', user.id)}>Edit</Link>
-                          </Button>
+                          {can('users.edit') && (
+                            <Button asChild variant="outline" size="sm">
+                              <Link href={route('admin.users.edit', user.id)}>Edit</Link>
+                            </Button>
+                          )}
+                          {can('users.delete') && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="ml-2"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this user?')) {
+                                  router.delete(route('admin.users.destroy', user.id));
+                                }
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}

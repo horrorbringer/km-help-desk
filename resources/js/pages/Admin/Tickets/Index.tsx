@@ -4,9 +4,9 @@ import { useMemo } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { AdvancedSearch } from '@/components/advanced-search';
+import { usePermissions } from '@/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
 type Option = { id: number; name: string };
@@ -37,6 +37,10 @@ type Filters = {
   category?: number | string;
   project?: number | string;
   requester?: number | string;
+  date_from?: string;
+  date_to?: string;
+  sla_breached?: string;
+  tags?: string[] | string;
 };
 
 type Props = {
@@ -54,6 +58,7 @@ type Props = {
     categories: Option[];
     projects: Option[];
     requesters: Option[];
+    tags: Array<{ id: number; name: string; color: string }>;
   };
 };
 
@@ -75,30 +80,13 @@ const priorityColorMap: Record<string, string> = {
 };
 
 export default function TicketIndex({ tickets, filters, options }: Props) {
-  const appliedFilters = useMemo(() => {
-    return Object.entries(filters)
-      .filter(([, value]) => value !== undefined && value !== null && value !== '')
-      .length;
-  }, [filters]);
+  const { can } = usePermissions();
 
-  const handleFilterChange = (key: keyof Filters, rawValue: string | undefined) => {
-    const value = rawValue === '__all' ? undefined : rawValue;
-
-    const nextFilters: Filters = { ...filters };
-    if (value === undefined || value === '') {
-      delete nextFilters[key];
-    } else {
-      nextFilters[key] = value;
-    }
-
-    router.get(route('admin.tickets.index'), nextFilters, {
+  const handleFiltersChange = (newFilters: Filters) => {
+    router.get(route('admin.tickets.index'), newFilters, {
       preserveState: true,
       replace: true,
     });
-  };
-
-  const resetFilters = () => {
-    router.get(route('admin.tickets.index'));
   };
 
   return (
@@ -113,139 +101,21 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={resetFilters}>
-            Clear Filters {appliedFilters > 0 ? `(${appliedFilters})` : ''}
-          </Button>
+        {can('tickets.create') && (
           <Button asChild>
             <Link href={route('admin.tickets.create')}>New Ticket</Link>
           </Button>
-        </div>
+        )}
       </div>
 
+      {/* Advanced Search */}
       <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Input
-            placeholder="Search by ticket number, subject, description"
-            value={filters.q ?? ''}
-            onChange={(e) => handleFilterChange('q', e.target.value)}
+        <CardContent className="pt-6">
+          <AdvancedSearch
+            filters={filters}
+            options={options}
+            onFiltersChange={handleFiltersChange}
           />
-
-          <Select value={(filters.status as string) ?? '__all'} onValueChange={(value) => handleFilterChange('status', value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All statuses</SelectItem>
-              {options.statuses.map((status) => (
-                <SelectItem key={status} value={status}>
-                  {status.replace('_', ' ')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={(filters.priority as string) ?? '__all'} onValueChange={(value) => handleFilterChange('priority', value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All priorities</SelectItem>
-              {options.priorities.map((priority) => (
-                <SelectItem key={priority} value={priority}>
-                  {priority}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.team ? filters.team.toString() : '__all'}
-            onValueChange={(value) => handleFilterChange('team', value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Team" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All teams</SelectItem>
-              {options.teams.map((team) => (
-                <SelectItem key={team.id} value={team.id.toString()}>
-                  {team.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.agent ? filters.agent.toString() : '__all'}
-            onValueChange={(value) => handleFilterChange('agent', value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Agent" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All agents</SelectItem>
-              {options.agents.map((agent) => (
-                <SelectItem key={agent.id} value={agent.id.toString()}>
-                  {agent.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.category ? filters.category.toString() : '__all'}
-            onValueChange={(value) => handleFilterChange('category', value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All categories</SelectItem>
-              {options.categories.map((category) => (
-                <SelectItem key={category.id} value={category.id.toString()}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.project ? filters.project.toString() : '__all'}
-            onValueChange={(value) => handleFilterChange('project', value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Project" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All projects</SelectItem>
-              {options.projects.map((project) => (
-                <SelectItem key={project.id} value={project.id.toString()}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.requester ? filters.requester.toString() : '__all'}
-            onValueChange={(value) => handleFilterChange('requester', value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Requester" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All requesters</SelectItem>
-              {options.requesters.map((requester) => (
-                <SelectItem key={requester.id} value={requester.id.toString()}>
-                  {requester.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </CardContent>
       </Card>
 
@@ -280,19 +150,43 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
                   </div>
                 </div>
 
-                <div className="mt-3 text-sm text-muted-foreground grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <div>
-                    <div className="text-xs uppercase tracking-wider">Requester</div>
-                    <div>{ticket.requester?.name ?? '—'}</div>
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground grid grid-cols-1 md:grid-cols-3 gap-2 flex-1">
+                    <div>
+                      <div className="text-xs uppercase tracking-wider">Requester</div>
+                      <div>{ticket.requester?.name ?? '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wider">Assigned</div>
+                      <div>{ticket.assigned_agent?.name ?? ticket.assigned_team?.name ?? 'Unassigned'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wider">Opened</div>
+                      <div>{new Date(ticket.created_at).toLocaleString()}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wider">Assigned</div>
-                    <div>{ticket.assigned_agent?.name ?? ticket.assigned_team?.name ?? 'Unassigned'}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wider">Opened</div>
-                    <div>{new Date(ticket.created_at).toLocaleString()}</div>
-                  </div>
+                  {(can('tickets.edit') || can('tickets.delete')) && (
+                    <div className="flex gap-2 ml-4">
+                      {can('tickets.edit') && (
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={route('admin.tickets.edit', ticket.id)}>Edit</Link>
+                        </Button>
+                      )}
+                      {can('tickets.delete') && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this ticket?')) {
+                              router.delete(route('admin.tickets.destroy', ticket.id));
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))

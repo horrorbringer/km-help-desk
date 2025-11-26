@@ -15,7 +15,9 @@ use App\Models\TicketCategory;
 use App\Models\TicketCustomFieldValue;
 use App\Models\User;
 use App\Services\AutomationService;
+use App\Services\EscalationService;
 use App\Services\NotificationService;
+use App\Services\SearchService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -27,6 +29,8 @@ class TicketController extends Controller
 {
     public function index(Request $request): Response
     {
+        abort_unless(Auth::user()->can('tickets.view'), 403);
+
         $filters = $request->only([
             'q',
             'status',
@@ -36,21 +40,15 @@ class TicketController extends Controller
             'category',
             'project',
             'requester',
+            'date_from',
+            'date_to',
+            'sla_breached',
+            'tags',
         ]);
 
-        $tickets = Ticket::query()
-            ->with([
-                'requester:id,name',
-                'assignedTeam:id,name',
-                'assignedAgent:id,name',
-                'category:id,name',
-                'project:id,name,code',
-                'slaPolicy:id,name',
-                'tags:id,name,color',
-            ])
-            ->filter($filters)
-            ->latest()
-            ->paginate(15)
+        // Use optimized search service
+        $searchService = app(SearchService::class);
+        $tickets = $searchService->searchTickets($filters, 15)
             ->withQueryString()
             ->through(fn ($ticket) => TicketResource::make($ticket)->resolve());
 
@@ -63,6 +61,8 @@ class TicketController extends Controller
 
     public function create(): Response
     {
+        abort_unless(Auth::user()->can('tickets.create'), 403);
+
         return Inertia::render('Admin/Tickets/Form', [
             'ticket' => null,
             'formOptions' => $this->formOptions(),
@@ -71,6 +71,8 @@ class TicketController extends Controller
 
     public function store(TicketRequest $request): RedirectResponse
     {
+        abort_unless(Auth::user()->can('tickets.create'), 403);
+
         $data = $this->preparePayload($request->validated());
 
         $ticket = Ticket::create($data);
@@ -85,6 +87,9 @@ class TicketController extends Controller
         $notificationService = app(NotificationService::class);
         $notificationService->notifyTicketCreated($ticket);
 
+        // Clear search cache
+        app(SearchService::class)->clearCache();
+
         return redirect()
             ->route('admin.tickets.show', $ticket)
             ->with('success', 'Ticket created successfully.');
@@ -92,6 +97,8 @@ class TicketController extends Controller
 
     public function show(Ticket $ticket): Response
     {
+        abort_unless(Auth::user()->can('tickets.view'), 403);
+
         $ticket->load([
             'requester',
             'assignedTeam',
@@ -114,6 +121,8 @@ class TicketController extends Controller
 
     public function edit(Ticket $ticket): Response
     {
+        abort_unless(Auth::user()->can('tickets.edit'), 403);
+
         $ticket->load([
             'requester:id,name',
             'assignedTeam:id,name',
@@ -134,6 +143,8 @@ class TicketController extends Controller
 
     public function update(TicketRequest $request, Ticket $ticket): RedirectResponse
     {
+        abort_unless(Auth::user()->can('tickets.edit'), 403);
+
         $originalData = $ticket->getOriginal();
         $data = $this->preparePayload($request->validated(), $ticket);
 
@@ -162,6 +173,10 @@ class TicketController extends Controller
             $automationService->onTicketStatusChanged($ticket);
         }
 
+        // Check for escalation
+        $escalationService = app(EscalationService::class);
+        $escalationService->checkTicket($ticket);
+
         // Send notifications if there were changes
         if (!empty($changes)) {
             $notificationService = app(NotificationService::class);
@@ -173,6 +188,9 @@ class TicketController extends Controller
             }
         }
 
+        // Clear search cache
+        app(SearchService::class)->clearCache();
+
         return redirect()
             ->route('admin.tickets.show', $ticket)
             ->with('success', 'Ticket updated successfully.');
@@ -180,6 +198,8 @@ class TicketController extends Controller
 
     public function destroy(Ticket $ticket): RedirectResponse
     {
+        abort_unless(Auth::user()->can('tickets.delete'), 403);
+
         $ticket->delete();
 
         return redirect()
@@ -266,6 +286,7 @@ class TicketController extends Controller
             'categories' => TicketCategory::select('id', 'name')->orderBy('name')->get(),
             'projects' => Project::select('id', 'name')->orderBy('name')->get(),
             'requesters' => User::select('id', 'name')->orderBy('name')->get(),
+            'tags' => Tag::select('id', 'name', 'color')->orderBy('name')->get(),
         ];
     }
 

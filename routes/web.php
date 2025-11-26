@@ -7,9 +7,12 @@ use App\Http\Controllers\Admin\CustomFieldController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\EmailTemplateController;
+use App\Http\Controllers\Admin\EscalationRuleController;
 use App\Http\Controllers\Admin\KnowledgeBaseArticleController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\SavedSearchController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SlaPolicyController;
 use App\Http\Controllers\Admin\TagController;
@@ -67,11 +70,24 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::resource('automation-rules', AutomationRuleController::class)
         ->names('admin.automation-rules');
 
+    Route::resource('escalation-rules', EscalationRuleController::class)
+        ->names('admin.escalation-rules');
+
     Route::resource('custom-fields', CustomFieldController::class)
         ->names('admin.custom-fields');
 
     Route::resource('ticket-templates', TicketTemplateController::class)
         ->names('admin.ticket-templates');
+
+    Route::resource('roles', RoleController::class)
+        ->names('admin.roles');
+
+    Route::prefix('saved-searches')->name('admin.saved-searches.')->group(function () {
+        Route::get('/', [SavedSearchController::class, 'index'])->name('index');
+        Route::post('/', [SavedSearchController::class, 'store'])->name('store');
+        Route::delete('/{savedSearch}', [SavedSearchController::class, 'destroy'])->name('destroy');
+        Route::get('/{savedSearch}/apply', [SavedSearchController::class, 'apply'])->name('apply');
+    });
     
     Route::get('ticket-templates/{ticketTemplate}/data', [TicketTemplateController::class, 'getTemplateData'])
         ->name('admin.ticket-templates.data');

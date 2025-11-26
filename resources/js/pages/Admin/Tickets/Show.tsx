@@ -1,12 +1,12 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { usePermissions } from '@/hooks/use-permissions';
 import { cn } from '@/lib/utils';
-import { useForm } from '@inertiajs/react';
 
 type BaseOption = { id: number; name: string };
 
@@ -90,8 +90,7 @@ const priorityColorMap: Record<string, string> = {
 };
 
 export default function TicketShow({ ticket }: TicketShowProps) {
-  const { put } = useForm();
-  // console.log(ticket);
+  const { can } = usePermissions();
 
   return (
     <AppLayout>
@@ -107,9 +106,23 @@ export default function TicketShow({ ticket }: TicketShowProps) {
           <Button asChild variant="outline">
             <Link href={route('admin.tickets.index')}>Back to list</Link>
           </Button>
-          <Button asChild>
-            <button onClick={() => put(route('admin.tickets.edit', ticket.id))}>Edit Ticket</button>
-          </Button>
+          {can('tickets.edit') && (
+            <Button asChild>
+              <Link href={route('admin.tickets.edit', ticket.id)}>Edit Ticket</Link>
+            </Button>
+          )}
+          {can('tickets.delete') && (
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (confirm('Are you sure you want to delete this ticket?')) {
+                  router.delete(route('admin.tickets.destroy', ticket.id));
+                }
+              }}
+            >
+              Delete Ticket
+            </Button>
+          )}
         </div>
       </div>
 

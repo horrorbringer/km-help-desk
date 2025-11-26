@@ -59,6 +59,11 @@ const getNavMain = () => [
         icon: IconUsers,
       },
       {
+        title: "Roles & Permissions",
+        url: route("admin.roles.index"),
+        icon: IconUsers,
+      },
+      {
         title: "Departments",
         url: route("admin.departments.index"),
         icon: IconFolder,
@@ -103,6 +108,11 @@ const getNavMain = () => [
         title: "Automation Rules",
         url: route("admin.automation-rules.index"),
         icon: IconSettings,
+      },
+      {
+        title: "Escalation Rules",
+        url: route("admin.escalation-rules.index"),
+        icon: IconReport,
       },
       {
         title: "Custom Fields",

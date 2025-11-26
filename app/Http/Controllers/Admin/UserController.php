@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\UserRequest;
 use App\Models\Department;
 use App\Models\User;
+use Spatie\Permission\Models\Role;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -46,6 +47,10 @@ class UserController extends Controller
                     'id' => $user->department->id,
                     'name' => $user->department->name,
                 ] : null,
+                'roles' => $user->roles->map(fn ($role) => [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                ]),
                 'is_active' => $user->is_active,
                 'created_at' => $user->created_at->toDateTimeString(),
             ]);
@@ -64,12 +69,15 @@ class UserController extends Controller
         return Inertia::render('Admin/Users/Form', [
             'user' => null,
             'departments' => Department::select('id', 'name')->orderBy('name')->get(),
+            'roles' => Role::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
     public function store(UserRequest $request): RedirectResponse
     {
         $data = $request->validated();
+        $roleIds = $data['role_ids'] ?? [];
+        unset($data['role_ids']);
         
         if (!empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);
@@ -77,7 +85,13 @@ class UserController extends Controller
             unset($data['password']);
         }
 
-        User::create($data);
+        $user = User::create($data);
+
+        // Assign roles
+        if (!empty($roleIds)) {
+            $roles = Role::whereIn('id', $roleIds)->get();
+            $user->syncRoles($roles);
+        }
 
         return redirect()
             ->route('admin.users.index')
@@ -97,14 +111,18 @@ class UserController extends Controller
                 'employee_id' => $user->employee_id,
                 'department_id' => $user->department_id,
                 'is_active' => $user->is_active,
+                'role_ids' => $user->roles->pluck('id')->toArray(),
             ],
             'departments' => Department::select('id', 'name')->orderBy('name')->get(),
+            'roles' => Role::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
     public function update(UserRequest $request, User $user): RedirectResponse
     {
         $data = $request->validated();
+        $roleIds = $data['role_ids'] ?? [];
+        unset($data['role_ids']);
 
         if (!empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);
@@ -113,6 +131,12 @@ class UserController extends Controller
         }
 
         $user->update($data);
+
+        // Sync roles
+        if (isset($roleIds)) {
+            $roles = Role::whereIn('id', $roleIds)->get();
+            $user->syncRoles($roles);
+        }
 
         return redirect()
             ->route('admin.users.index')

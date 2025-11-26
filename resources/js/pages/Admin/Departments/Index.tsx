@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { usePermissions } from '@/hooks/use-permissions';
 import type { PageProps } from '@/types';
 
 interface Department {
@@ -36,6 +37,7 @@ interface DepartmentsIndexProps extends PageProps {
 
 export default function DepartmentsIndex() {
   const { departments, filters, flash } = usePage<DepartmentsIndexProps>().props;
+  const { can } = usePermissions();
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -58,9 +60,11 @@ export default function DepartmentsIndex() {
             <h1 className="text-3xl font-bold">Departments</h1>
             <p className="text-muted-foreground">Manage departments and support teams</p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.departments.create')}>+ New Department</Link>
-          </Button>
+          {can('departments.create') && (
+            <Button asChild>
+              <Link href={route('admin.departments.create')}>+ New Department</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}

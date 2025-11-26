@@ -12,6 +12,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            RolePermissionSeeder::class, // Must run first to create roles
             DepartmentSeeder::class,
             TicketCategorySeeder::class,
             TagSeeder::class,

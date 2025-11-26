@@ -34,11 +34,12 @@ interface User {
 }
 
 interface UserFormProps {
-  user?: User;
+  user?: User & { role_ids?: number[] };
   departments: Array<{ id: number; name: string }>;
+  roles: Array<{ id: number; name: string }>;
 }
 
-export default function UserForm({ user, departments }: UserFormProps) {
+export default function UserForm({ user, departments, roles }: UserFormProps) {
   const isEdit = !!user;
   const { errors } = usePage<PageProps>().props;
 
@@ -50,6 +51,7 @@ export default function UserForm({ user, departments }: UserFormProps) {
     phone: user?.phone ?? '',
     employee_id: user?.employee_id ?? '',
     department_id: user?.department_id ? user.department_id.toString() : '__none',
+    role_ids: (user?.role_ids ?? []) as number[],
     is_active: user?.is_active ?? true,
   });
 
@@ -210,6 +212,40 @@ export default function UserForm({ user, departments }: UserFormProps) {
                 </Select>
                 {errors.department_id && (
                   <p className="text-xs text-red-500">{errors.department_id}</p>
+                )}
+              </div>
+
+              {/* Roles */}
+              <div className="space-y-2">
+                <Label>Roles</Label>
+                <div className="space-y-2 border rounded-lg p-4">
+                  {roles.map((role) => (
+                    <div key={role.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`role-${role.id}`}
+                        checked={data.role_ids.includes(role.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setData('role_ids', [...data.role_ids, role.id]);
+                          } else {
+                            setData(
+                              'role_ids',
+                              data.role_ids.filter((id) => id !== role.id)
+                            );
+                          }
+                        }}
+                      />
+                      <Label
+                        htmlFor={`role-${role.id}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {role.name}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {errors.role_ids && (
+                  <p className="text-xs text-red-500">{errors.role_ids}</p>
                 )}
               </div>
 
