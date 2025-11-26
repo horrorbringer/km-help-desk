@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import GuestLayout from '@/Layouts/GuestLayout';
 
 export default function ProjectShow() {
   const { project, relatedProjects } = usePage().props;
@@ -25,8 +24,7 @@ export default function ProjectShow() {
   };
 
   return (
-    <GuestLayout>
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-50">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-50">
         {/* Top hero */}
         <div className="border-b border-slate-800 bg-[radial-gradient(circle_at_10%_0,rgba(52,211,153,0.18),transparent_55%),radial-gradient(circle_at_90%_100%,rgba(56,189,248,0.18),transparent_55%)]">
           <div className="mx-auto max-w-6xl px-4 pt-10 pb-10">
@@ -221,6 +219,5 @@ export default function ProjectShow() {
           </div>
         </div>
       </div>
-    </GuestLayout>
   );
 }

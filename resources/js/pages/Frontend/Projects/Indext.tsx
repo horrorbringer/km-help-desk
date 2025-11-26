@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import GuestLayout from '@/Layouts/GuestLayout';
 
 export default function ProjectIndex() {
   const { projects, filters } = usePage().props;
@@ -32,8 +31,7 @@ export default function ProjectIndex() {
   };
 
   return (
-    <GuestLayout>
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-50">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-50">
         <div className="mx-auto max-w-6xl px-4 pt-16 pb-20">
           {/* Hero */}
           <section className="mb-10">
@@ -223,6 +221,5 @@ export default function ProjectIndex() {
           </section>
         </div>
       </div>
-    </GuestLayout>
   );
 }
