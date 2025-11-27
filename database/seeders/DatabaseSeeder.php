@@ -19,8 +19,11 @@ class DatabaseSeeder extends Seeder
             SlaPolicySeeder::class,
             UserSeeder::class,
             ProjectSeeder::class,
+            CustomFieldSeeder::class,
             CannedResponseSeeder::class,
+            KnowledgeBaseArticleSeeder::class,
             TicketSeeder::class,
+            TimeEntrySeeder::class, // Must run after TicketSeeder
         ]);
     }
 }

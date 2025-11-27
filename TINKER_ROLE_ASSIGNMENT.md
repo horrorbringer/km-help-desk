@@ -82,7 +82,7 @@ $user->roles->pluck('name');
 $user->getAllPermissions()->pluck('name');
 
 // Check specific permission
-$user->can('tickets.view');
+$user->can('tickets.view'); 
 
 // View user with roles
 $user->load('roles');
@@ -173,10 +173,10 @@ class User extends Authenticatable
 
 ```php
 // Quick assign by email
-\App\Models\User::where('email', 'admin@example.com')->first()->assignRole('Super Admin');
+\App\Models\User::where('email', 'vannak@gmail.com')->first()->assignRole('Super Admin');
 
 // Quick check
-\App\Models\User::where('email', 'admin@example.com')->first()->hasRole('Super Admin');
+\App\Models\User::where('email', 'vannak@gmail.com')->first()->hasRole('Super Admin');
 
 // List all Super Admins
 \App\Models\User::role('Super Admin')->get(['id', 'name', 'email']);

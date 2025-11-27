@@ -16,19 +16,28 @@ class TicketSeeder extends Seeder
 {
     public function run(): void
     {
-        $users = User::whereIn('email', [
-            'admin@kimmix.test',
-            'field.manager@kimmix.test',
-            'procurement@kimmix.test',
-            'finance@kimmix.test',
-            'safety@kimmix.test',
-        ])->get()->keyBy('email');
+        // Get all users and key by email for easy lookup
+        $users = User::all()->keyBy('email');
+        
+        // Ensure we have at least one user
+        if ($users->isEmpty()) {
+            $this->command->error('No users found. Please run UserSeeder first.');
+            return;
+        }
+        
+        // Get a default user for fallback (prefer Super Admin, then any user)
+        $defaultUser = User::role('Super Admin')->first() 
+            ?? User::where('email', 'makara@kimmix.com')->first()
+            ?? User::first();
 
         $categories = TicketCategory::whereIn('slug', [
             'hardware',
             'equipment-failure',
             'incident-reporting',
             'procurement-requests',
+            'application-access',
+            'network-vpn',
+            'finance-queries',
         ])->get()->keyBy('slug');
 
         $slaPolicies = SlaPolicy::get()->keyBy('priority');
@@ -38,97 +47,260 @@ class TicketSeeder extends Seeder
         $tickets = [
             [
                 'ticket_number' => 'KT-10001',
-                'subject' => 'Laptop won’t connect to site VPN',
+                'subject' => 'Laptop won\'t connect to site VPN',
                 'description' => 'Unable to reach VPN gateway while on remote site. Error 809 displayed.',
-                'requester' => 'field.manager@kimmix.test',
+                'requester' => 'vannak@kimmix.com', // Field Ops Manager
                 'assigned_team_id' => optional($categories['hardware'] ?? null)->default_team_id,
-                'assigned_agent' => 'admin@kimmix.test',
+                'assigned_agent' => 'makara@kimmix.com', // System Administrator
                 'category' => 'hardware',
                 'project' => 'PRJ-DTE-01',
                 'sla' => 'medium',
                 'priority' => 'high',
                 'status' => 'in_progress',
                 'tags' => ['urgent'],
-                'watchers' => ['admin@kimmix.test'],
+                'watchers' => ['makara@kimmix.com'],
                 'comments' => [
                     [
-                        'author' => 'admin@kimmix.test',
+                        'author' => 'makara@kimmix.com',
                         'body' => 'Investigating VPN gateway logs and certificate status.',
                         'is_internal' => true,
                     ],
                     [
-                        'author' => 'admin@kimmix.test',
+                        'author' => 'makara@kimmix.com',
                         'body' => 'Please retry connection after we reset the VPN concentrator.',
                     ],
                 ],
                 'histories' => [
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'in_progress'],
-                    ['action' => 'assignment', 'field_name' => 'assigned_agent_id', 'old' => null, 'new' => 'admin@kimmix.test'],
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'in_progress', 'user' => 'makara@kimmix.com'],
+                    ['action' => 'assignment', 'field_name' => 'assigned_agent_id', 'old' => null, 'new' => 'makara@kimmix.com', 'user' => 'makara@kimmix.com'],
                 ],
             ],
             [
                 'ticket_number' => 'KT-10002',
                 'subject' => 'Tower crane hydraulic leak',
                 'description' => 'Oil leak detected on TC-04 at level 18. Need inspection ASAP.',
-                'requester' => 'field.manager@kimmix.test',
+                'requester' => 'vannak@kimmix.com', // Field Ops Manager
                 'assigned_team_id' => optional($categories['equipment-failure'] ?? null)->default_team_id,
-                'assigned_agent' => 'safety@kimmix.test',
+                'assigned_agent' => 'vutty@kimmix.com', // Safety Officer
                 'category' => 'equipment-failure',
                 'project' => 'PRJ-DTE-01',
                 'sla' => 'critical',
                 'priority' => 'critical',
                 'status' => 'assigned',
                 'tags' => ['urgent', 'site-visit'],
-                'watchers' => ['safety@kimmix.test', 'admin@kimmix.test'],
+                'watchers' => ['vutty@kimmix.com', 'makara@kimmix.com'],
                 'comments' => [
                     [
-                        'author' => 'safety@kimmix.test',
+                        'author' => 'vutty@kimmix.com',
                         'body' => 'Dispatching HSE inspector to site. Please keep crane offline.',
                     ],
                 ],
                 'histories' => [
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'assigned'],
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'assigned', 'user' => 'vutty@kimmix.com'],
                 ],
             ],
             [
                 'ticket_number' => 'KT-10003',
                 'subject' => 'Request for fast-setting concrete mix',
                 'description' => 'Need expedited PO for 200m3 of fast-setting mix for Riverside pour.',
-                'requester' => 'field.manager@kimmix.test',
+                'requester' => 'vannak@kimmix.com',
                 'assigned_team_id' => optional($categories['procurement-requests'] ?? null)->default_team_id,
-                'assigned_agent' => 'procurement@kimmix.test',
+                'assigned_agent' => 'vanny@kimmix.com',
                 'category' => 'procurement-requests',
                 'project' => 'PRJ-RBU-02',
                 'sla' => 'high',
                 'priority' => 'high',
                 'status' => 'pending',
                 'tags' => ['client-facing'],
-                'watchers' => ['procurement@kimmix.test', 'finance@kimmix.test'],
+                'watchers' => ['vanny@kimmix.com', 'sopheap@kimmix.com'],
                 'comments' => [
                     [
-                        'author' => 'procurement@kimmix.test',
+                        'author' => 'vanny@kimmix.com',
                         'body' => 'RFQ sent to preferred vendor. Awaiting quote.',
                     ],
                 ],
                 'histories' => [
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'pending'],
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'pending', 'user' => 'vanny@kimmix.com'],
                 ],
+            ],
+            [
+                'ticket_number' => 'KT-10004',
+                'subject' => 'Email access not working after password change',
+                'description' => 'Changed my password yesterday and now cannot access email. Getting authentication error.',
+                'requester' => 'requester01@kimmix.com',
+                'assigned_team_id' => optional($categories['application-access'] ?? null)->default_team_id,
+                'assigned_agent' => 'agent01@kimmix.com',
+                'category' => 'application-access',
+                'sla' => 'medium',
+                'priority' => 'medium',
+                'status' => 'in_progress',
+                'tags' => ['it-issue'],
+                'watchers' => ['agent01@kimmix.com'],
+                'comments' => [
+                    [
+                        'author' => 'agent01@kimmix.com',
+                        'body' => 'Checking email server logs and account status.',
+                        'is_internal' => true,
+                    ],
+                    [
+                        'author' => 'agent01@kimmix.com',
+                        'body' => 'Account was locked due to multiple failed login attempts. I\'ve unlocked it. Please try logging in again.',
+                    ],
+                ],
+                'histories' => [
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'assigned', 'user' => 'agent01@kimmix.com'],
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'assigned', 'new' => 'in_progress', 'user' => 'agent01@kimmix.com'],
+                ],
+            ],
+            [
+                'ticket_number' => 'KT-10005',
+                'subject' => 'Near miss incident - falling debris',
+                'description' => 'Small piece of concrete fell from level 12, landed near workers on level 8. No injuries but close call. Area secured.',
+                'requester' => 'sokun@kimmix.com',
+                'assigned_team_id' => optional($categories['incident-reporting'] ?? null)->default_team_id,
+                'assigned_agent' => 'vutty@kimmix.com',
+                'category' => 'incident-reporting',
+                'sla' => 'critical',
+                'priority' => 'critical',
+                'status' => 'resolved',
+                'tags' => ['safety', 'site-visit'],
+                'watchers' => ['vutty@kimmix.com', 'makara@kimmix.com'],
+                'comments' => [
+                    [
+                        'author' => 'vutty@kimmix.com',
+                        'body' => 'HSE inspector dispatched to site. Initial assessment complete.',
+                    ],
+                    [
+                        'author' => 'vutty@kimmix.com',
+                        'body' => 'Root cause identified: inadequate edge protection. Corrective action implemented. All workers briefed on safety protocols.',
+                    ],
+                ],
+                'histories' => [
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'assigned', 'user' => 'vutty@kimmix.com'],
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'assigned', 'new' => 'in_progress', 'user' => 'vutty@kimmix.com'],
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'in_progress', 'new' => 'resolved', 'user' => 'vutty@kimmix.com'],
+                ],
+            ],
+            [
+                'ticket_number' => 'KT-10006',
+                'subject' => 'Printer not printing in color',
+                'description' => 'Office printer on 3rd floor only prints in black and white. Color cartridge was just replaced.',
+                'requester' => 'chanthou@kimmix.com',
+                'assigned_team_id' => optional($categories['hardware'] ?? null)->default_team_id,
+                'assigned_agent' => 'ratha@kimmix.com',
+                'category' => 'hardware',
+                'sla' => 'medium',
+                'priority' => 'low',
+                'status' => 'resolved',
+                'tags' => ['it-issue'],
+                'comments' => [
+                    [
+                        'author' => 'ratha@kimmix.com',
+                        'body' => 'Checked printer settings. Color printing was disabled in driver settings. Enabled and tested - working now.',
+                    ],
+                ],
+                'histories' => [
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'resolved', 'user' => 'ratha@kimmix.com'],
+                ],
+            ],
+            [
+                'ticket_number' => 'KT-10007',
+                'subject' => 'Request for office supplies',
+                'description' => 'Need to order office supplies: pens, notebooks, staplers, and printer paper for Q1.',
+                'requester' => 'sophea@kimmix.com',
+                'assigned_team_id' => optional($categories['procurement-requests'] ?? null)->default_team_id,
+                'assigned_agent' => 'srey@kimmix.com',
+                'category' => 'procurement-requests',
+                'sla' => 'medium',
+                'priority' => 'low',
+                'status' => 'open',
+                'tags' => ['procurement'],
+            ],
+            [
+                'ticket_number' => 'KT-10008',
+                'subject' => 'Excavator hydraulic system failure',
+                'description' => 'Excavator EX-05 at Downtown Tower site has hydraulic leak. Machine is down and blocking work area.',
+                'requester' => 'vannak.field@kimmix.com',
+                'assigned_team_id' => optional($categories['equipment-failure'] ?? null)->default_team_id,
+                'assigned_agent' => 'sokha@kimmix.com',
+                'category' => 'equipment-failure',
+                'project' => 'PRJ-DTE-01',
+                'sla' => 'high',
+                'priority' => 'high',
+                'status' => 'assigned',
+                'tags' => ['equipment', 'urgent', 'site-visit'],
+                'watchers' => ['sokha@kimmix.com', 'vannak@kimmix.com'],
+                'comments' => [
+                    [
+                        'author' => 'sokha@kimmix.com',
+                        'body' => 'Field engineer dispatched. ETA 2 hours. Will assess and provide repair estimate.',
+                    ],
+                ],
+                'histories' => [
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'assigned', 'user' => 'sokha@kimmix.com'],
+                ],
+            ],
+            [
+                'ticket_number' => 'KT-10009',
+                'subject' => 'Payroll query - missing overtime hours',
+                'description' => 'My overtime hours from last week are not showing in this week\'s payroll. I worked 8 hours overtime on Tuesday.',
+                'requester' => 'pov@kimmix.com',
+                'assigned_team_id' => optional($categories['finance-queries'] ?? null)->default_team_id,
+                'assigned_agent' => 'sopheap@kimmix.com',
+                'category' => 'finance-queries',
+                'sla' => 'medium',
+                'priority' => 'medium',
+                'status' => 'pending',
+                'tags' => ['finance'],
+                'watchers' => ['sopheap@kimmix.com'],
+                'comments' => [
+                    [
+                        'author' => 'sopheap@kimmix.com',
+                        'body' => 'Checking timesheet records and payroll system. Will update once verified.',
+                    ],
+                ],
+                'histories' => [
+                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'pending', 'user' => 'sopheap@kimmix.com'],
+                ],
+            ],
+            [
+                'ticket_number' => 'KT-10010',
+                'subject' => 'Wi-Fi connection issues in conference room',
+                'description' => 'Wi-Fi signal is very weak in Conference Room B. Cannot connect to network during meetings.',
+                'requester' => 'sopheap.manager@kimmix.com',
+                'assigned_team_id' => optional($categories['network-vpn'] ?? null)->default_team_id,
+                'assigned_agent' => 'makara@kimmix.com',
+                'category' => 'network-vpn',
+                'sla' => 'medium',
+                'priority' => 'medium',
+                'status' => 'open',
+                'tags' => ['it-issue'],
             ],
         ];
 
         foreach ($tickets as $data) {
             $sla = $slaPolicies[$data['sla']] ?? null;
 
+            // Get user IDs with fallback to default user
+            $requester = $users[$data['requester']] ?? $defaultUser;
+            $assignedAgent = $users[$data['assigned_agent']] ?? $defaultUser;
+
+            // Ensure we have valid user IDs
+            if (!$requester || !$requester->id) {
+                $this->command->warn("Skipping ticket {$data['ticket_number']}: No requester found.");
+                continue;
+            }
+
             $ticket = Ticket::updateOrCreate(
                 ['ticket_number' => $data['ticket_number']],
                 [
                     'subject' => $data['subject'],
                     'description' => $data['description'],
-                    'requester_id' => optional($users[$data['requester']] ?? null)->id,
+                    'requester_id' => $requester->id,
                     'assigned_team_id' => $data['assigned_team_id'],
-                    'assigned_agent_id' => optional($users[$data['assigned_agent']] ?? null)->id,
-                    'category_id' => optional($categories[$data['category']] ?? null)->id,
-                    'project_id' => optional($projects[$data['project']] ?? null)->id,
+                    'assigned_agent_id' => $assignedAgent?->id,
+                    'category_id' => optional($categories[$data['category']] ?? null)->id, 
+                    'project_id' => optional($projects[$data['project'] ?? null] ?? null)->id,
                     'sla_policy_id' => optional($slaPolicies[$data['sla']] ?? null)->id,
                     'status' => $data['status'],
                     'priority' => $data['priority'],
@@ -161,9 +333,18 @@ class TicketSeeder extends Seeder
 
     private function attachWatchers(Ticket $ticket, array $watcherEmails, $users): void
     {
+        // Get default user for fallback
+        $defaultUser = User::role('Super Admin')->first() 
+            ?? User::where('email', 'makara@kimmix.com')->first()
+            ?? User::first();
+
         $watcherIds = collect($watcherEmails)
-            ->map(fn ($email) => optional($users[$email] ?? null)->id)
+            ->map(function ($email) use ($users, $defaultUser) {
+                $user = $users[$email] ?? $defaultUser;
+                return $user?->id;
+            })
             ->filter()
+            ->unique()
             ->all();
 
         if ($watcherIds) {
@@ -173,14 +354,25 @@ class TicketSeeder extends Seeder
 
     private function syncComments(Ticket $ticket, array $comments, $users): void
     {
+        // Get default user for fallback
+        $defaultUser = User::role('Super Admin')->first() 
+            ?? User::where('email', 'makara@kimmix.com')->first()
+            ?? User::first();
+
         foreach ($comments as $comment) {
+            $author = $users[$comment['author']] ?? $defaultUser;
+            
+            if (!$author || !$author->id) {
+                continue; // Skip if no valid user found
+            }
+
             TicketComment::updateOrCreate(
                 [
                     'ticket_id' => $ticket->id,
                     'body' => $comment['body'],
                 ],
                 [
-                    'user_id' => optional($users[$comment['author']] ?? null)->id,
+                    'user_id' => $author->id,
                     'is_internal' => $comment['is_internal'] ?? false,
                     'type' => $comment['type'] ?? 'comment',
                 ]
@@ -190,7 +382,19 @@ class TicketSeeder extends Seeder
 
     private function syncHistory(Ticket $ticket, array $histories, $users): void
     {
+        // Get default user for history entries
+        $defaultUser = User::role('Super Admin')->first() 
+            ?? User::where('email', 'makara@kimmix.com')->first()
+            ?? User::first();
+
         foreach ($histories as $entry) {
+            $userEmail = $entry['user'] ?? 'makara@kimmix.com';
+            $historyUser = $users[$userEmail] ?? $defaultUser;
+
+            if (!$historyUser || !$historyUser->id) {
+                continue; // Skip if no valid user found
+            }
+
             TicketHistory::updateOrCreate(
                 [
                     'ticket_id' => $ticket->id,
@@ -199,7 +403,7 @@ class TicketSeeder extends Seeder
                     'new_value' => $entry['new'] ?? null,
                 ],
                 [
-                    'user_id' => optional($users[$entry['user'] ?? 'admin@kimmix.test'] ?? null)->id,
+                    'user_id' => $historyUser->id,
                     'old_value' => $entry['old'] ?? null,
                     'description' => $entry['description'] ?? null,
                     'created_at' => $entry['created_at'] ?? now(),
