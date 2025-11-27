@@ -73,26 +73,61 @@ class TicketController extends Controller
     {
         abort_unless(Auth::user()->can('tickets.create'), 403);
 
-        $data = $this->preparePayload($request->validated());
+        try {
+            $data = $this->preparePayload($request->validated());
 
-        $ticket = Ticket::create($data);
+            $ticket = Ticket::create($data);
 
-        $this->syncRelations($ticket, $request->validated());
+            $this->syncRelations($ticket, $request->validated());
 
-        // Execute automation rules
-        $automationService = app(AutomationService::class);
-        $automationService->onTicketCreated($ticket);
+            // Execute automation rules (wrap in try-catch to prevent failures from blocking ticket creation)
+            try {
+                $automationService = app(AutomationService::class);
+                $automationService->onTicketCreated($ticket);
+            } catch (\Exception $e) {
+                \Log::warning('Automation service failed on ticket creation', [
+                    'ticket_id' => $ticket->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
-        // Send notifications
-        $notificationService = app(NotificationService::class);
-        $notificationService->notifyTicketCreated($ticket);
+            // Send notifications (wrap in try-catch to prevent failures from blocking ticket creation)
+            try {
+                $notificationService = app(NotificationService::class);
+                $notificationService->notifyTicketCreated($ticket);
+            } catch (\Exception $e) {
+                \Log::warning('Notification service failed on ticket creation', [
+                    'ticket_id' => $ticket->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
-        // Clear search cache
-        app(SearchService::class)->clearCache();
+            // Clear search cache (wrap in try-catch to prevent failures from blocking ticket creation)
+            try {
+                app(SearchService::class)->clearCache();
+            } catch (\Exception $e) {
+                \Log::warning('Search service failed to clear cache', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
-        return redirect()
-            ->route('admin.tickets.show', $ticket)
-            ->with('success', 'Ticket created successfully.');
+            // Refresh the ticket to ensure all relations are loaded
+            $ticket->refresh();
+            
+            return redirect()
+                ->route('admin.tickets.show', $ticket->id)
+                ->with('success', 'Ticket created successfully!');
+        } catch (\Exception $e) {
+            \Log::error('Failed to create ticket', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'Failed to create ticket: ' . $e->getMessage());
+        }
     }
 
     public function show(Ticket $ticket): Response
@@ -522,17 +557,36 @@ class TicketController extends Controller
             'requesters' => User::select('id', 'name')->orderBy('name')->get(),
             'sla_policies' => SlaPolicy::select('id', 'name')->orderBy('name')->get(),
             'tags' => Tag::select('id', 'name', 'color')->orderBy('name')->get(),
-            'customFields' => CustomField::active()->ordered()->get()->map(fn ($field) => [
-                'id' => $field->id,
-                'name' => $field->name,
-                'label' => $field->label,
-                'field_type' => $field->field_type,
-                'options' => $field->options ?? [],
-                'default_value' => $field->default_value,
-                'is_required' => $field->is_required,
-                'placeholder' => $field->placeholder,
-                'help_text' => $field->help_text,
-            ]),
+            'customFields' => CustomField::active()->ordered()->get()->map(function ($field) {
+                // Transform options from associative array to array of objects
+                $options = [];
+                if ($field->options && is_array($field->options)) {
+                    // Check if options is already in the correct format (array of objects)
+                    if (isset($field->options[0]) && is_array($field->options[0]) && isset($field->options[0]['label'])) {
+                        $options = $field->options;
+                    } else {
+                        // Transform associative array to array of objects
+                        foreach ($field->options as $key => $value) {
+                            $options[] = [
+                                'label' => $value,
+                                'value' => is_numeric($key) ? $value : $key,
+                            ];
+                        }
+                    }
+                }
+                
+                return [
+                    'id' => $field->id,
+                    'name' => $field->name,
+                    'label' => $field->label,
+                    'field_type' => $field->field_type,
+                    'options' => $options,
+                    'default_value' => $field->default_value,
+                    'is_required' => $field->is_required,
+                    'placeholder' => $field->placeholder,
+                    'help_text' => $field->help_text,
+                ];
+            }),
         ];
     }
 }

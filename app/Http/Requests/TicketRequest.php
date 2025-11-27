@@ -16,7 +16,7 @@ class TicketRequest extends FormRequest
         $ticketId = $this->route('ticket')?->id;
 
         return [
-            'ticket_number' => ['sometimes', 'required', 'string', 'max:20', 'unique:tickets,ticket_number,' . $ticketId],
+            'ticket_number' => ['nullable', 'string', 'max:20', 'unique:tickets,ticket_number,' . $ticketId],
             'subject' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string'],
             'requester_id' => ['required', 'exists:users,id'],

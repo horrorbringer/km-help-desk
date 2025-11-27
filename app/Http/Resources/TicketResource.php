@@ -32,6 +32,23 @@ class TicketResource extends JsonResource
             'watchers' => $this->whenLoaded('watchers'),
             'custom_field_values' => $this->whenLoaded('customFieldValues', function () {
                 return $this->customFieldValues->map(function ($cfv) {
+                    // Transform options from associative array to array of objects
+                    $options = [];
+                    if ($cfv->customField->options && is_array($cfv->customField->options)) {
+                        // Check if options is already in the correct format (array of objects)
+                        if (isset($cfv->customField->options[0]) && is_array($cfv->customField->options[0]) && isset($cfv->customField->options[0]['label'])) {
+                            $options = $cfv->customField->options;
+                        } else {
+                            // Transform associative array to array of objects
+                            foreach ($cfv->customField->options as $key => $value) {
+                                $options[] = [
+                                    'label' => $value,
+                                    'value' => is_numeric($key) ? $value : $key,
+                                ];
+                            }
+                        }
+                    }
+                    
                     return [
                         'id' => $cfv->id,
                         'custom_field_id' => $cfv->custom_field_id,
@@ -41,7 +58,7 @@ class TicketResource extends JsonResource
                             'name' => $cfv->customField->name,
                             'label' => $cfv->customField->label,
                             'field_type' => $cfv->customField->field_type,
-                            'options' => $cfv->customField->options,
+                            'options' => $options,
                         ],
                     ];
                 });

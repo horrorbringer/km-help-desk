@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 type BaseOption = { id: number; name: string };
 
 type TicketShowProps = {
-  ticket: {
+  ticket?: {
     id: number;
     ticket_number: string;
     subject: string;
@@ -90,9 +90,31 @@ const priorityColorMap: Record<string, string> = {
   critical: 'bg-red-100 text-red-800',
 };
 
-export default function TicketShow({ ticket }: TicketShowProps) {
+export default function TicketShow(props: TicketShowProps) {
   const { can } = usePermissions();
   useToast(); // Handle flash messages
+  
+  // Get ticket from props or page props
+  const page = usePage();
+  const ticketData = props.ticket || (page.props as any).ticket;
+  
+  // Handle TicketResource wrapping - Inertia may wrap it in a data property
+  // Check if ticketData has a data property (from TicketResource)
+  let ticket = ticketData;
+  if (ticketData && typeof ticketData === 'object' && 'data' in ticketData) {
+    ticket = (ticketData as any).data;
+  }
+
+  if (!ticket || !ticket.id) {
+    return (
+      <AppLayout>
+        <Head title="Ticket Not Found" />
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Ticket not found.</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
@@ -122,7 +144,7 @@ export default function TicketShow({ ticket }: TicketShowProps) {
           </Button>
           {can('tickets.edit') && (
             <Button asChild>
-              <Link href={route('admin.tickets.edit', ticket.id)}>Edit Ticket</Link>
+              <Link href={route('admin.tickets.edit', { ticket: ticket.id })}>Edit Ticket</Link>
             </Button>
           )}
           {can('tickets.delete') && (

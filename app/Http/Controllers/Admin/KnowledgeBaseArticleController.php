@@ -60,7 +60,7 @@ class KnowledgeBaseArticleController extends Controller
                 'helpful_count' => $article->helpful_count,
                 'not_helpful_count' => $article->not_helpful_count,
                 'published_at' => $article->published_at?->toDateTimeString(),
-                'created_at' => $article->created_at->toDateTimeString(),
+                'created_at' => $article->created_at?->toDateTimeString(),
             ]);
 
         $categories = TicketCategory::where('is_active', true)
@@ -128,8 +128,8 @@ class KnowledgeBaseArticleController extends Controller
                 'not_helpful_count' => $article->not_helpful_count,
                 'sort_order' => $article->sort_order,
                 'published_at' => $article->published_at?->toDateTimeString(),
-                'created_at' => $article->created_at->toDateTimeString(),
-                'updated_at' => $article->updated_at->toDateTimeString(),
+                'created_at' => $article->created_at?->toDateTimeString(),
+                'updated_at' => $article->updated_at?->toDateTimeString(),
             ],
         ]);
     }

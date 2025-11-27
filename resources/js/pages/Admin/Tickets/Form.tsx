@@ -93,9 +93,25 @@ const priorityColorMap: Record<string, string> = {
 
 const defaultDate = (value?: string | null) => (value ? value.substring(0, 16) : '');
 
-export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
+export default function TicketForm(props: TicketFormProps) {
+  const page = usePage();
+  const pageProps = page.props as { 
+    auth?: { user?: { id: number; department_id?: number | null } | null };
+    errors?: Record<string, string>;
+    ticket?: any;
+    formOptions?: any;
+  };
+  
+  // Get ticket and formOptions from props or page props, handling nested data structure
+  let ticket = props.ticket || pageProps.ticket;
+  const formOptions = props.formOptions || pageProps.formOptions;
+  
+  // Handle TicketResource wrapping - Inertia may wrap it in a data property
+  if (ticket && typeof ticket === 'object' && 'data' in ticket) {
+    ticket = (ticket as any).data;
+  }
+  
   const isEdit = Boolean(ticket?.id);
-  const pageProps = usePage().props as { auth?: { user?: { id: number; department_id?: number | null } | null } };
   const auth = pageProps.auth;
   const subjectInputRef = useRef<HTMLInputElement>(null);
   useToast(); // Handle flash messages
@@ -144,7 +160,7 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     return customFields;
   }, [ticket?.custom_field_values]);
 
-  const { data, setData, post, put, processing, errors } = useForm({
+  const { data, setData, post, put, processing, errors: formErrors, transform } = useForm({
     ticket_number: ticket?.ticket_number ?? '',
     subject: ticket?.subject ?? '',
     description: ticket?.description ?? '',
@@ -169,27 +185,78 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     custom_fields: initialCustomFields,
   });
 
+  // Transform data before submission: convert empty strings to null for optional fields
+  transform((data) => {
+    const transformed: any = { ...data };
+    
+    // Handle ticket_number - convert empty string to null (will be auto-generated)
+    if (transformed.ticket_number === '' || transformed.ticket_number === null) {
+      transformed.ticket_number = null;
+    }
+    
+    // Handle optional fields - convert empty strings to null
+    if (transformed.assigned_agent_id === '' || transformed.assigned_agent_id === null) {
+      transformed.assigned_agent_id = null;
+    } else {
+      transformed.assigned_agent_id = Number(transformed.assigned_agent_id) || null;
+    }
+    
+    if (transformed.project_id === '' || transformed.project_id === null) {
+      transformed.project_id = null;
+    } else {
+      transformed.project_id = Number(transformed.project_id) || null;
+    }
+    
+    if (transformed.sla_policy_id === '' || transformed.sla_policy_id === null) {
+      transformed.sla_policy_id = null;
+    } else {
+      transformed.sla_policy_id = Number(transformed.sla_policy_id) || null;
+    }
+    
+    // Handle date fields
+    transformed.first_response_at = transformed.first_response_at || null;
+    transformed.first_response_due_at = transformed.first_response_due_at || null;
+    transformed.resolution_due_at = transformed.resolution_due_at || null;
+    transformed.resolved_at = transformed.resolved_at || null;
+    transformed.closed_at = transformed.closed_at || null;
+    
+    // Handle required fields - ensure they are numbers
+    transformed.requester_id = transformed.requester_id === '' || transformed.requester_id === null 
+      ? null 
+      : Number(transformed.requester_id);
+    transformed.assigned_team_id = transformed.assigned_team_id === '' || transformed.assigned_team_id === null 
+      ? null 
+      : Number(transformed.assigned_team_id);
+    transformed.category_id = transformed.category_id === '' || transformed.category_id === null 
+      ? null 
+      : Number(transformed.category_id);
+    
+    return transformed;
+  });
+
+  // Combine form errors with page props errors
+  const errors = { ...formErrors, ...(pageProps.errors || {}) };
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
 
-    // Convert empty strings to null for optional fields before submission
-    const submitData = {
-      ...data,
-      assigned_agent_id: data.assigned_agent_id === '' ? null : data.assigned_agent_id,
-      project_id: data.project_id === '' ? null : data.project_id,
-      sla_policy_id: data.sla_policy_id === '' ? null : data.sla_policy_id,
-      first_response_at: data.first_response_at || null,
-      first_response_due_at: data.first_response_due_at || null,
-      resolution_due_at: data.resolution_due_at || null,
-      resolved_at: data.resolved_at || null,
-      closed_at: data.closed_at || null,
-    };
-
-    // Use router directly to submit with transformed data
     if (isEdit && ticket) {
-      router.put(route('admin.tickets.update', ticket.id), submitData);
+      put(route('admin.tickets.update', ticket.id), {
+        onError: (errors) => {
+          console.error('Update errors:', errors);
+        },
+      });
     } else {
-      router.post(route('admin.tickets.store'), submitData);
+      post(route('admin.tickets.store'), {
+        onError: (errors) => {
+          console.error('Create errors:', errors);
+          // Errors will be automatically displayed in the form
+        },
+        onSuccess: () => {
+          // Success message will be shown via toast from flash message
+          // Redirect happens automatically via Inertia
+        },
+      });
     }
   };
 
@@ -325,7 +392,7 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
         </Card>
       )}
 
-      <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-3">
+      <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-3" noValidate>
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-xl">Ticket Information</CardTitle>
@@ -725,8 +792,23 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
               >
                 {showAdvanced ? 'Hide' : 'Show'} Advanced Options
               </Button>
-              <Button type="submit" disabled={processing} size="lg" className="min-w-[140px]">
-                {processing ? 'Saving...' : isEdit ? 'Update Ticket' : 'Create Ticket'}
+              <Button 
+                type="submit" 
+                disabled={processing} 
+                size="lg" 
+                className="min-w-[140px]"
+              >
+                {processing ? (
+                  <>
+                    <span className="mr-2">⏳</span>
+                    {isEdit ? 'Updating...' : 'Creating...'}
+                  </>
+                ) : (
+                  <>
+                    <span className="mr-2">✨</span>
+                    {isEdit ? 'Update Ticket' : 'Create Ticket'}
+                  </>
+                )}
               </Button>
             </CardFooter>
           </Card>

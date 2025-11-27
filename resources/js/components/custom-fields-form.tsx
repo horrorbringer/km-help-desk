@@ -124,7 +124,7 @@ export function CustomFieldsForm({
               </SelectTrigger>
               <SelectContent>
                 {!field.is_required && <SelectItem value="__none">None</SelectItem>}
-                {field.options?.map((option) => (
+                {Array.isArray(field.options) && field.options.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -160,7 +160,7 @@ export function CustomFieldsForm({
                 <SelectValue placeholder={field.placeholder || 'Select options...'} />
               </SelectTrigger>
               <SelectContent>
-                {field.options?.map((option) => (
+                {Array.isArray(field.options) && field.options.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -170,7 +170,7 @@ export function CustomFieldsForm({
             {Array.isArray(value) && value.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {value.map((val) => {
-                  const option = field.options?.find((opt) => opt.value === val);
+                  const option = Array.isArray(field.options) ? field.options.find((opt) => opt.value === val) : null;
                   return (
                     <span
                       key={val}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -26,7 +26,7 @@ interface Article {
 }
 
 interface ArticleShowProps {
-  article: Article;
+  article?: Article;
 }
 
 const statusColorMap: Record<string, string> = {
@@ -35,7 +35,35 @@ const statusColorMap: Record<string, string> = {
   archived: 'bg-gray-200 text-gray-700',
 };
 
-export default function ArticleShow({ article }: ArticleShowProps) {
+export default function ArticleShow(props: ArticleShowProps) {
+  const page = usePage();
+  const pageProps = page.props as { article?: Article };
+  
+  // Get article from props or page props
+  let article = props.article || pageProps.article;
+  
+  // Debug: Log what we're receiving
+  console.log('Article data received:', { props, pageProps: page.props, article });
+  
+  // Handle potential data nesting (similar to TicketResource)
+  if (article && typeof article === 'object' && 'data' in article) {
+    article = (article as any).data;
+  }
+
+  if (!article || !article.id) {
+    return (
+      <AppLayout>
+        <Head title="Article Not Found" />
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Article not found.</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {article ? `Received: ${JSON.stringify(article)}` : 'No article data received'}
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <Head title={article.title} />
@@ -51,9 +79,11 @@ export default function ArticleShow({ article }: ArticleShowProps) {
             <Button asChild variant="outline">
               <Link href={route('admin.knowledge-base.index')}>← Back</Link>
             </Button>
-            <Button asChild>
-              <Link href={route('admin.knowledge-base.edit', article.id)}>Edit</Link>
-            </Button>
+            {article?.id && (
+              <Button asChild>
+                <Link href={route('admin.knowledge-base.edit', { knowledge_base: article.id })}>Edit</Link>
+              </Button>
+            )}
           </div>
         </div>
 

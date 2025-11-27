@@ -186,7 +186,7 @@ export default function KnowledgeBaseIndex() {
                         <div>
                           <div className="flex items-center gap-2">
                             <Link
-                              href={route('admin.knowledge-base.show', article.id)}
+                              href={route('admin.knowledge-base.show', { knowledge_base: article.id })}
                               className="font-medium hover:underline"
                             >
                               {article.title}
@@ -248,7 +248,7 @@ export default function KnowledgeBaseIndex() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button asChild variant="outline" size="sm">
-                            <Link href={route('admin.knowledge-base.edit', article.id)}>Edit</Link>
+                            <Link href={route('admin.knowledge-base.edit', { knowledge_base: article.id })}>Edit</Link>
                           </Button>
                         </div>
                       </TableCell>
