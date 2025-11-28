@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Upload, X } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -237,13 +237,19 @@ export default function TicketForm(props: TicketFormProps) {
   // Combine form errors with page props errors
   const errors = { ...formErrors, ...(pageProps.errors || {}) };
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
     if (isEdit && ticket) {
       put(route('admin.tickets.update', ticket.id), {
         onError: (errors) => {
           console.error('Update errors:', errors);
+        },
+        onSuccess: () => {
+          // Upload files after ticket update if any are selected
+          if (selectedFiles.length > 0) {
+            handleFileUpload();
+          }
         },
       });
     } else {
@@ -252,11 +258,85 @@ export default function TicketForm(props: TicketFormProps) {
           console.error('Create errors:', errors);
           // Errors will be automatically displayed in the form
         },
-        onSuccess: () => {
+        onSuccess: (page) => {
           // Success message will be shown via toast from flash message
-          // Redirect happens automatically via Inertia
+          // Upload files after ticket creation if any are selected
+          if (selectedFiles.length > 0) {
+            // After redirect, Inertia will load the show page
+            // We need to wait for the page to load and get ticket ID from URL or page props
+            const getTicketId = () => {
+              // Try to get from page props first (after redirect)
+              const ticket = (page.props as any).ticket;
+              if (ticket) {
+                const ticketId = ticket.id || ticket.data?.id;
+                if (ticketId) return Number(ticketId);
+              }
+              
+              // Fallback: extract from URL
+              const match = window.location.pathname.match(/\/tickets\/(\d+)/);
+              if (match && match[1]) {
+                return Number(match[1]);
+              }
+              
+              return null;
+            };
+            
+            // Try immediately
+            let ticketId = getTicketId();
+            
+            // If not found, wait a bit for Inertia to finish the redirect
+            if (!ticketId) {
+              setTimeout(() => {
+                ticketId = getTicketId();
+                if (ticketId) {
+                  uploadFilesAfterCreate(ticketId);
+                } else {
+                  console.error('Could not get ticket ID for file upload');
+                }
+              }, 1000);
+            } else {
+              uploadFilesAfterCreate(ticketId);
+            }
+          }
         },
       });
+    }
+  };
+
+  const uploadFilesAfterCreate = async (ticketId: number) => {
+    if (selectedFiles.length === 0) return;
+
+    setUploadingFiles(true);
+    const formData = new FormData();
+    selectedFiles.forEach((file) => {
+      formData.append('files[]', file);
+    });
+
+    try {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      const response = await fetch(route('admin.ticket-attachments.store', ticketId), {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        setSelectedFiles([]);
+        // Reload the page to show the new attachments
+        router.reload({ only: ['ticket'], preserveScroll: true });
+      } else {
+        const data = await response.json();
+        console.error('Upload error:', data);
+        alert('Failed to upload files: ' + (data.message || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Failed to upload files. Please try again.');
+    } finally {
+      setUploadingFiles(false);
     }
   };
 
@@ -274,6 +354,64 @@ export default function TicketForm(props: TicketFormProps) {
     });
   };
 
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    setSelectedFiles((prev) => [...prev, ...files]);
+  };
+
+  const handleFileRemove = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const handleFileUpload = async () => {
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    // For create mode, we'll upload files after ticket is created
+    // For edit mode, upload immediately
+    if (!isEdit || !ticket?.id) {
+      // In create mode, files will be uploaded after ticket creation
+      return;
+    }
+
+    setUploadingFiles(true);
+    const formData = new FormData();
+    selectedFiles.forEach((file) => {
+      formData.append('files[]', file);
+    });
+
+    try {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      const response = await fetch(route('admin.ticket-attachments.store', ticket.id), {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        setSelectedFiles([]);
+        router.reload({ only: ['ticket'] });
+      } else {
+        const data = await response.json();
+        console.error('Upload error:', data);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
   const priority = useMemo(() => data.priority, [data.priority]);
 
   // Template selector
@@ -285,6 +423,10 @@ export default function TicketForm(props: TicketFormProps) {
   const [showSLA, setShowSLA] = useState(false);
   const [showTags, setShowTags] = useState(false);
   const [showWatchers, setShowWatchers] = useState(false);
+  
+  // File upload state
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   
   // Auto-focus subject field on mount for new tickets
   useEffect(() => {
@@ -777,6 +919,71 @@ export default function TicketForm(props: TicketFormProps) {
                       </CollapsibleContent>
                     </div>
                   </Collapsible>
+
+                  {/* Attachments Section */}
+                  <div>
+                    <Label className="text-base font-semibold mb-2 block">Attachments</Label>
+                    <CardDescription className="text-xs mb-3">
+                      {isEdit 
+                        ? 'Upload files related to this ticket (PDF, images, documents, etc.)'
+                        : 'Select files to attach after ticket is created (PDF, images, documents, etc.)'}
+                    </CardDescription>
+                      
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="file"
+                            multiple
+                            onChange={handleFileSelect}
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.zip,.rar,.7z"
+                            className="flex-1"
+                            disabled={uploadingFiles}
+                          />
+                          {selectedFiles.length > 0 && isEdit && ticket?.id && (
+                            <Button
+                              type="button"
+                              onClick={handleFileUpload}
+                              disabled={uploadingFiles}
+                              size="sm"
+                            >
+                              {uploadingFiles ? 'Uploading...' : <><Upload className="h-4 w-4 mr-2" />Upload</>}
+                            </Button>
+                          )}
+                          {selectedFiles.length > 0 && !isEdit && (
+                            <span className="text-xs text-muted-foreground">
+                              Files will be uploaded after ticket creation
+                            </span>
+                          )}
+                        </div>
+
+                        {selectedFiles.length > 0 && (
+                          <div className="space-y-2 border rounded-lg p-3 bg-muted/20">
+                            {selectedFiles.map((file, index) => (
+                              <div key={index} className="flex items-center justify-between text-sm">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium truncate">{file.name}</p>
+                                  <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleFileRemove(index)}
+                                  disabled={uploadingFiles}
+                                  className="ml-2"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <p className="text-xs text-muted-foreground">
+                          Maximum file size: 10MB per file. Supported formats: PDF, Office documents, images, archives.
+                        </p>
+                      </div>
+                  </div>
                 </CardContent>
               </CollapsibleContent>
             </Card>

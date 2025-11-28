@@ -1,4 +1,5 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -6,6 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { usePermissions } from '@/hooks/use-permissions';
 import { cn } from '@/lib/utils';
 
@@ -93,6 +105,7 @@ const priorityColorMap: Record<string, string> = {
 export default function TicketShow(props: TicketShowProps) {
   const { can } = usePermissions();
   useToast(); // Handle flash messages
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   
   // Get ticket from props or page props
   const page = usePage();
@@ -148,16 +161,47 @@ export default function TicketShow(props: TicketShowProps) {
             </Button>
           )}
           {can('tickets.delete') && (
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (confirm('Are you sure you want to delete this ticket? This action cannot be undone.')) {
-                  router.delete(route('admin.tickets.destroy', { ticket: ticket.id }));
-                }
-              }}
-            >
-              Delete
-            </Button>
+            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete ticket "{ticket.ticket_number}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const ticketId = ticket.id;
+                      setDeleteDialogOpen(false); // Close dialog immediately
+                      router.delete(route('admin.tickets.destroy', { ticket: ticketId }), {
+                        preserveScroll: true,
+                        onSuccess: () => {
+                          // Success handled by flash message and redirect
+                        },
+                        onError: (errors) => {
+                          console.error('Delete errors:', errors);
+                          // Error handled by flash message
+                        },
+                      });
+                    }}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
         </div>
       </div>
@@ -355,11 +399,54 @@ export default function TicketShow(props: TicketShowProps) {
                         )}
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={attachment.file_path} target="_blank" rel="noreferrer">
-                        View
-                      </a>
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={route('admin.ticket-attachments.download', attachment.id)}>
+                          Download
+                        </Link>
+                      </Button>
+                      {can('tickets.edit') && (
+                        <AlertDialog open={deleteDialogOpen === attachment.id} onOpenChange={(open) => {
+                          if (!open) {
+                            setDeleteDialogOpen(null);
+                          }
+                        }}>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeleteDialogOpen(attachment.id)}
+                            >
+                              Delete
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Attachment</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete "{attachment.original_filename}"? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => {
+                                  router.delete(route('admin.ticket-attachments.destroy', attachment.id), {
+                                    preserveScroll: true,
+                                    onSuccess: () => {
+                                      setDeleteDialogOpen(null);
+                                    },
+                                  });
+                                }}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

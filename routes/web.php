@@ -119,6 +119,14 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::post('time-entries/{timeEntry}/approve', [TimeEntryController::class, 'approve'])
         ->name('admin.time-entries.approve');
 
+    // Ticket Attachments
+    Route::post('tickets/{ticket}/attachments', [\App\Http\Controllers\Admin\TicketAttachmentController::class, 'store'])
+        ->name('admin.ticket-attachments.store');
+    Route::get('ticket-attachments/{attachment}/download', [\App\Http\Controllers\Admin\TicketAttachmentController::class, 'download'])
+        ->name('admin.ticket-attachments.download');
+    Route::delete('ticket-attachments/{attachment}', [\App\Http\Controllers\Admin\TicketAttachmentController::class, 'destroy'])
+        ->name('admin.ticket-attachments.destroy');
+
     Route::prefix('reports')->name('admin.reports.')->group(function () {
         Route::get('/', [ReportController::class, 'index'])->name('index');
         Route::get('/tickets', [ReportController::class, 'tickets'])->name('tickets');

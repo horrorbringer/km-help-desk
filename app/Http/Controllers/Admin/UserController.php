@@ -192,15 +192,22 @@ class UserController extends Controller
 
     public function bulkUpdate(Request $request): RedirectResponse
     {
-        $request->validate([
+        $action = $request->input('action');
+        
+        $rules = [
             'user_ids' => ['required', 'array', 'min:1'],
             'user_ids.*' => ['exists:users,id'],
             'action' => ['required', 'string', 'in:activate,deactivate,assign_department,assign_role,remove_role'],
-            'value' => ['required'],
-        ]);
+        ];
+
+        // Value is only required for actions that need it
+        if (in_array($action, ['assign_department', 'assign_role', 'remove_role'])) {
+            $rules['value'] = ['required'];
+        }
+
+        $request->validate($rules);
 
         $userIds = $request->input('user_ids');
-        $action = $request->input('action');
         $value = $request->input('value');
 
         $users = User::whereIn('id', $userIds)->get();

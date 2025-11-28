@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
@@ -15,6 +15,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import type { PageProps } from '@/types';
 
 interface TicketTemplate {
@@ -46,6 +57,8 @@ interface TicketTemplatesIndexProps extends PageProps {
 
 export default function TicketTemplatesIndex() {
   const { templates, filters, flash } = usePage<TicketTemplatesIndexProps>().props;
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<TicketTemplate | null>(null);
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -172,9 +185,55 @@ export default function TicketTemplatesIndex() {
                         <p className="text-sm">{template.creator?.name ?? 'System'}</p>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={route('admin.ticket-templates.edit', template.id)}>Edit</Link>
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.ticket-templates.edit', template.id)}>Edit</Link>
+                          </Button>
+                          <AlertDialog open={deleteDialogOpen && templateToDelete?.id === template.id} onOpenChange={(open) => {
+                            if (!open) {
+                              setDeleteDialogOpen(false);
+                              setTemplateToDelete(null);
+                            }
+                          }}>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setTemplateToDelete(template);
+                                  setDeleteDialogOpen(true);
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Ticket Template</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete "{template.name}"? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => {
+                                    router.delete(route('admin.ticket-templates.destroy', template.id), {
+                                      preserveScroll: true,
+                                      onSuccess: () => {
+                                        setDeleteDialogOpen(false);
+                                        setTemplateToDelete(null);
+                                      },
+                                    });
+                                  }}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

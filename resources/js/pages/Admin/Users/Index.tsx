@@ -10,6 +10,17 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useToast } from '@/hooks/use-toast';
@@ -60,6 +71,7 @@ export default function UsersIndex() {
   const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
   const [bulkDialogValue, setBulkDialogValue] = useState<string>('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(null);
   
   const { data: importData, setData: setImportData, post: importPost, processing: importProcessing, errors: importErrors } = useForm({
     file: null as File | null,
@@ -108,30 +120,34 @@ export default function UsersIndex() {
     }
 
     if (bulkDialogAction === 'delete') {
-      if (confirm(`Are you sure you want to delete ${selectedUsers.length} user(s)?`)) {
-        router.post(
-          route('admin.users.bulk-delete'),
-          { user_ids: selectedUsers },
-          {
-            onSuccess: () => {
-              toast.success(`Successfully deleted ${selectedUsers.length} user(s).`);
-              setSelectedUsers([]);
-              setBulkDialogOpen(false);
-            },
-            onError: () => {
-              toast.error('Failed to delete users.');
-            },
-          }
-        );
-      }
+      router.post(
+        route('admin.users.bulk-delete'),
+        { user_ids: selectedUsers },
+        {
+          onSuccess: () => {
+            toast.success(`Successfully deleted ${selectedUsers.length} user(s).`);
+            setSelectedUsers([]);
+            setBulkDialogOpen(false);
+          },
+          onError: () => {
+            toast.error('Failed to delete users.');
+          },
+        }
+      );
     } else {
+      const payload: any = {
+        user_ids: selectedUsers,
+        action: bulkDialogAction,
+      };
+
+      // Only include value if the action requires it
+      if (['assign_department', 'assign_role', 'remove_role'].includes(bulkDialogAction)) {
+        payload.value = bulkDialogValue;
+      }
+
       router.post(
         route('admin.users.bulk-update'),
-        {
-          user_ids: selectedUsers,
-          action: bulkDialogAction,
-          value: bulkDialogValue,
-        },
+        payload,
         {
           onSuccess: () => {
             toast.success(`Successfully updated ${selectedUsers.length} user(s).`);
@@ -139,7 +155,8 @@ export default function UsersIndex() {
             setBulkDialogOpen(false);
             setBulkDialogValue('');
           },
-          onError: () => {
+          onError: (errors) => {
+            console.error('Bulk update errors:', errors);
             toast.error('Failed to update users.');
           },
         }
@@ -415,24 +432,51 @@ export default function UsersIndex() {
                               </Button>
                             )}
                             {can('users.delete') && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to delete this user?')) {
-                                    router.delete(route('admin.users.destroy', { user: user.id }), {
-                                      onSuccess: () => {
-                                        toast.success(`User ${user.name} has been deleted.`);
-                                      },
-                                      onError: () => {
-                                        toast.error('Failed to delete user.');
-                                      },
-                                    });
+                              <AlertDialog
+                                open={deleteDialogOpen === user.id}
+                                onOpenChange={(open) => {
+                                  if (!open) {
+                                    setDeleteDialogOpen(null);
                                   }
                                 }}
                               >
-                                Delete
-                              </Button>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => setDeleteDialogOpen(user.id)}
+                                  >
+                                    Delete
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete User</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete "{user.name}"? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => {
+                                        router.delete(route('admin.users.destroy', { user: user.id }), {
+                                          onSuccess: () => {
+                                            toast.success(`User ${user.name} has been deleted.`);
+                                            setDeleteDialogOpen(null);
+                                          },
+                                          onError: () => {
+                                            toast.error('Failed to delete user.');
+                                          },
+                                        });
+                                      }}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             )}
                           </div>
                         </td>
@@ -553,6 +597,7 @@ export default function UsersIndex() {
                   bulkDialogAction !== 'deactivate' &&
                   !bulkDialogValue
                 }
+                variant={bulkDialogAction === 'delete' ? 'destructive' : 'default'}
               >
                 {bulkDialogAction === 'delete' ? 'Delete' : 'Apply'}
               </Button>

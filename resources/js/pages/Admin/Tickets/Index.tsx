@@ -9,6 +9,17 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { AdvancedSearch } from '@/components/advanced-search';
 import { usePermissions } from '@/hooks/use-permissions';
 import { cn } from '@/lib/utils';
@@ -91,6 +102,7 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
   const [bulkDialogValue, setBulkDialogValue] = useState<string>('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(null);
 
   const handleFiltersChange = (newFilters: Filters) => {
     router.get(route('admin.tickets.index'), newFilters, {
@@ -133,18 +145,19 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
     }
 
     if (bulkDialogAction === 'delete') {
-      if (confirm(`Are you sure you want to delete ${selectedTickets.length} ticket(s)?`)) {
-        router.post(
-          route('admin.tickets.bulk-delete'),
-          { ticket_ids: selectedTickets },
-          {
-            onSuccess: () => {
-              setSelectedTickets([]);
-              setBulkDialogOpen(false);
-            },
-          }
-        );
-      }
+      router.post(
+        route('admin.tickets.bulk-delete'),
+        { ticket_ids: selectedTickets },
+        {
+          onSuccess: () => {
+            setSelectedTickets([]);
+            setBulkDialogOpen(false);
+          },
+          onError: (errors) => {
+            console.error('Bulk delete errors:', errors);
+          },
+        }
+      );
     } else {
       router.post(
         route('admin.tickets.bulk-update'),
@@ -398,17 +411,61 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
                               </Button>
                             )}
                             {can('tickets.delete') && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to delete this ticket?')) {
-                                    router.delete(route('admin.tickets.destroy', { ticket: ticket.id }));
-                                  }
-                                }}
-                              >
-                                Delete
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteDialogOpen(ticket.id);
+                                  }}
+                                >
+                                  Delete
+                                </Button>
+                                <AlertDialog
+                                  open={deleteDialogOpen === ticket.id}
+                                  onOpenChange={(open) => {
+                                    if (!open) {
+                                      setDeleteDialogOpen(null);
+                                    }
+                                  }}
+                                >
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete ticket "{ticket.ticket_number}"? This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel onClick={() => setDeleteDialogOpen(null)}>
+                                        Cancel
+                                      </AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          const ticketId = ticket.id;
+                                          setDeleteDialogOpen(null); // Close dialog immediately
+                                          router.delete(route('admin.tickets.destroy', { ticket: ticketId }), {
+                                            preserveScroll: true,
+                                            onSuccess: () => {
+                                              // Success handled by flash message and redirect
+                                            },
+                                            onError: (errors) => {
+                                              console.error('Delete errors:', errors);
+                                              // Error handled by flash message
+                                            },
+                                          });
+                                        }}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </>
                             )}
                           </div>
                         )}

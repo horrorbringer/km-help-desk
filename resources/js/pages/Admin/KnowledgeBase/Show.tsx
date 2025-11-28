@@ -1,5 +1,6 @@
 import React from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
+import ReactMarkdown from 'react-markdown';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -42,9 +43,6 @@ export default function ArticleShow(props: ArticleShowProps) {
   // Get article from props or page props
   let article = props.article || pageProps.article;
   
-  // Debug: Log what we're receiving
-  console.log('Article data received:', { props, pageProps: page.props, article });
-  
   // Handle potential data nesting (similar to TicketResource)
   if (article && typeof article === 'object' && 'data' in article) {
     article = (article as any).data;
@@ -56,9 +54,6 @@ export default function ArticleShow(props: ArticleShowProps) {
         <Head title="Article Not Found" />
         <div className="text-center py-12">
           <p className="text-muted-foreground">Article not found.</p>
-          <p className="text-xs text-muted-foreground mt-2">
-            {article ? `Received: ${JSON.stringify(article)}` : 'No article data received'}
-          </p>
         </div>
       </AppLayout>
     );
@@ -120,8 +115,8 @@ export default function ArticleShow(props: ArticleShowProps) {
 
             <div>
               <h3 className="text-sm font-medium mb-2">Content</h3>
-              <div className="prose prose-sm max-w-none">
-                <p className="text-sm whitespace-pre-line leading-relaxed">{article.content}</p>
+              <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mt-4 prose-headings:mb-2 prose-p:mb-3 prose-ul:mb-3 prose-ol:mb-3 prose-li:mb-1 prose-code:text-sm prose-pre:bg-muted prose-pre:p-3 prose-pre:rounded-md">
+                <ReactMarkdown>{article.content}</ReactMarkdown>
               </div>
             </div>
 
