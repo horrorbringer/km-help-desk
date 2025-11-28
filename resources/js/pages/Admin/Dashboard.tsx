@@ -72,7 +72,7 @@ export default function Dashboard({ stats, period }: Props) {
 
   return (
     <AppLayout>
-      <Head title="Dashboard" />
+      <Head title="Welcome to the Dashboard" />
       <Dashboard01 stats={stats} period={period} onPeriodChange={handlePeriodChange} />
     </AppLayout>
   );
