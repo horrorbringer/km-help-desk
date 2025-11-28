@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\HelpDeskNotification;
 use App\Models\Ticket;
+use App\Models\TicketComment;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -225,6 +226,57 @@ class NotificationService
             "{$commenter->name} commented on ticket #{$ticket->ticket_number}",
             $excludeIds
         );
+    }
+
+    /**
+     * Notify on comment added
+     */
+    public function notifyCommentAdded(Ticket $ticket, TicketComment $comment, User $commenter): void
+    {
+        $excludeIds = [$commenter->id];
+        $type = $comment->is_internal ? 'comment_internal' : 'comment_added';
+        $title = $comment->is_internal ? 'Internal Comment Added' : 'New Comment';
+
+        // Send email notifications
+        try {
+            $emailService = app(\App\Services\EmailService::class);
+            $emailService->sendCommentAdded($ticket, $comment, $commenter);
+        } catch (\Exception $e) {
+            Log::error("Failed to send email notification: {$e->getMessage()}");
+        }
+
+        // Only notify requester if comment is not internal
+        if (!$comment->is_internal && $ticket->requester_id && $ticket->requester_id !== $commenter->id) {
+            $this->notifyRequester(
+                $ticket,
+                $type,
+                $title,
+                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: " . substr($comment->body, 0, 100) . '...'
+            );
+            $excludeIds[] = $ticket->requester_id;
+        }
+
+        // Notify assigned agent (always, even for internal comments)
+        if ($ticket->assigned_agent_id && $ticket->assigned_agent_id !== $commenter->id) {
+            $this->notifyAgent(
+                $ticket,
+                $type,
+                $title,
+                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: " . substr($comment->body, 0, 100) . '...'
+            );
+            $excludeIds[] = $ticket->assigned_agent_id;
+        }
+
+        // Notify watchers (only non-internal comments)
+        if (!$comment->is_internal) {
+            $this->notifyWatchers(
+                $ticket,
+                $type,
+                $title,
+                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: " . substr($comment->body, 0, 100) . '...',
+                $excludeIds
+            );
+        }
     }
 
     /**

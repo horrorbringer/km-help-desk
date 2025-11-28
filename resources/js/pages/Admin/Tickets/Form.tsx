@@ -342,9 +342,21 @@ export default function TicketForm(props: TicketFormProps) {
         // Reload the page to show the new attachments
         router.reload({ only: ['ticket'], preserveScroll: true });
       } else {
-        const data = await response.json();
-        console.error('Upload error:', data);
-        alert('Failed to upload files: ' + (data.message || 'Unknown error'));
+        let errorMessage = 'Failed to upload files. ';
+        
+        if (response.status === 413) {
+          errorMessage += 'File size is too large. Maximum allowed: 10MB per file. Please contact your administrator if you need to upload larger files.';
+        } else {
+          try {
+            const data = await response.json();
+            errorMessage += data.message || 'Unknown error';
+          } catch {
+            errorMessage += `Server error (${response.status}). Please try again or contact support.`;
+          }
+        }
+        
+        console.error('Upload error:', response.status, errorMessage);
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -416,11 +428,25 @@ export default function TicketForm(props: TicketFormProps) {
         setSelectedFiles([]);
         router.reload({ only: ['ticket'] });
       } else {
-        const data = await response.json();
-        console.error('Upload error:', data);
+        let errorMessage = 'Failed to upload files. ';
+        
+        if (response.status === 413) {
+          errorMessage += 'File size is too large. Maximum allowed: 10MB per file. Please contact your administrator if you need to upload larger files.';
+        } else {
+          try {
+            const data = await response.json();
+            errorMessage += data.message || 'Unknown error';
+          } catch {
+            errorMessage += `Server error (${response.status}). Please try again or contact support.`;
+          }
+        }
+        
+        console.error('Upload error:', response.status, errorMessage);
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('Upload error:', error);
+      alert('Failed to upload files. Please try again.');
     } finally {
       setUploadingFiles(false);
     }
@@ -456,6 +482,25 @@ export default function TicketForm(props: TicketFormProps) {
         .then((res) => res.json())
         .then((data) => setTemplates(data.templates || []))
         .catch(() => {});
+      
+      // Check for template data from flash (when creating from template)
+      const flash = (pageProps as any).flash;
+      if (flash?.template_data) {
+        const templateData = flash.template_data;
+        // Apply template data to form
+        if (templateData.subject) setData('subject', templateData.subject);
+        if (templateData.description) setData('description', templateData.description);
+        if (templateData.category_id) setData('category_id', templateData.category_id);
+        if (templateData.project_id) setData('project_id', templateData.project_id);
+        if (templateData.assigned_team_id) setData('assigned_team_id', templateData.assigned_team_id);
+        if (templateData.assigned_agent_id) setData('assigned_agent_id', templateData.assigned_agent_id);
+        if (templateData.priority) setData('priority', templateData.priority);
+        if (templateData.status) setData('status', templateData.status);
+        if (templateData.source) setData('source', templateData.source);
+        if (templateData.sla_policy_id) setData('sla_policy_id', templateData.sla_policy_id);
+        if (templateData.tag_ids) setData('tag_ids', templateData.tag_ids);
+        if (templateData.custom_fields) setData('custom_fields', templateData.custom_fields);
+      }
     }
   }, [isEdit]);
 

@@ -37,6 +37,10 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::resource('projects', \App\Http\Controllers\Admin\ProjectController::class)
         ->names('admin.projects');
 
+    // Ticket export route must be defined BEFORE resource route
+    Route::get('tickets/export', [TicketController::class, 'export'])
+        ->name('admin.tickets.export');
+    
     Route::resource('tickets', TicketController::class)
         ->names('admin.tickets');
     
@@ -112,6 +116,12 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     
     Route::get('ticket-templates/active/list', [TicketTemplateController::class, 'getActiveTemplates'])
         ->name('admin.ticket-templates.active');
+    
+    Route::get('ticket-templates/{ticketTemplate}/duplicate', [TicketTemplateController::class, 'duplicate'])
+        ->name('admin.ticket-templates.duplicate');
+    
+    Route::get('ticket-templates/{ticketTemplate}/create-ticket', [TicketTemplateController::class, 'createFromTemplate'])
+        ->name('admin.ticket-templates.create-ticket');
 
     Route::resource('time-entries', TimeEntryController::class)
         ->names('admin.time-entries');
@@ -130,6 +140,10 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     // Ticket Comments
     Route::post('tickets/{ticket}/comments', [\App\Http\Controllers\Admin\TicketCommentController::class, 'store'])
         ->name('admin.ticket-comments.store');
+    Route::put('tickets/{ticket}/comments/{comment}', [\App\Http\Controllers\Admin\TicketCommentController::class, 'update'])
+        ->name('admin.ticket-comments.update');
+    Route::delete('tickets/{ticket}/comments/{comment}', [\App\Http\Controllers\Admin\TicketCommentController::class, 'destroy'])
+        ->name('admin.ticket-comments.destroy');
 
     Route::prefix('reports')->name('admin.reports.')->group(function () {
         Route::get('/', [ReportController::class, 'index'])->name('index');

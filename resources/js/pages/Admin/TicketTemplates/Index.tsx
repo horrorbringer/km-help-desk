@@ -27,6 +27,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import type { PageProps } from '@/types';
+import { Copy } from 'lucide-react';
 
 interface TicketTemplate {
   id: number;
@@ -187,7 +188,25 @@ export default function TicketTemplatesIndex() {
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.ticket-templates.create-ticket', template.id)}>
+                              Use Template
+                            </Link>
+                          </Button>
+                          <Button asChild variant="outline" size="sm">
                             <Link href={route('admin.ticket-templates.edit', template.id)}>Edit</Link>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              router.visit(route('admin.ticket-templates.duplicate', template.id), {
+                                preserveScroll: true,
+                              });
+                            }}
+                            title="Duplicate template"
+                          >
+                            <Copy className="h-4 w-4 mr-1" />
+                            Duplicate
                           </Button>
                           <AlertDialog open={deleteDialogOpen && templateToDelete?.id === template.id} onOpenChange={(open) => {
                             if (!open) {

@@ -108,15 +108,86 @@ class TicketTemplateController extends Controller
     }
 
     /**
+     * Duplicate/clone a template
+     */
+    public function duplicate(TicketTemplate $ticketTemplate): RedirectResponse
+    {
+        $newTemplate = $ticketTemplate->replicate();
+        $newTemplate->name = $ticketTemplate->name . ' (Copy)';
+        $newTemplate->slug = $ticketTemplate->slug . '-copy-' . time();
+        $newTemplate->usage_count = 0;
+        $newTemplate->created_by = Auth::id();
+        $newTemplate->is_active = false; // Set to inactive by default so user can review before activating
+        $newTemplate->save();
+
+        return redirect()
+            ->route('admin.ticket-templates.edit', $newTemplate)
+            ->with('success', 'Template duplicated successfully. You can now edit it.');
+    }
+
+    /**
+     * Create ticket from template
+     */
+    public function createFromTemplate(TicketTemplate $ticketTemplate): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('tickets.create'), 403);
+        
+        $ticketTemplate->incrementUsage();
+        
+        $templateData = $this->processTemplateVariables($ticketTemplate->getFormData());
+
+        return redirect()
+            ->route('admin.tickets.create')
+            ->with('template_data', $templateData)
+            ->with('template_name', $ticketTemplate->name);
+    }
+
+    /**
      * Get template data for applying to ticket form
      */
     public function getTemplateData(TicketTemplate $ticketTemplate): \Illuminate\Http\JsonResponse
     {
         $ticketTemplate->incrementUsage();
 
+        $templateData = $ticketTemplate->getFormData();
+        
+        // Process template variables/placeholders
+        $templateData = $this->processTemplateVariables($templateData);
+
         return response()->json([
-            'data' => $ticketTemplate->getFormData(),
+            'data' => $templateData,
         ]);
+    }
+
+    /**
+     * Process template variables/placeholders
+     */
+    protected function processTemplateVariables(array $data): array
+    {
+        $user = Auth::user();
+        $now = now();
+
+        $variables = [
+            '{date}' => $now->format('Y-m-d'),
+            '{time}' => $now->format('H:i'),
+            '{datetime}' => $now->format('Y-m-d H:i'),
+            '{user}' => $user->name ?? 'User',
+            '{user_email}' => $user->email ?? '',
+            '{year}' => $now->format('Y'),
+            '{month}' => $now->format('F'),
+            '{day}' => $now->format('d'),
+        ];
+
+        // Process subject and description
+        if (isset($data['subject'])) {
+            $data['subject'] = str_replace(array_keys($variables), array_values($variables), $data['subject']);
+        }
+        
+        if (isset($data['description'])) {
+            $data['description'] = str_replace(array_keys($variables), array_values($variables), $data['description']);
+        }
+
+        return $data;
     }
 
     /**

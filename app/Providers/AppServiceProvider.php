@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\KnowledgeBaseArticle;
 use App\Models\TicketAttachment;
+use App\Models\TicketComment;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -30,6 +31,11 @@ class AppServiceProvider extends ServiceProvider
         // Bind 'attachment' route parameter to TicketAttachment model
         Route::bind('attachment', function ($value) {
             return TicketAttachment::findOrFail($value);
+        });
+
+        // Bind 'comment' route parameter to TicketComment model
+        Route::bind('comment', function ($value) {
+            return TicketComment::findOrFail($value);
         });
     }
 }

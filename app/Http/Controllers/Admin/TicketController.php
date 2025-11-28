@@ -44,6 +44,8 @@ class TicketController extends Controller
             'date_to',
             'sla_breached',
             'tags',
+            'order_by',
+            'order_dir',
         ]);
 
         // Use optimized search service
@@ -144,6 +146,8 @@ class TicketController extends Controller
             'tags',
             'watchers',
             'comments.user',
+            'comments.replies.user',
+            'comments.parent.user',
             'attachments.uploader',
             'histories.user',
             'customFieldValues.customField',
@@ -635,6 +639,177 @@ class TicketController extends Controller
             'priority' => ucfirst($value),
             default => (string) $value,
         };
+    }
+
+    /**
+     * Export tickets to CSV
+     */
+    public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        abort_unless(Auth::user()->can('tickets.view'), 403);
+
+        $filters = $request->only([
+            'q',
+            'status',
+            'priority',
+            'team',
+            'agent',
+            'category',
+            'project',
+            'requester',
+            'date_from',
+            'date_to',
+            'sla_breached',
+            'tags',
+        ]);
+
+        // Build query manually for export (without pagination)
+        $query = Ticket::query()
+            ->with([
+                'requester:id,name,email',
+                'assignedTeam:id,name',
+                'assignedAgent:id,name',
+                'category:id,name',
+                'project:id,name,code',
+                'slaPolicy:id,name',
+                'tags:id,name,color',
+            ]);
+
+        // Apply filters (same logic as SearchService)
+        if (!empty($filters['q'])) {
+            $searchTerm = $filters['q'];
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('ticket_number', 'like', "%{$searchTerm}%")
+                    ->orWhere('subject', 'like', "%{$searchTerm}%")
+                    ->orWhere('description', 'like', "%{$searchTerm}%")
+                    ->orWhereHas('requester', function ($reqQuery) use ($searchTerm) {
+                        $reqQuery->where('name', 'like', "%{$searchTerm}%")
+                            ->orWhere('email', 'like', "%{$searchTerm}%");
+                    });
+            });
+        }
+
+        if (!empty($filters['status'])) {
+            if (is_array($filters['status'])) {
+                $query->whereIn('status', $filters['status']);
+            } else {
+                $query->where('status', $filters['status']);
+            }
+        }
+
+        if (!empty($filters['priority'])) {
+            if (is_array($filters['priority'])) {
+                $query->whereIn('priority', $filters['priority']);
+            } else {
+                $query->where('priority', $filters['priority']);
+            }
+        }
+
+        if (!empty($filters['team'])) {
+            $query->where('assigned_team_id', $filters['team']);
+        }
+
+        if (!empty($filters['agent'])) {
+            $query->where('assigned_agent_id', $filters['agent']);
+        }
+
+        if (!empty($filters['category'])) {
+            $query->where('category_id', $filters['category']);
+        }
+
+        if (!empty($filters['project'])) {
+            $query->where('project_id', $filters['project']);
+        }
+
+        if (!empty($filters['requester'])) {
+            $query->where('requester_id', $filters['requester']);
+        }
+
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('created_at', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('created_at', '<=', $filters['date_to']);
+        }
+
+        if (!empty($filters['sla_breached'])) {
+            $query->where(function ($q) {
+                $q->where('response_sla_breached', true)
+                    ->orWhere('resolution_sla_breached', true);
+            });
+        }
+
+        if (!empty($filters['tags'])) {
+            $tagIds = is_array($filters['tags']) ? $filters['tags'] : [$filters['tags']];
+            $query->whereHas('tags', function ($tagQuery) use ($tagIds) {
+                $tagQuery->whereIn('tags.id', $tagIds);
+            });
+        }
+
+        $tickets = $query->orderBy('created_at', 'desc')->get();
+
+        $filename = 'tickets_export_' . date('Y-m-d_His') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0',
+        ];
+
+        $callback = function () use ($tickets) {
+            $file = fopen('php://output', 'w');
+
+            // Add CSV headers
+            fputcsv($file, [
+                'Ticket Number',
+                'Subject',
+                'Description',
+                'Status',
+                'Priority',
+                'Source',
+                'Requester',
+                'Assigned Team',
+                'Assigned Agent',
+                'Category',
+                'Project',
+                'SLA Policy',
+                'Tags',
+                'Created At',
+                'Updated At',
+                'Resolved At',
+                'Closed At',
+            ]);
+
+            // Add data rows
+            foreach ($tickets as $ticket) {
+                fputcsv($file, [
+                    $ticket->ticket_number,
+                    $ticket->subject,
+                    $ticket->description,
+                    ucfirst($ticket->status),
+                    ucfirst($ticket->priority),
+                    ucfirst($ticket->source),
+                    $ticket->requester?->name ?? '',
+                    $ticket->assignedTeam?->name ?? '',
+                    $ticket->assignedAgent?->name ?? '',
+                    $ticket->category?->name ?? '',
+                    $ticket->project?->name ?? '',
+                    $ticket->slaPolicy?->name ?? '',
+                    $ticket->tags->pluck('name')->join(', '),
+                    $ticket->created_at->format('Y-m-d H:i:s'),
+                    $ticket->updated_at->format('Y-m-d H:i:s'),
+                    $ticket->resolved_at?->format('Y-m-d H:i:s') ?? '',
+                    $ticket->closed_at?->format('Y-m-d H:i:s') ?? '',
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 }
 

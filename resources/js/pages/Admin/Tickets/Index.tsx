@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
+import { Download } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -194,11 +195,25 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
           </p>
         </div>
 
-        {can('tickets.create') && (
-          <Button asChild>
-            <Link href={route('admin.tickets.create')}>New Ticket</Link>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            asChild
+          >
+            <a
+              href={route('admin.tickets.export', filters)}
+              download
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </a>
           </Button>
-        )}
+          {can('tickets.create') && (
+            <Button asChild>
+              <Link href={route('admin.tickets.create')}>New Ticket</Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Advanced Search */}

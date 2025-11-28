@@ -1,6 +1,6 @@
 import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
 import { useState, useEffect, useRef } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, Send } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Send, Edit, Trash2, X, Check, Reply, Maximize, Minimize } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -124,22 +124,120 @@ export default function TicketShow(props: TicketShowProps) {
   const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const dialogContentRef = useRef<HTMLDivElement>(null);
+  
+  // Comment edit/delete state
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [deleteCommentDialogOpen, setDeleteCommentDialogOpen] = useState<number | null>(null);
 
   // Comment form
   const commentForm = useForm({
     body: '',
     is_internal: false,
+    parent_id: null as number | null,
   });
+  
+  const [replyingToCommentId, setReplyingToCommentId] = useState<number | null>(null);
+
+  // Get current user ID
+  const page = usePage();
+  const currentUserId = (page.props as any).auth?.user?.id;
+
+  // Comment edit form
+  const editCommentForm = useForm({
+    body: '',
+    is_internal: false,
+  });
+
+  const canEditComment = (comment: any) => {
+    return comment.user?.id === currentUserId || can('tickets.edit');
+  };
+
+  const handleEditComment = (comment: any) => {
+    setEditingCommentId(comment.id);
+    editCommentForm.setData({
+      body: comment.body,
+      is_internal: comment.is_internal,
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    editCommentForm.reset();
+  };
+
+  const handleSaveComment = (commentId: number) => {
+    editCommentForm.put(route('admin.ticket-comments.update', { ticket: ticket.id, comment: commentId }), {
+      preserveScroll: true,
+      onSuccess: () => {
+        setEditingCommentId(null);
+        editCommentForm.reset();
+      },
+    });
+  };
 
   // Reset zoom and position when dialog closes
   useEffect(() => {
     if (!imagePreviewOpen) {
       setImageZoom(1);
       setImagePosition({ x: 0, y: 0 });
+      setIsFullscreen(false);
     }
   }, [imagePreviewOpen]);
+
+  // Handle fullscreen toggle
+  const toggleFullscreen = async () => {
+    if (!dialogContentRef.current) return;
+
+    try {
+      if (!isFullscreen) {
+        // Enter fullscreen
+        if (dialogContentRef.current.requestFullscreen) {
+          await dialogContentRef.current.requestFullscreen();
+        } else if ((dialogContentRef.current as any).webkitRequestFullscreen) {
+          await (dialogContentRef.current as any).webkitRequestFullscreen();
+        } else if ((dialogContentRef.current as any).msRequestFullscreen) {
+          await (dialogContentRef.current as any).msRequestFullscreen();
+        }
+      } else {
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen();
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling fullscreen:', error);
+    }
+  };
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(isCurrentlyFullscreen);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // Handle mouse wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
@@ -184,7 +282,6 @@ export default function TicketShow(props: TicketShowProps) {
   };
   
   // Get ticket from props or page props
-  const page = usePage();
   const ticketData = props.ticket || (page.props as any).ticket;
   
   // Handle TicketResource wrapping - Inertia may wrap it in a data property
@@ -418,6 +515,8 @@ export default function TicketShow(props: TicketShowProps) {
                         preserveScroll: true,
                         onSuccess: () => {
                           commentForm.reset();
+                          commentForm.setData('parent_id', null);
+                          setReplyingToCommentId(null);
                         },
                       });
                     }}
@@ -474,7 +573,7 @@ export default function TicketShow(props: TicketShowProps) {
                 </div>
               )}
               <div className="space-y-3">
-                {(ticket.comments ?? []).map((comment) => (
+                {((ticket.comments ?? []).filter((c: any) => !c.parent_id) as any[]).map((comment) => (
                   <div
                     key={comment.id}
                     className={cn(
@@ -492,11 +591,223 @@ export default function TicketShow(props: TicketShowProps) {
                           <Badge variant="outline" className="text-xs capitalize">{comment.type}</Badge>
                         )}
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(comment.created_at).toLocaleString()}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(comment.created_at).toLocaleString()}
+                        </span>
+                        {canEditComment(comment) && (
+                          <div className="flex items-center gap-1">
+                            {editingCommentId === comment.id ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleSaveComment(comment.id)}
+                                  disabled={editCommentForm.processing}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Check className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={handleCancelEdit}
+                                  disabled={editCommentForm.processing}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditComment(comment)}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <AlertDialog
+                                  open={deleteCommentDialogOpen === comment.id}
+                                  onOpenChange={(open) => {
+                                    if (!open) {
+                                      setDeleteCommentDialogOpen(null);
+                                    }
+                                  }}
+                                >
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setDeleteCommentDialogOpen(comment.id)}
+                                      className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Comment</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete this comment? This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => {
+                                          router.delete(route('admin.ticket-comments.destroy', { ticket: ticket.id, comment: comment.id }), {
+                                            preserveScroll: true,
+                                            onSuccess: () => {
+                                              setDeleteCommentDialogOpen(null);
+                                            },
+                                          });
+                                        }}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-sm whitespace-pre-line leading-relaxed">{comment.body}</p>
+                    {editingCommentId === comment.id ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={editCommentForm.data.body}
+                          onChange={(e) => editCommentForm.setData('body', e.target.value)}
+                          rows={3}
+                          className="resize-none"
+                        />
+                        {editCommentForm.errors.body && (
+                          <p className="text-xs text-destructive">{editCommentForm.errors.body}</p>
+                        )}
+                        {can('tickets.edit') && (
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`edit-internal-${comment.id}`}
+                              checked={editCommentForm.data.is_internal}
+                              onCheckedChange={(checked) =>
+                                editCommentForm.setData('is_internal', checked === true)
+                              }
+                            />
+                            <Label
+                              htmlFor={`edit-internal-${comment.id}`}
+                              className="text-xs text-muted-foreground cursor-pointer"
+                            >
+                              Internal (only visible to agents)
+                            </Label>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm whitespace-pre-line leading-relaxed">{comment.body}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setReplyingToCommentId(comment.id);
+                              commentForm.setData('parent_id', comment.id);
+                            }}
+                            className="h-7 text-xs"
+                          >
+                            <Reply className="h-3 w-3 mr-1" />
+                            Reply
+                          </Button>
+                          {comment.replies && (comment.replies as any[]).length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {(comment.replies as any[]).length} {(comment.replies as any[]).length === 1 ? 'reply' : 'replies'}
+                            </span>
+                          )}
+                        </div>
+                        {/* Display replies */}
+                        {comment.replies && (comment.replies as any[]).length > 0 && (
+                          <div className="mt-3 ml-6 space-y-2 border-l-2 border-muted pl-4">
+                            {(comment.replies as any[]).map((reply: any) => (
+                              <div
+                                key={reply.id}
+                                className={cn(
+                                  'rounded-lg border p-3 text-sm',
+                                  reply.is_internal ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-muted/30'
+                                )}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-xs">{reply.user?.name ?? 'System'}</span>
+                                    {reply.is_internal && (
+                                      <Badge variant="secondary" className="text-xs">Internal</Badge>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">
+                                    {new Date(reply.created_at).toLocaleString()}
+                                  </span>
+                                </div>
+                                <p className="text-xs whitespace-pre-line leading-relaxed">{reply.body}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Reply form */}
+                        {replyingToCommentId === comment.id && (
+                          <div className="mt-3 ml-6 border-l-2 border-primary pl-4">
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                commentForm.post(route('admin.ticket-comments.store', ticket.id), {
+                                  preserveScroll: true,
+                                  onSuccess: () => {
+                                    commentForm.reset();
+                                    setReplyingToCommentId(null);
+                                  },
+                                });
+                              }}
+                              className="space-y-2"
+                            >
+                              <Textarea
+                                placeholder="Write a reply..."
+                                value={commentForm.data.body}
+                                onChange={(e) => commentForm.setData('body', e.target.value)}
+                                rows={2}
+                                className="resize-none text-sm"
+                                autoFocus
+                              />
+                              <div className="flex items-center justify-between">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setReplyingToCommentId(null);
+                                    commentForm.setData('parent_id', null);
+                                    commentForm.setData('body', '');
+                                  }}
+                                  className="h-7 text-xs"
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  disabled={commentForm.processing || !commentForm.data.body.trim()}
+                                  className="h-7 text-xs"
+                                >
+                                  <Send className="h-3 w-3 mr-1" />
+                                  {commentForm.processing ? 'Posting...' : 'Reply'}
+                                </Button>
+                              </div>
+                            </form>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -676,7 +987,13 @@ export default function TicketShow(props: TicketShowProps) {
 
       {/* Image Preview Dialog */}
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] p-0">
+        <DialogContent 
+          className={cn(
+            "max-w-6xl max-h-[90vh] p-0",
+            isFullscreen && "max-w-none max-h-none w-screen h-screen rounded-none"
+          )}
+        >
+          <div ref={dialogContentRef} className="w-full h-full">
           <DialogHeader className="px-6 pt-6 pb-2">
             <div className="flex items-center justify-between">
               <div>
@@ -710,13 +1027,28 @@ export default function TicketShow(props: TicketShowProps) {
                 >
                   <ZoomIn className="h-4 w-4" />
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleFullscreen}
+                  title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                >
+                  {isFullscreen ? (
+                    <Minimize className="h-4 w-4" />
+                  ) : (
+                    <Maximize className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
             </div>
           </DialogHeader>
           <div
             ref={imageContainerRef}
             className="relative flex items-center justify-center p-4 overflow-hidden bg-muted/30"
-            style={{ height: 'calc(90vh - 120px)', minHeight: '400px' }}
+            style={{ 
+              height: isFullscreen ? 'calc(100vh - 120px)' : 'calc(90vh - 120px)', 
+              minHeight: '400px' 
+            }}
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -746,6 +1078,7 @@ export default function TicketShow(props: TicketShowProps) {
                 }}
               />
             )}
+          </div>
           </div>
         </DialogContent>
       </Dialog>

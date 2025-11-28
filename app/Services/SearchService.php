@@ -68,9 +68,13 @@ class SearchService
                 $query->where('assigned_team_id', $filters['team']);
             }
 
-            // Optimized agent filter
-            if (!empty($filters['agent'])) {
-                $query->where('assigned_agent_id', $filters['agent']);
+            // Optimized agent filter (supports __none for unassigned)
+            if (isset($filters['agent'])) {
+                if ($filters['agent'] === '__none') {
+                    $query->whereNull('assigned_agent_id');
+                } elseif (!empty($filters['agent'])) {
+                    $query->where('assigned_agent_id', $filters['agent']);
+                }
             }
 
             // Optimized category filter
@@ -121,8 +125,20 @@ class SearchService
                 });
             }
 
-            // Optimized ordering
-            $query->orderBy('created_at', 'desc');
+            // Ordering
+            $orderBy = $filters['order_by'] ?? 'created_at';
+            $orderDir = $filters['order_dir'] ?? 'desc';
+            
+            // Validate order_by field
+            $allowedOrderFields = ['created_at', 'updated_at', 'status', 'priority', 'ticket_number', 'subject'];
+            if (!in_array($orderBy, $allowedOrderFields)) {
+                $orderBy = 'created_at';
+            }
+            
+            // Validate order direction
+            $orderDir = strtolower($orderDir) === 'asc' ? 'asc' : 'desc';
+            
+            $query->orderBy($orderBy, $orderDir);
 
             return $query->paginate($perPage);
         });

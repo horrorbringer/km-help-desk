@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class TicketComment extends Model
@@ -14,6 +15,7 @@ class TicketComment extends Model
     protected $fillable = [
         'body',
         'ticket_id',
+        'parent_id',
         'user_id',
         'is_internal',
         'type',
@@ -32,6 +34,16 @@ class TicketComment extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(TicketComment::class, 'parent_id');
+    }
+
+    public function replies(): HasMany
+    {
+        return $this->hasMany(TicketComment::class, 'parent_id')->orderBy('created_at', 'asc');
+    }
+
+
 }
-
-

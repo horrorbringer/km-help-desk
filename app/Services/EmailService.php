@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\EmailTemplate;
 use App\Models\Ticket;
+use App\Models\TicketComment;
 use App\Models\User;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -146,6 +147,36 @@ class EmailService
         // Notify assigned agent
         if ($ticket->assignedAgent && $ticket->assigned_agent_id !== $commenter->id) {
             $this->sendTemplate('ticket_commented', $ticket->assignedAgent, $data, $ticket);
+        }
+    }
+
+    /**
+     * Send comment added email
+     */
+    public function sendCommentAdded(Ticket $ticket, TicketComment $comment, User $commenter): void
+    {
+        $data = $this->getTicketData($ticket);
+        $data['commenter'] = $commenter->name;
+        $data['comment_body'] = $comment->body;
+        $data['is_internal'] = $comment->is_internal;
+
+        // Notify requester (only if not internal)
+        if (!$comment->is_internal && $ticket->requester && $ticket->requester_id !== $commenter->id) {
+            $this->sendTemplate('comment_added', $ticket->requester, $data, $ticket);
+        }
+
+        // Notify assigned agent
+        if ($ticket->assignedAgent && $ticket->assigned_agent_id !== $commenter->id) {
+            $this->sendTemplate('comment_added', $ticket->assignedAgent, $data, $ticket);
+        }
+
+        // Notify watchers (only if not internal)
+        if (!$comment->is_internal && $ticket->watchers) {
+            foreach ($ticket->watchers as $watcher) {
+                if ($watcher->id !== $commenter->id && $watcher->id !== $ticket->requester_id) {
+                    $this->sendTemplate('comment_added', $watcher, $data, $ticket);
+                }
+            }
         }
     }
 
