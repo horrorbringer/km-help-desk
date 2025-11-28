@@ -200,6 +200,33 @@ class TicketController extends Controller
 
         $this->syncRelations($ticket, $request->validated());
 
+        // Record history for changes
+        foreach ($changes as $field => $change) {
+            $action = match($field) {
+                'status' => 'status_changed',
+                'priority' => 'priority_changed',
+                'assigned_agent_id' => 'assigned',
+                'assigned_team_id' => 'assigned',
+                'category_id' => 'category_changed',
+                'sla_policy_id' => 'sla_changed',
+                default => 'field_changed',
+            };
+
+            // Get human-readable values for certain fields
+            $oldValue = $this->formatHistoryValue($field, $change['old']);
+            $newValue = $this->formatHistoryValue($field, $change['new']);
+
+            $ticket->histories()->create([
+                'user_id' => Auth::id(),
+                'action' => $action,
+                'field_name' => $field,
+                'old_value' => $oldValue,
+                'new_value' => $newValue,
+                'description' => ucfirst(str_replace('_', ' ', $field)) . " changed from {$oldValue} to {$newValue}",
+                'created_at' => now(),
+            ]);
+        }
+
         // Execute automation rules
         $automationService = app(AutomationService::class);
         $automationService->onTicketUpdated($ticket);
@@ -588,6 +615,26 @@ class TicketController extends Controller
                 ];
             }),
         ];
+    }
+
+    /**
+     * Format history value for display
+     */
+    protected function formatHistoryValue(string $field, $value): string
+    {
+        if ($value === null || $value === '') {
+            return '—';
+        }
+
+        return match($field) {
+            'assigned_agent_id' => \App\Models\User::find($value)?->name ?? $value,
+            'assigned_team_id' => \App\Models\Department::find($value)?->name ?? $value,
+            'category_id' => \App\Models\TicketCategory::find($value)?->name ?? $value,
+            'sla_policy_id' => \App\Models\SlaPolicy::find($value)?->name ?? $value,
+            'status' => ucfirst($value),
+            'priority' => ucfirst($value),
+            default => (string) $value,
+        };
     }
 }
 

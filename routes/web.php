@@ -127,6 +127,10 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::delete('ticket-attachments/{attachment}', [\App\Http\Controllers\Admin\TicketAttachmentController::class, 'destroy'])
         ->name('admin.ticket-attachments.destroy');
 
+    // Ticket Comments
+    Route::post('tickets/{ticket}/comments', [\App\Http\Controllers\Admin\TicketCommentController::class, 'store'])
+        ->name('admin.ticket-comments.store');
+
     Route::prefix('reports')->name('admin.reports.')->group(function () {
         Route::get('/', [ReportController::class, 'index'])->name('index');
         Route::get('/tickets', [ReportController::class, 'tickets'])->name('tickets');

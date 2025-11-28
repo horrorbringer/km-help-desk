@@ -313,13 +313,27 @@ export default function TicketForm(props: TicketFormProps) {
     });
 
     try {
-      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      // Get CSRF token from meta tag, or try to get it from the page
+      let csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+      
+      // If token not found, wait a bit for the page to fully load after redirect
+      if (!csrfToken) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+      }
+      
+      if (!csrfToken) {
+        throw new Error('CSRF token not found');
+      }
+
       const response = await fetch(route('admin.ticket-attachments.store', ticketId), {
         method: 'POST',
         headers: {
           'X-CSRF-TOKEN': csrfToken,
           'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
         },
+        credentials: 'same-origin', // Include cookies for CSRF
         body: formData,
       });
 

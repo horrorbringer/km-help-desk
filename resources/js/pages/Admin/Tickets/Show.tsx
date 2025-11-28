@@ -1,5 +1,6 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
+import { useState, useEffect, useRef } from 'react';
+import { ZoomIn, ZoomOut, RotateCcw, Send } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +19,18 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { usePermissions } from '@/hooks/use-permissions';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 type BaseOption = { id: number; name: string };
 
@@ -106,6 +117,71 @@ export default function TicketShow(props: TicketShowProps) {
   const { can } = usePermissions();
   useToast(); // Handle flash messages
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewImageName, setPreviewImageName] = useState<string>('');
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+
+  // Comment form
+  const commentForm = useForm({
+    body: '',
+    is_internal: false,
+  });
+
+  // Reset zoom and position when dialog closes
+  useEffect(() => {
+    if (!imagePreviewOpen) {
+      setImageZoom(1);
+      setImagePosition({ x: 0, y: 0 });
+    }
+  }, [imagePreviewOpen]);
+
+  // Handle mouse wheel zoom
+  const handleWheel = (e: React.WheelEvent) => {
+    if (!imagePreviewOpen) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setImageZoom((prev) => Math.max(0.5, Math.min(5, prev + delta)));
+  };
+
+  // Handle mouse drag
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (imageZoom > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - imagePosition.x, y: e.clientY - imagePosition.y });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && imageZoom > 1) {
+      setImagePosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleZoomIn = () => {
+    setImageZoom((prev) => Math.min(5, prev + 0.25));
+  };
+
+  const handleZoomOut = () => {
+    setImageZoom((prev) => Math.max(0.5, prev - 0.25));
+  };
+
+  const handleResetZoom = () => {
+    setImageZoom(1);
+    setImagePosition({ x: 0, y: 0 });
+  };
   
   // Get ticket from props or page props
   const page = usePage();
@@ -331,6 +407,67 @@ export default function TicketShow(props: TicketShowProps) {
                 <h3 className="text-base font-semibold">Comments</h3>
                 <Badge variant="outline">{(ticket.comments?.length ?? 0)}</Badge>
               </div>
+
+              {/* Add Comment Form */}
+              {can('tickets.view') && (
+                <div className="rounded-lg border p-4 bg-muted/30">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      commentForm.post(route('admin.ticket-comments.store', ticket.id), {
+                        preserveScroll: true,
+                        onSuccess: () => {
+                          commentForm.reset();
+                        },
+                      });
+                    }}
+                    className="space-y-3"
+                  >
+                    <div>
+                      <Textarea
+                        placeholder="Add a comment..."
+                        value={commentForm.data.body}
+                        onChange={(e) => commentForm.setData('body', e.target.value)}
+                        rows={3}
+                        className="resize-none"
+                      />
+                      {commentForm.errors.body && (
+                        <p className="text-xs text-destructive mt-1">{commentForm.errors.body}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        {can('tickets.edit') && (
+                          <>
+                            <Checkbox
+                              id="internal-comment"
+                              checked={commentForm.data.is_internal}
+                              onCheckedChange={(checked) =>
+                                commentForm.setData('is_internal', checked === true)
+                              }
+                            />
+                            <Label
+                              htmlFor="internal-comment"
+                              className="text-xs text-muted-foreground cursor-pointer"
+                            >
+                              Internal (only visible to agents)
+                            </Label>
+                          </>
+                        )}
+                      </div>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={commentForm.processing || !commentForm.data.body.trim()}
+                      >
+                        <Send className="h-4 w-4 mr-2" />
+                        {commentForm.processing ? 'Posting...' : 'Post Comment'}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
               {(ticket.comments?.length ?? 0) === 0 && (
                 <div className="text-center py-8 border rounded-lg bg-muted/20">
                   <p className="text-sm text-muted-foreground">No comments yet.</p>
@@ -378,77 +515,107 @@ export default function TicketShow(props: TicketShowProps) {
                 </div>
               )}
               <div className="space-y-2">
-                {(ticket.attachments ?? []).map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{attachment.original_filename}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="text-xs text-muted-foreground">{attachment.mime_type}</p>
-                        <span className="text-xs text-muted-foreground">·</span>
-                        <p className="text-xs text-muted-foreground">
-                          {(attachment.file_size / 1024).toFixed(1)} KB
-                        </p>
-                        {attachment.uploader && (
-                          <>
-                            <span className="text-xs text-muted-foreground">·</span>
-                            <p className="text-xs text-muted-foreground">by {attachment.uploader.name}</p>
-                          </>
+                {(ticket.attachments ?? []).map((attachment) => {
+                  const isImage = attachment.mime_type?.startsWith('image/');
+                  const imageUrl = isImage ? route('admin.ticket-attachments.download', attachment.id) : null;
+
+                  return (
+                    <div
+                      key={attachment.id}
+                      className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      {isImage && imageUrl && (
+                        <div className="flex-shrink-0">
+                          <button
+                            onClick={() => {
+                              setPreviewImageUrl(imageUrl);
+                              setPreviewImageName(attachment.original_filename);
+                              setImagePreviewOpen(true);
+                            }}
+                            className="relative w-16 h-16 rounded-md overflow-hidden border bg-muted hover:opacity-80 transition-opacity"
+                          >
+                            <img
+                              src={imageUrl}
+                              alt={attachment.original_filename}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                // Hide image if it fails to load
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{attachment.original_filename}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-xs text-muted-foreground">{attachment.mime_type}</p>
+                          <span className="text-xs text-muted-foreground">·</span>
+                          <p className="text-xs text-muted-foreground">
+                            {(attachment.file_size / 1024).toFixed(1)} KB
+                          </p>
+                          {attachment.uploader && (
+                            <>
+                              <span className="text-xs text-muted-foreground">·</span>
+                              <p className="text-xs text-muted-foreground">by {attachment.uploader.name}</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" asChild>
+                          <a
+                            href={route('admin.ticket-attachments.download', attachment.id)}
+                            download
+                          >
+                            Download
+                          </a>
+                        </Button>
+                        {can('tickets.edit') && (
+                          <AlertDialog open={deleteDialogOpen === attachment.id} onOpenChange={(open) => {
+                            if (!open) {
+                              setDeleteDialogOpen(null);
+                            }
+                          }}>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setDeleteDialogOpen(attachment.id)}
+                              >
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Attachment</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete "{attachment.original_filename}"? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => {
+                                    router.delete(route('admin.ticket-attachments.destroy', attachment.id), {
+                                      preserveScroll: true,
+                                      onSuccess: () => {
+                                        setDeleteDialogOpen(null);
+                                      },
+                                    });
+                                  }}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href={route('admin.ticket-attachments.download', attachment.id)}>
-                          Download
-                        </Link>
-                      </Button>
-                      {can('tickets.edit') && (
-                        <AlertDialog open={deleteDialogOpen === attachment.id} onOpenChange={(open) => {
-                          if (!open) {
-                            setDeleteDialogOpen(null);
-                          }
-                        }}>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDeleteDialogOpen(attachment.id)}
-                            >
-                              Delete
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Attachment</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete "{attachment.original_filename}"? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => {
-                                  router.delete(route('admin.ticket-attachments.destroy', attachment.id), {
-                                    preserveScroll: true,
-                                    onSuccess: () => {
-                                      setDeleteDialogOpen(null);
-                                    },
-                                  });
-                                }}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </CardContent>
@@ -506,6 +673,82 @@ export default function TicketShow(props: TicketShowProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] p-0">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>{previewImageName}</DialogTitle>
+                <DialogDescription>
+                  Scroll to zoom • Drag to pan • {Math.round(imageZoom * 100)}%
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleZoomOut}
+                  disabled={imageZoom <= 0.5}
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetZoom}
+                  disabled={imageZoom === 1}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleZoomIn}
+                  disabled={imageZoom >= 5}
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+          <div
+            ref={imageContainerRef}
+            className="relative flex items-center justify-center p-4 overflow-hidden bg-muted/30"
+            style={{ height: 'calc(90vh - 120px)', minHeight: '400px' }}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
+            {previewImageUrl && (
+              <img
+                ref={imageRef}
+                src={previewImageUrl}
+                alt={previewImageName}
+                className="rounded-lg transition-transform duration-200 select-none"
+                style={{
+                  transform: `scale(${imageZoom}) translate(${imagePosition.x / imageZoom}px, ${imagePosition.y / imageZoom}px)`,
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  objectFit: 'contain',
+                  cursor: imageZoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                }}
+                draggable={false}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  const errorDiv = document.createElement('div');
+                  errorDiv.className = 'text-center text-muted-foreground p-4';
+                  errorDiv.textContent = 'Failed to load image';
+                  (e.target as HTMLImageElement).parentElement?.appendChild(errorDiv);
+                }}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

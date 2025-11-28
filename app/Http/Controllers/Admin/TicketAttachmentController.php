@@ -7,10 +7,10 @@ use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TicketAttachmentController extends Controller
 {
@@ -65,16 +65,17 @@ class TicketAttachmentController extends Controller
     /**
      * Download a ticket attachment
      */
-    public function download(TicketAttachment $attachment): Response
+    public function download(TicketAttachment $attachment): StreamedResponse
     {
         // Check if user has permission to view tickets
         abort_unless(Auth::user()->can('tickets.view'), 403);
 
-        // Check if file exists
+        // Check if file exists on the default disk (local)
         if (!Storage::exists($attachment->file_path)) {
             abort(404, 'File not found');
         }
 
+        // Download the file with the original filename
         return Storage::download(
             $attachment->file_path,
             $attachment->original_filename
