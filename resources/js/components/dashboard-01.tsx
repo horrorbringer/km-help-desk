@@ -134,7 +134,7 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
       {/* Period Selector */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Help Desk Dashboard</h2>
           <p className="text-muted-foreground">Here's an overview of your help desk system.</p>
         </div>
         <Select value={period} onValueChange={onPeriodChange}>
