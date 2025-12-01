@@ -185,7 +185,7 @@ This document outlines realistic test scenarios for the approval workflow system
 - Email sent to Sokuntha requesting HOD approval
 - Email sent to **Sokun** (requester) confirming LM approval
 - Ticket status remains "pending_approval" (waiting for HOD)
-
+ 
 **Verification**:
 - Check `ticket_approvals` table - should have 2 records:
   - 1 with `approval_level = 'lm'` and `status = 'approved'`
