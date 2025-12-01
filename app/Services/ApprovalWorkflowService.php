@@ -68,7 +68,7 @@ class ApprovalWorkflowService
         try {
             $notificationService = app(NotificationService::class);
             if ($lmApprover) {
-                // Notification will be sent via NotificationService
+                $notificationService->notifyApprovalRequested($ticket, $lmApprover, 'lm');
                 Log::info('Approval workflow initialized', [
                     'ticket_id' => $ticket->id,
                     'approval_level' => 'lm',
@@ -96,6 +96,7 @@ class ApprovalWorkflowService
         ]);
 
         $ticket = $approval->ticket;
+        $approver = $approval->approver ?? Auth::user();
 
         // Record in ticket history
         $ticket->histories()->create([
@@ -108,19 +109,38 @@ class ApprovalWorkflowService
             'created_at' => now(),
         ]);
 
+        // Send approval notification
+        try {
+            $notificationService = app(NotificationService::class);
+            $notificationService->notifyApprovalApproved($ticket, $approver, $approval->approval_level, $comments);
+        } catch (\Exception $e) {
+            Log::warning('Failed to send approval approved notification', [
+                'ticket_id' => $ticket->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         // Route ticket based on approval level
         if ($approval->approval_level === 'lm') {
             $this->routeAfterLMApproval($ticket, $routedToTeamId);
+            // After LM approval, check if HOD approval is needed
+            $this->checkNextApproval($ticket);
         } elseif ($approval->approval_level === 'hod') {
             $this->routeAfterHODApproval($ticket, $routedToTeamId);
+            // After HOD approval, no further approvals needed (don't call checkNextApproval)
         }
-
-        // Check if next approval is needed
-        $this->checkNextApproval($ticket);
     }
 
     /**
      * Process rejection
+     * 
+     * IMPORTANT: Rejected tickets are NOT deleted - they remain in the system for:
+     * - Audit trail and compliance
+     * - Resubmission capability
+     * - Analytics and reporting
+     * 
+     * The ticket status is changed to 'cancelled' but the record is preserved.
+     * Use soft delete (deleted_at) only if absolutely necessary for data retention policies.
      */
     public function reject(TicketApproval $approval, ?string $comments = null): void
     {
@@ -131,8 +151,9 @@ class ApprovalWorkflowService
         ]);
 
         $ticket = $approval->ticket;
+        $approver = $approval->approver ?? Auth::user();
 
-        // Update ticket status to cancelled
+        // Update ticket status to cancelled (NOT deleted - preserved for audit)
         $ticket->update(['status' => 'cancelled']);
 
         // Record in ticket history
@@ -149,10 +170,11 @@ class ApprovalWorkflowService
         // Send notification to requester
         try {
             $notificationService = app(NotificationService::class);
-            // Notification will be sent via NotificationService
+            $notificationService->notifyApprovalRejected($ticket, $approver, $approval->approval_level, $comments);
             Log::info('Ticket rejected', [
                 'ticket_id' => $ticket->id,
                 'approval_level' => $approval->approval_level,
+                'note' => 'Ticket preserved for audit - not deleted',
             ]);
         } catch (\Exception $e) {
             Log::warning('Failed to send rejection notification', [
@@ -160,6 +182,44 @@ class ApprovalWorkflowService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Resubmit a rejected ticket for approval
+     */
+    public function resubmit(Ticket $ticket): void
+    {
+        // Check if ticket has been rejected
+        if (!$ticket->hasRejectedApproval()) {
+            throw new \Exception('Ticket has not been rejected and cannot be resubmitted.');
+        }
+
+        // Check if ticket is in cancelled status
+        if ($ticket->status !== 'cancelled') {
+            throw new \Exception('Only cancelled tickets can be resubmitted.');
+        }
+
+        // Update ticket status to open
+        $ticket->update(['status' => 'open']);
+
+        // Record in ticket history
+        $ticket->histories()->create([
+            'user_id' => Auth::id(),
+            'action' => 'resubmitted',
+            'field_name' => 'status',
+            'old_value' => 'cancelled',
+            'new_value' => 'open',
+            'description' => 'Ticket resubmitted for approval after rejection',
+            'created_at' => now(),
+        ]);
+
+        // Re-initialize the approval workflow
+        $this->initializeWorkflow($ticket);
+
+        Log::info('Ticket resubmitted', [
+            'ticket_id' => $ticket->id,
+            'resubmitted_by' => Auth::id(),
+        ]);
     }
 
     /**
@@ -234,36 +294,72 @@ class ApprovalWorkflowService
 
     /**
      * Check if next approval is needed
+     * Only creates HOD approval if:
+     * 1. HOD approval is required
+     * 2. No pending HOD approval already exists
+     * 3. Previous approval was LM (not HOD) - prevents duplicate HOD approvals
      */
     protected function checkNextApproval(Ticket $ticket): void
     {
         // Check if HOD approval is needed
-        // This can be based on ticket priority, amount, category, etc.
         $needsHODApproval = $this->requiresHODApproval($ticket);
 
         if ($needsHODApproval) {
-            $hodApproval = TicketApproval::create([
-                'ticket_id' => $ticket->id,
-                'approval_level' => 'hod',
-                'status' => 'pending',
-                'sequence' => 2,
-            ]);
+            // Check if there's already a pending HOD approval
+            $existingPendingHOD = $ticket->approvals()
+                ->where('approval_level', 'hod')
+                ->where('status', 'pending')
+                ->exists();
 
-            // Find HOD (Head of Department)
-            $hodApprover = $this->findHOD($ticket);
-            if ($hodApprover) {
-                $hodApproval->update(['approver_id' => $hodApprover->id]);
+            // Check if there's already an approved HOD approval (don't create another)
+            $existingApprovedHOD = $ticket->approvals()
+                ->where('approval_level', 'hod')
+                ->where('status', 'approved')
+                ->exists();
+
+            // Only create HOD approval if:
+            // 1. No pending HOD approval exists
+            // 2. No approved HOD approval exists (to prevent duplicates)
+            if (!$existingPendingHOD && !$existingApprovedHOD) {
+                // Get the highest sequence number to ensure proper ordering
+                $maxSequence = $ticket->approvals()->max('sequence') ?? 0;
+                
+                $hodApproval = TicketApproval::create([
+                    'ticket_id' => $ticket->id,
+                    'approval_level' => 'hod',
+                    'status' => 'pending',
+                    'sequence' => $maxSequence + 1,
+                ]);
+
+                // Find HOD (Head of Department)
+                $hodApprover = $this->findHOD($ticket);
+                if ($hodApprover) {
+                    $hodApproval->update(['approver_id' => $hodApprover->id]);
+                }
+
+                $ticket->histories()->create([
+                    'user_id' => Auth::id(),
+                    'action' => 'approval_requested',
+                    'field_name' => 'approval',
+                    'old_value' => null,
+                    'new_value' => 'HOD Approval',
+                    'description' => 'Ticket submitted for Head of Department approval',
+                    'created_at' => now(),
+                ]);
+
+                // Send notification to HOD
+                try {
+                    $notificationService = app(NotificationService::class);
+                    if ($hodApprover) {
+                        $notificationService->notifyApprovalRequested($ticket, $hodApprover, 'hod');
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to send HOD approval notification', [
+                        'ticket_id' => $ticket->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
-
-            $ticket->histories()->create([
-                'user_id' => Auth::id(),
-                'action' => 'approval_requested',
-                'field_name' => 'approval',
-                'old_value' => null,
-                'new_value' => 'HOD Approval',
-                'description' => 'Ticket submitted for Head of Department approval',
-                'created_at' => now(),
-            ]);
         }
     }
 

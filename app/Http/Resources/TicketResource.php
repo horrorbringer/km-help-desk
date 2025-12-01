@@ -103,6 +103,22 @@ class TicketResource extends JsonResource
                     ] : null,
                 ];
             }),
+            'rejected_approval' => $this->whenLoaded('approvals', function () {
+                $rejected = $this->rejectedApproval();
+                if (!$rejected) return null;
+                return [
+                    'id' => $rejected->id,
+                    'approval_level' => $rejected->approval_level,
+                    'status' => $rejected->status,
+                    'comments' => $rejected->comments,
+                    'rejected_at' => $rejected->rejected_at,
+                    'approver' => $rejected->approver ? [
+                        'id' => $rejected->approver->id,
+                        'name' => $rejected->approver->name,
+                        'email' => $rejected->approver->email,
+                    ] : null,
+                ];
+            }),
             'first_response_at' => $this->first_response_at,
             'first_response_due_at' => $this->first_response_due_at,
             'resolution_due_at' => $this->resolution_due_at,

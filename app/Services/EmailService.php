@@ -181,6 +181,57 @@ class EmailService
     }
 
     /**
+     * Send approval requested email
+     */
+    public function sendApprovalRequested(Ticket $ticket, User $approver, string $approvalLevel): void
+    {
+        if (!$approver) {
+            return;
+        }
+
+        $data = $this->getTicketData($ticket);
+        $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        $data['approver_name'] = $approver->name;
+        
+        $eventType = $approvalLevel === 'lm' ? 'approval_lm_requested' : 'approval_hod_requested';
+        $this->sendTemplate($eventType, $approver, $data, $ticket);
+    }
+
+    /**
+     * Send approval approved email
+     */
+    public function sendApprovalApproved(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): void
+    {
+        // Notify requester
+        if ($ticket->requester) {
+            $data = $this->getTicketData($ticket);
+            $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+            $data['approver_name'] = $approver->name;
+            $data['comments'] = $comments ?? '';
+            
+            $eventType = $approvalLevel === 'lm' ? 'approval_lm_approved' : 'approval_hod_approved';
+            $this->sendTemplate($eventType, $ticket->requester, $data, $ticket);
+        }
+    }
+
+    /**
+     * Send approval rejected email
+     */
+    public function sendApprovalRejected(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): void
+    {
+        // Notify requester
+        if ($ticket->requester) {
+            $data = $this->getTicketData($ticket);
+            $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+            $data['approver_name'] = $approver->name;
+            $data['comments'] = $comments ?? '';
+            
+            $eventType = $approvalLevel === 'lm' ? 'approval_lm_rejected' : 'approval_hod_rejected';
+            $this->sendTemplate($eventType, $ticket->requester, $data, $ticket);
+        }
+    }
+
+    /**
      * Get ticket data for email templates
      */
     protected function getTicketData(Ticket $ticket): array

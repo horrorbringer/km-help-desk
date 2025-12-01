@@ -37,6 +37,13 @@ class EmailTemplate extends Model
         'ticket_mentioned',
         'sla_breached',
         'sla_warning',
+        // Approval workflow events
+        'approval_lm_requested',
+        'approval_hod_requested',
+        'approval_lm_approved',
+        'approval_hod_approved',
+        'approval_lm_rejected',
+        'approval_hod_rejected',
     ];
 
     protected static function boot()

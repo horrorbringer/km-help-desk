@@ -110,6 +110,14 @@ type TicketShowProps = {
       status: 'pending' | 'approved' | 'rejected';
       approver?: BaseOption & { email?: string };
     } | null;
+    rejected_approval?: {
+      id: number;
+      approval_level: 'lm' | 'hod';
+      status: 'rejected';
+      comments?: string | null;
+      rejected_at?: string | null;
+      approver?: BaseOption & { email?: string };
+    } | null;
     created_at: string;
     updated_at: string;
   };
@@ -695,6 +703,74 @@ export default function TicketShow(props: TicketShowProps) {
                           Reject Ticket
                         </Button>
                       </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Rejected Ticket - Prominent Display */}
+            {ticket.rejected_approval && ticket.status === 'cancelled' && (
+              <div className="rounded-lg border-2 border-red-300 bg-red-50 p-4 mb-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <XCircle className="h-5 w-5 text-red-600" />
+                      <h3 className="text-lg font-semibold text-red-900">
+                        Ticket Rejected
+                      </h3>
+                    </div>
+                    <p className="text-sm text-red-800 mb-2">
+                      This ticket was rejected by {ticket.rejected_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
+                      {ticket.rejected_approval.approver && (
+                        <>: <strong>{ticket.rejected_approval.approver.name}</strong></>
+                      )}
+                      {ticket.rejected_approval.rejected_at && (
+                        <> on {new Date(ticket.rejected_approval.rejected_at).toLocaleString()}</>
+                      )}
+                    </p>
+                    {ticket.rejected_approval.comments && (
+                      <div className="bg-red-100 border border-red-200 rounded p-3 mb-3">
+                        <p className="text-sm font-medium text-red-900 mb-1">Rejection Reason:</p>
+                        <p className="text-sm text-red-800">{ticket.rejected_approval.comments}</p>
+                      </div>
+                    )}
+                    {can('tickets.edit') && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-green-200 text-green-700 hover:bg-green-50"
+                          >
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            Resubmit for Approval
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Resubmit Ticket for Approval?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will reopen the ticket and resubmit it for approval. The ticket status will be changed from "cancelled" to "open" and a new approval request will be created.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => {
+                                router.post(route('admin.tickets.resubmit', { ticket: ticket.id }), {}, {
+                                  onSuccess: () => {
+                                    // Success handled by flash message
+                                  },
+                                });
+                              }}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              Resubmit
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     )}
                   </div>
                 </div>

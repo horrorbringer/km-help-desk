@@ -540,6 +540,26 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
                     </Select>
                   </div>
 
+                  {/* Approval Status */}
+                  <div className="space-y-2">
+                    <Label className="text-xs">Approval Status</Label>
+                    <Select
+                      value={(filters.approval_status as string) ?? '__all'}
+                      onValueChange={(value) => handleFilter('approval_status', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All approval statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all">All</SelectItem>
+                        <SelectItem value="pending">Pending Approval</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                        <SelectItem value="none">No Approval Required</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   {/* Tags */}
                   <div className="space-y-2">
                     <Label className="text-xs">Tags</Label>
@@ -631,6 +651,14 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
                 })
                 .filter(Boolean)
                 .join(', ');
+            } else if (key === 'approval_status') {
+              const statusMap: Record<string, string> = {
+                pending: 'Pending Approval',
+                approved: 'Approved',
+                rejected: 'Rejected',
+                none: 'No Approval Required',
+              };
+              displayValue = statusMap[String(value)] || String(value);
             }
 
             return (

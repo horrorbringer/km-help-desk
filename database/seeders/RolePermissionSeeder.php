@@ -143,7 +143,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.view',
             'tickets.create',
             'tickets.edit',
-            'tickets.assign',
+            // Note: Agents do NOT have 'tickets.assign' - they can only see tickets assigned to them or their team
             'tickets.resolve',
             'tickets.close',
             'time-entries.view',

@@ -58,6 +58,12 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
         ->name('admin.ticket-approvals.reject');
     Route::get('ticket-approvals/pending', [\App\Http\Controllers\Admin\TicketApprovalController::class, 'pending'])
         ->name('admin.ticket-approvals.pending');
+    
+    // Rejected Tickets
+    Route::get('tickets/rejected', [TicketController::class, 'rejected'])
+        ->name('admin.tickets.rejected');
+    Route::post('tickets/{ticket}/resubmit', [TicketController::class, 'resubmit'])
+        ->name('admin.tickets.resubmit');
 
     // User export/import routes must be defined BEFORE resource route
     Route::get('users/export', [UserController::class, 'export'])

@@ -44,13 +44,14 @@ class TicketController extends Controller
             'date_to',
             'sla_breached',
             'tags',
+            'approval_status',
             'order_by',
             'order_dir',
         ]);
 
-        // Use optimized search service
+        // Use optimized search service with user context for visibility filtering
         $searchService = app(SearchService::class);
-        $tickets = $searchService->searchTickets($filters, 15)
+        $tickets = $searchService->searchTickets($filters, 15, Auth::user())
             ->withQueryString()
             ->through(fn ($ticket) => TicketResource::make($ticket)->resolve());
 
@@ -146,6 +147,15 @@ class TicketController extends Controller
     public function show(Ticket $ticket): Response
     {
         abort_unless(Auth::user()->can('tickets.view'), 403);
+
+        $user = Auth::user();
+        
+        // Apply visibility check for all tickets (not just rejected)
+        $canView = $this->canUserViewTicket($user, $ticket);
+        
+        if (!$canView) {
+            abort(403, 'You do not have permission to view this ticket.');
+        }
 
         $ticket->load([
             'requester',
@@ -824,6 +834,136 @@ class TicketController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Show rejected tickets
+     * Visibility rules:
+     * - Requester: Can see their own rejected tickets
+     * - Manager/Admin: Can see all rejected tickets
+     * - Agent: Can see rejected tickets assigned to them or their team
+     */
+    public function rejected(Request $request): Response
+    {
+        abort_unless(Auth::user()->can('tickets.view'), 403);
+
+        $user = Auth::user();
+        
+        $query = Ticket::with([
+            'requester:id,name',
+            'category:id,name',
+            'assignedTeam:id,name',
+            'approvals' => function ($q) {
+                $q->where('status', 'rejected')
+                    ->orderBy('rejected_at', 'desc')
+                    ->limit(1)
+                    ->with('approver:id,name');
+            },
+        ])
+        ->whereHas('approvals', function ($query) {
+            $query->where('status', 'rejected');
+        });
+
+        // Apply visibility filters based on user role
+        // Admin/Manager can see all rejected tickets
+        if (!$user->can('tickets.assign')) {
+            // Regular users (Requester/Agent) can only see:
+            // 1. Tickets they created (requester)
+            // 2. Tickets assigned to them (agent)
+            // 3. Tickets assigned to their team (agent)
+            $query->where(function ($q) use ($user) {
+                $q->where('requester_id', $user->id) // Own tickets
+                    ->orWhere('assigned_agent_id', $user->id) // Assigned to them
+                    ->orWhereHas('assignedTeam', function ($teamQuery) use ($user) {
+                        // Tickets in their department/team
+                        if ($user->department_id) {
+                            $teamQuery->where('id', $user->department_id);
+                        }
+                    });
+            });
+        }
+
+        $tickets = $query
+            ->orderBy('updated_at', 'desc')
+            ->paginate(20)
+            ->through(fn ($ticket) => TicketResource::make($ticket)->resolve());
+
+        return Inertia::render('Admin/Tickets/RejectedTickets', [
+            'tickets' => $tickets,
+        ]);
+    }
+
+    /**
+     * Resubmit a rejected ticket
+     */
+    public function resubmit(Ticket $ticket): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('tickets.edit'), 403);
+
+        try {
+            $approvalService = app(\App\Services\ApprovalWorkflowService::class);
+            $approvalService->resubmit($ticket);
+
+            return redirect()
+                ->route('admin.tickets.show', $ticket)
+                ->with('success', 'Ticket resubmitted successfully. A new approval request has been created.');
+        } catch (\Exception $e) {
+            \Log::error('Failed to resubmit ticket', [
+                'ticket_id' => $ticket->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()
+                ->back()
+                ->with('error', 'Failed to resubmit ticket: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Check if user can view a specific ticket
+     * 
+     * Visibility Rules:
+     * - Admin/Manager with tickets.assign: Can see ALL tickets
+     * - Manager without tickets.assign: Can see tickets in their department
+     * - Agent: Can see tickets assigned to them or their team
+     * - Requester: Can see tickets they created or are watching
+     */
+    protected function canUserViewTicket(\App\Models\User $user, Ticket $ticket): bool
+    {
+        // Admins and Managers with assign permission can see all tickets
+        if ($user->can('tickets.assign')) {
+            return true;
+        }
+        
+        // Check if user is the requester
+        if ($ticket->requester_id === $user->id) {
+            return true;
+        }
+        
+        // Check if user is the assigned agent
+        if ($ticket->assigned_agent_id === $user->id) {
+            return true;
+        }
+        
+        // Check if ticket is assigned to user's team/department
+        if ($ticket->assigned_team_id && $user->department_id === $ticket->assigned_team_id) {
+            return true;
+        }
+        
+        // Check if user is watching the ticket
+        if ($ticket->watchers()->where('users.id', $user->id)->exists()) {
+            return true;
+        }
+        
+        // For managers: can see tickets in their department (even if not assigned)
+        // Check if user has Manager role using Spatie's HasRoles trait
+        if ($user->hasRole('Manager') && $user->department_id) {
+            if ($ticket->assignedTeam && $ticket->assignedTeam->id === $user->department_id) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 }
 

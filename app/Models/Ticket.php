@@ -137,6 +137,16 @@ class Ticket extends Model
         return $this->approvals()->pending()->orderBy('sequence')->first();
     }
 
+    public function rejectedApproval(): ?TicketApproval
+    {
+        return $this->approvals()->where('status', 'rejected')->orderBy('rejected_at', 'desc')->first();
+    }
+
+    public function hasRejectedApproval(): bool
+    {
+        return $this->approvals()->where('status', 'rejected')->exists();
+    }
+
     public function timeEntries(): HasMany
     {
         return $this->hasMany(TimeEntry::class);

@@ -1,6 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Clock, CheckCircle2, XCircle } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -42,6 +42,20 @@ type Ticket = {
   sla_policy?: Option;
   tags: { id: number; name: string; color: string }[];
   created_at: string;
+  current_approval?: {
+    id: number;
+    approval_level: string;
+    status: string;
+    approver?: Option | null;
+  } | null;
+  rejected_approval?: {
+    id: number;
+    approval_level: string;
+    status: string;
+    comments?: string | null;
+    rejected_at?: string | null;
+    approver?: Option | null;
+  } | null;
 };
 
 type Filters = {
@@ -196,6 +210,24 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            asChild
+          >
+            <Link href={route('admin.ticket-approvals.pending')}>
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Pending Approvals
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            asChild
+          >
+            <Link href={route('admin.tickets.rejected')}>
+              <XCircle className="h-4 w-4 mr-2" />
+              Rejected Tickets
+            </Link>
+          </Button>
           <Button
             variant="outline"
             asChild
@@ -364,6 +396,24 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
                             >
                               {ticket.priority}
                             </Badge>
+                            {ticket.current_approval && (
+                              <Badge
+                                variant="outline"
+                                className="bg-yellow-50 text-yellow-700 border-yellow-200 flex items-center gap-1"
+                              >
+                                <Clock className="h-3 w-3" />
+                                Pending Approval
+                              </Badge>
+                            )}
+                            {ticket.rejected_approval && (
+                              <Badge
+                                variant="outline"
+                                className="bg-red-50 text-red-700 border-red-200 flex items-center gap-1"
+                              >
+                                <XCircle className="h-3 w-3" />
+                                Rejected
+                              </Badge>
+                            )}
                             {ticket.tags.length > 0 && (
                               <div className="flex flex-wrap gap-1">
                                 {ticket.tags.slice(0, 3).map((tag) => (

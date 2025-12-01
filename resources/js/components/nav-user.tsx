@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/sidebar"
 import { router } from "@inertiajs/react"
 import { useMobileNavigation } from "@/hooks/use-mobile-navigation"
+import { useInitials } from "@/hooks/use-initials"
 export function NavUser({
   user,
 }: {
@@ -41,7 +42,7 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
-
+  const getInitials = useInitials();
    const cleanup = useMobileNavigation();
 
     const handleLogout = () => {
@@ -60,7 +61,9 @@ export function NavUser({
             >
               <Avatar className="h-8 w-8 rounded-lg">
                 <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                <AvatarFallback className="rounded-lg bg-neutral-200 text-black dark:bg-neutral-700 dark:text-white">
+                    {getInitials(user.name)}
+                </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{user.name}</span>

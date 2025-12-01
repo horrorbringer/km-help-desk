@@ -11,14 +11,17 @@ class SearchService
 {
     /**
      * Optimized ticket search with caching
+     * Applies visibility filters based on user role and permissions
      */
-    public function searchTickets(array $filters, int $perPage = 15): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    public function searchTickets(array $filters, int $perPage = 15, ?\App\Models\User $user = null): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        // Create cache key from filters
-        $cacheKey = 'ticket_search_' . md5(json_encode($filters) . $perPage);
+        $user = $user ?? \Illuminate\Support\Facades\Auth::user();
+        
+        // Create cache key from filters and user ID for proper visibility caching
+        $cacheKey = 'ticket_search_' . md5(json_encode($filters) . $perPage . ($user ? $user->id : 'guest'));
         
         // Cache for 1 minute for better real-time feel
-        return Cache::remember($cacheKey, 60, function () use ($filters, $perPage) {
+        return Cache::remember($cacheKey, 60, function () use ($filters, $perPage, $user) {
             $query = Ticket::query()
                 ->with([
                     'requester:id,name,email',
@@ -28,8 +31,20 @@ class SearchService
                     'project:id,name,code',
                     'slaPolicy:id,name',
                     'tags:id,name,color',
+                    'approvals' => function ($q) {
+                        $q->whereIn('status', ['pending', 'rejected'])
+                            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
+                            ->orderBy('rejected_at', 'desc')
+                            ->limit(2)
+                            ->with('approver:id,name');
+                    },
                 ])
                 ->select('tickets.*');
+            
+            // Apply visibility filters based on user role and permissions
+            if ($user) {
+                $this->applyVisibilityFilters($query, $user);
+            }
 
             // Optimized full-text search
             if (!empty($filters['q'])) {
@@ -125,6 +140,31 @@ class SearchService
                 });
             }
 
+            // Approval status filter
+            if (isset($filters['approval_status'])) {
+                if ($filters['approval_status'] === 'pending') {
+                    $query->whereHas('approvals', function ($approvalQuery) {
+                        $approvalQuery->where('status', 'pending');
+                    });
+                } elseif ($filters['approval_status'] === 'approved') {
+                    $query->whereHas('approvals', function ($approvalQuery) {
+                        $approvalQuery->where('status', 'approved');
+                    })->whereDoesntHave('approvals', function ($approvalQuery) {
+                        $approvalQuery->where('status', 'pending');
+                    });
+                } elseif ($filters['approval_status'] === 'rejected') {
+                    $query->whereHas('approvals', function ($approvalQuery) {
+                        $approvalQuery->where('status', 'rejected');
+                    });
+                } elseif ($filters['approval_status'] === 'none') {
+                    $query->whereDoesntHave('approvals');
+                }
+            }
+            
+            // Note: Rejected tickets (status: cancelled) remain visible in the main list
+            // They can be filtered using approval_status='rejected' or status='cancelled'
+            // Visibility is controlled at the controller level based on user permissions
+
             // Ordering
             $orderBy = $filters['order_by'] ?? 'created_at';
             $orderDir = $filters['order_dir'] ?? 'desc';
@@ -141,6 +181,54 @@ class SearchService
             $query->orderBy($orderBy, $orderDir);
 
             return $query->paginate($perPage);
+        });
+    }
+    
+    /**
+     * Apply visibility filters based on user role and permissions
+     * 
+     * Visibility Rules:
+     * - Admin/Manager with tickets.assign: See ALL tickets
+     * - Manager without tickets.assign: See tickets in their department
+     * - Agent: See tickets assigned to them or their team (NO tickets.assign permission)
+     * - Requester: See tickets they created or are watching
+     */
+    protected function applyVisibilityFilters($query, \App\Models\User $user): void
+    {
+        // Admins and Managers with assign permission can see all tickets
+        // Note: Agents should NOT have tickets.assign permission
+        if ($user->can('tickets.assign')) {
+            // No filter needed - see all tickets
+            return;
+        }
+        
+        // Apply role-based visibility filters
+        $query->where(function ($q) use ($user) {
+            // 1. Tickets created by the user (requester)
+            $q->where('requester_id', $user->id);
+            
+            // 2. Tickets assigned to the user (agent)
+            $q->orWhere('assigned_agent_id', $user->id);
+            
+            // 3. Tickets assigned to user's team/department
+            if ($user->department_id) {
+                $q->orWhere('assigned_team_id', $user->department_id);
+            }
+            
+            // 4. Tickets the user is watching
+            $q->orWhereHas('watchers', function ($watcherQuery) use ($user) {
+                $watcherQuery->where('users.id', $user->id);
+            });
+            
+            // 5. For managers: tickets in their department (even if not assigned)
+            // Check if user has Manager role using Spatie's HasRoles trait
+            if ($user->hasRole('Manager')) {
+                if ($user->department_id) {
+                    $q->orWhereHas('assignedTeam', function ($teamQuery) use ($user) {
+                        $teamQuery->where('id', $user->department_id);
+                    });
+                }
+            }
         });
     }
 

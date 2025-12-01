@@ -351,5 +351,88 @@ class NotificationService
             }
         }
     }
+
+    /**
+     * Notify approval requested
+     */
+    public function notifyApprovalRequested(Ticket $ticket, User $approver, string $approvalLevel): void
+    {
+        if (!$approver) {
+            return;
+        }
+
+        $approvalLevelName = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        $title = "Approval Required: {$approvalLevelName}";
+        $message = "Ticket #{$ticket->ticket_number} requires your {$approvalLevelName} approval: {$ticket->subject}";
+
+        // Send email notification
+        try {
+            $emailService = app(\App\Services\EmailService::class);
+            $emailService->sendApprovalRequested($ticket, $approver, $approvalLevel);
+        } catch (\Exception $e) {
+            Log::error("Failed to send approval request email: {$e->getMessage()}");
+        }
+
+        // Create in-app notification
+        $this->create(
+            $approver->id,
+            'approval_requested',
+            $title,
+            $message,
+            $ticket->id
+        );
+    }
+
+    /**
+     * Notify approval approved
+     */
+    public function notifyApprovalApproved(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): void
+    {
+        $approvalLevelName = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        
+        // Send email notification to requester
+        try {
+            $emailService = app(\App\Services\EmailService::class);
+            $emailService->sendApprovalApproved($ticket, $approver, $approvalLevel, $comments);
+        } catch (\Exception $e) {
+            Log::error("Failed to send approval approved email: {$e->getMessage()}");
+        }
+
+        // Notify requester
+        if ($ticket->requester_id && $ticket->requester_id !== $approver->id) {
+            $this->notifyRequester(
+                $ticket,
+                'approval_approved',
+                "Ticket Approved by {$approvalLevelName}",
+                "Ticket #{$ticket->ticket_number} has been approved by {$approver->name} ({$approvalLevelName})"
+            );
+        }
+    }
+
+    /**
+     * Notify approval rejected
+     */
+    public function notifyApprovalRejected(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): void
+    {
+        $approvalLevelName = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        
+        // Send email notification to requester
+        try {
+            $emailService = app(\App\Services\EmailService::class);
+            $emailService->sendApprovalRejected($ticket, $approver, $approvalLevel, $comments);
+        } catch (\Exception $e) {
+            Log::error("Failed to send approval rejected email: {$e->getMessage()}");
+        }
+
+        // Notify requester
+        if ($ticket->requester_id && $ticket->requester_id !== $approver->id) {
+            $this->notifyRequester(
+                $ticket,
+                'approval_rejected',
+                "Ticket Rejected by {$approvalLevelName}",
+                "Ticket #{$ticket->ticket_number} has been rejected by {$approver->name} ({$approvalLevelName})" . ($comments ? ": {$comments}" : '')
+            );
+        }
+    }
 }
 
