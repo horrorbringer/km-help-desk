@@ -93,6 +93,17 @@ class TicketController extends Controller
                 ]);
             }
 
+            // Initialize approval workflow (wrap in try-catch to prevent failures from blocking ticket creation)
+            try {
+                $approvalService = app(\App\Services\ApprovalWorkflowService::class);
+                $approvalService->initializeWorkflow($ticket);
+            } catch (\Exception $e) {
+                \Log::warning('Approval workflow service failed on ticket creation', [
+                    'ticket_id' => $ticket->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Send notifications (wrap in try-catch to prevent failures from blocking ticket creation)
             try {
                 $notificationService = app(NotificationService::class);
@@ -151,10 +162,13 @@ class TicketController extends Controller
             'attachments.uploader',
             'histories.user',
             'customFieldValues.customField',
+            'approvals.approver',
+            'approvals.routedToTeam',
         ]);
 
         return Inertia::render('Admin/Tickets/Show', [
             'ticket' => TicketResource::make($ticket),
+            'departments' => Department::select('id', 'name')->orderBy('name')->get(),
         ]);
     }
 

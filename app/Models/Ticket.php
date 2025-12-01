@@ -122,6 +122,21 @@ class Ticket extends Model
         return $this->hasMany(TicketHistory::class);
     }
 
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(TicketApproval::class)->orderBy('sequence');
+    }
+
+    public function pendingApprovals(): HasMany
+    {
+        return $this->hasMany(TicketApproval::class)->where('status', 'pending')->orderBy('sequence');
+    }
+
+    public function currentApproval(): ?TicketApproval
+    {
+        return $this->approvals()->pending()->orderBy('sequence')->first();
+    }
+
     public function timeEntries(): HasMany
     {
         return $this->hasMany(TimeEntry::class);

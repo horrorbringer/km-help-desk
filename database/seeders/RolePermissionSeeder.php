@@ -26,6 +26,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.auto-approve',
             
             // Users
             'users.view',

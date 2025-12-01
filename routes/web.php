@@ -48,6 +48,16 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
         ->name('admin.tickets.bulk-update');
     Route::post('tickets/bulk-delete', [TicketController::class, 'bulkDelete'])
         ->name('admin.tickets.bulk-delete');
+    
+    // Ticket Approvals
+    Route::get('tickets/{ticket}/approval', [\App\Http\Controllers\Admin\TicketApprovalController::class, 'show'])
+        ->name('admin.tickets.approval');
+    Route::post('ticket-approvals/{approval}/approve', [\App\Http\Controllers\Admin\TicketApprovalController::class, 'approve'])
+        ->name('admin.ticket-approvals.approve');
+    Route::post('ticket-approvals/{approval}/reject', [\App\Http\Controllers\Admin\TicketApprovalController::class, 'reject'])
+        ->name('admin.ticket-approvals.reject');
+    Route::get('ticket-approvals/pending', [\App\Http\Controllers\Admin\TicketApprovalController::class, 'pending'])
+        ->name('admin.ticket-approvals.pending');
 
     // User export/import routes must be defined BEFORE resource route
     Route::get('users/export', [UserController::class, 'export'])
@@ -122,6 +132,15 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     
     Route::get('ticket-templates/{ticketTemplate}/create-ticket', [TicketTemplateController::class, 'createFromTemplate'])
         ->name('admin.ticket-templates.create-ticket');
+    
+    Route::post('ticket-templates/bulk-update', [TicketTemplateController::class, 'bulkUpdate'])
+        ->name('admin.ticket-templates.bulk-update');
+    
+    Route::post('ticket-templates/bulk-delete', [TicketTemplateController::class, 'bulkDelete'])
+        ->name('admin.ticket-templates.bulk-delete');
+    
+    Route::post('ticket-templates/bulk-duplicate', [TicketTemplateController::class, 'bulkDuplicate'])
+        ->name('admin.ticket-templates.bulk-duplicate');
 
     Route::resource('time-entries', TimeEntryController::class)
         ->names('admin.time-entries');

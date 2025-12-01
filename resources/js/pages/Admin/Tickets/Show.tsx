@@ -1,6 +1,6 @@
 import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
 import { useState, useEffect, useRef } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, Send, Edit, Trash2, X, Check, Reply, Maximize, Minimize } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Send, Edit, Trash2, X, Check, Reply, Maximize, Minimize, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type BaseOption = { id: number; name: string };
 
@@ -91,6 +92,24 @@ type TicketShowProps = {
       created_at: string;
       user?: BaseOption;
     }[];
+    approvals?: {
+      id: number;
+      approval_level: 'lm' | 'hod';
+      status: 'pending' | 'approved' | 'rejected';
+      comments?: string | null;
+      approved_at?: string | null;
+      rejected_at?: string | null;
+      sequence: number;
+      approver?: BaseOption & { email?: string };
+      routed_to_team?: BaseOption;
+      created_at: string;
+    }[];
+    current_approval?: {
+      id: number;
+      approval_level: 'lm' | 'hod';
+      status: 'pending' | 'approved' | 'rejected';
+      approver?: BaseOption & { email?: string };
+    } | null;
     created_at: string;
     updated_at: string;
   };
@@ -116,6 +135,7 @@ const priorityColorMap: Record<string, string> = {
 export default function TicketShow(props: TicketShowProps) {
   const { can } = usePermissions();
   useToast(); // Handle flash messages
+  const departments = props.departments || [];
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -151,6 +171,20 @@ export default function TicketShow(props: TicketShowProps) {
     body: '',
     is_internal: false,
   });
+
+  // Approval form
+  const approvalForm = useForm({
+    comments: '',
+    routed_to_team_id: null as number | null,
+  });
+
+  const rejectForm = useForm({
+    comments: '',
+  });
+
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [selectedApprovalId, setSelectedApprovalId] = useState<number | null>(null);
 
   const canEditComment = (comment: any) => {
     return comment.user?.id === currentUserId || can('tickets.edit');
@@ -498,6 +532,176 @@ export default function TicketShow(props: TicketShowProps) {
             )}
 
             <Separator />
+
+            {/* Approval Section */}
+            {(ticket.approvals && ticket.approvals.length > 0) && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold">Approvals</h3>
+                </div>
+
+                <div className="space-y-3">
+                  {ticket.approvals.map((approval) => {
+                    const isPending = approval.status === 'pending';
+                    const isApproved = approval.status === 'approved';
+                    const isRejected = approval.status === 'rejected';
+                    const canApprove = can('tickets.edit') && 
+                      isPending && 
+                      (!approval.approver || approval.approver.id === currentUserId);
+
+                    return (
+                      <div
+                        key={approval.id}
+                        className={cn(
+                          "rounded-lg border p-4",
+                          isPending && "bg-amber-50 border-amber-200",
+                          isApproved && "bg-emerald-50 border-emerald-200",
+                          isRejected && "bg-red-50 border-red-200"
+                        )}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge
+                                variant={isPending ? 'default' : isApproved ? 'default' : 'destructive'}
+                                className={cn(
+                                  isPending && 'bg-amber-100 text-amber-800',
+                                  isApproved && 'bg-emerald-100 text-emerald-800',
+                                  isRejected && 'bg-red-100 text-red-800'
+                                )}
+                              >
+                                {approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
+                              </Badge>
+                              {isPending && <Badge variant="outline" className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                Pending
+                              </Badge>}
+                              {isApproved && <Badge variant="outline" className="flex items-center gap-1 bg-emerald-100 text-emerald-800">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Approved
+                              </Badge>}
+                              {isRejected && <Badge variant="outline" className="flex items-center gap-1 bg-red-100 text-red-800">
+                                <XCircle className="h-3 w-3" />
+                                Rejected
+                              </Badge>}
+                            </div>
+
+                            <div className="space-y-1 text-sm">
+                              {approval.approver && (
+                                <p className="text-muted-foreground">
+                                  <span className="font-medium">Approver:</span> {approval.approver.name}
+                                  {approval.approver.email && ` (${approval.approver.email})`}
+                                </p>
+                              )}
+                              {approval.approved_at && (
+                                <p className="text-muted-foreground">
+                                  <span className="font-medium">Approved:</span>{' '}
+                                  {new Date(approval.approved_at).toLocaleString()}
+                                </p>
+                              )}
+                              {approval.rejected_at && (
+                                <p className="text-muted-foreground">
+                                  <span className="font-medium">Rejected:</span>{' '}
+                                  {new Date(approval.rejected_at).toLocaleString()}
+                                </p>
+                              )}
+                              {approval.comments && (
+                                <p className="text-muted-foreground mt-2">
+                                  <span className="font-medium">Comments:</span> {approval.comments}
+                                </p>
+                              )}
+                              {approval.routed_to_team && (
+                                <p className="text-muted-foreground">
+                                  <span className="font-medium">Routed to:</span> {approval.routed_to_team.name}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {canApprove && (
+                            <div className="flex gap-2 ml-4">
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => {
+                                  setSelectedApprovalId(approval.id);
+                                  setApprovalDialogOpen(true);
+                                }}
+                                className="bg-emerald-600 hover:bg-emerald-700"
+                              >
+                                <CheckCircle2 className="h-4 w-4 mr-1" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => {
+                                  setSelectedApprovalId(approval.id);
+                                  setRejectDialogOpen(true);
+                                }}
+                              >
+                                <XCircle className="h-4 w-4 mr-1" />
+                                Reject
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Current Pending Approval - Prominent Display */}
+            {ticket.current_approval && ticket.current_approval.status === 'pending' && (
+              <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 mb-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="h-5 w-5 text-amber-600" />
+                      <h3 className="text-lg font-semibold text-amber-900">
+                        {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'} Approval Required
+                      </h3>
+                    </div>
+                    <p className="text-sm text-amber-800 mb-3">
+                      This ticket is waiting for {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'} approval.
+                      {ticket.current_approval.approver && (
+                        <> Assigned to: <strong>{ticket.current_approval.approver.name}</strong></>
+                      )}
+                    </p>
+                    {can('tickets.edit') && (!ticket.current_approval.approver || ticket.current_approval.approver.id === currentUserId) && (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setSelectedApprovalId(ticket.current_approval!.id);
+                            setApprovalDialogOpen(true);
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          Approve Ticket
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            setSelectedApprovalId(ticket.current_approval!.id);
+                            setRejectDialogOpen(true);
+                          }}
+                        >
+                          <XCircle className="h-4 w-4 mr-1" />
+                          Reject Ticket
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(ticket.approvals && ticket.approvals.length > 0) && <Separator />}
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1080,6 +1284,141 @@ export default function TicketShow(props: TicketShowProps) {
             )}
           </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approval Dialog */}
+      <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approve Ticket</DialogTitle>
+            <DialogDescription>
+              Add comments and optionally route the ticket to a specific team after approval.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (selectedApprovalId) {
+                approvalForm.post(route('admin.ticket-approvals.approve', selectedApprovalId), {
+                  preserveScroll: true,
+                  onSuccess: () => {
+                    setApprovalDialogOpen(false);
+                    setSelectedApprovalId(null);
+                    approvalForm.reset();
+                  },
+                });
+              }
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <Label htmlFor="approval_comments">Comments (Optional)</Label>
+              <Textarea
+                id="approval_comments"
+                value={approvalForm.data.comments}
+                onChange={(e) => approvalForm.setData('comments', e.target.value)}
+                placeholder="Add approval comments..."
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="routed_to_team">Route to Team (Optional)</Label>
+              <Select
+                value={approvalForm.data.routed_to_team_id ? String(approvalForm.data.routed_to_team_id) : '__none'}
+                onValueChange={(value) =>
+                  approvalForm.setData('routed_to_team_id', value === '__none' ? null : parseInt(value))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select team (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">Use category default</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={String(dept.id)}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setApprovalDialogOpen(false);
+                  setSelectedApprovalId(null);
+                  approvalForm.reset();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={approvalForm.processing} className="bg-emerald-600 hover:bg-emerald-700">
+                {approvalForm.processing ? 'Approving...' : 'Approve'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Ticket</DialogTitle>
+            <DialogDescription>
+              Please provide a reason for rejecting this ticket. This will cancel the ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (selectedApprovalId) {
+                rejectForm.post(route('admin.ticket-approvals.reject', selectedApprovalId), {
+                  preserveScroll: true,
+                  onSuccess: () => {
+                    setRejectDialogOpen(false);
+                    setSelectedApprovalId(null);
+                    rejectForm.reset();
+                  },
+                });
+              }
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <Label htmlFor="reject_comments">Rejection Reason *</Label>
+              <Textarea
+                id="reject_comments"
+                value={rejectForm.data.comments}
+                onChange={(e) => rejectForm.setData('comments', e.target.value)}
+                placeholder="Please explain why this ticket is being rejected..."
+                rows={4}
+                required
+              />
+              {rejectForm.errors.comments && (
+                <p className="text-xs text-red-500 mt-1">{rejectForm.errors.comments}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setRejectDialogOpen(false);
+                  setSelectedApprovalId(null);
+                  rejectForm.reset();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={rejectForm.processing} variant="destructive">
+                {rejectForm.processing ? 'Rejecting...' : 'Reject Ticket'}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </AppLayout>

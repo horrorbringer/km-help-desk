@@ -66,6 +66,43 @@ class TicketResource extends JsonResource
             'comments' => $this->whenLoaded('comments'),
             'attachments' => $this->whenLoaded('attachments'),
             'histories' => $this->whenLoaded('histories'),
+            'approvals' => $this->whenLoaded('approvals', function () {
+                return $this->approvals->map(function ($approval) {
+                    return [
+                        'id' => $approval->id,
+                        'approval_level' => $approval->approval_level,
+                        'status' => $approval->status,
+                        'comments' => $approval->comments,
+                        'approved_at' => $approval->approved_at,
+                        'rejected_at' => $approval->rejected_at,
+                        'sequence' => $approval->sequence,
+                        'approver' => $approval->approver ? [
+                            'id' => $approval->approver->id,
+                            'name' => $approval->approver->name,
+                            'email' => $approval->approver->email,
+                        ] : null,
+                        'routed_to_team' => $approval->routedToTeam ? [
+                            'id' => $approval->routedToTeam->id,
+                            'name' => $approval->routedToTeam->name,
+                        ] : null,
+                        'created_at' => $approval->created_at,
+                    ];
+                });
+            }),
+            'current_approval' => $this->whenLoaded('approvals', function () {
+                $current = $this->currentApproval();
+                if (!$current) return null;
+                return [
+                    'id' => $current->id,
+                    'approval_level' => $current->approval_level,
+                    'status' => $current->status,
+                    'approver' => $current->approver ? [
+                        'id' => $current->approver->id,
+                        'name' => $current->approver->name,
+                        'email' => $current->approver->email,
+                    ] : null,
+                ];
+            }),
             'first_response_at' => $this->first_response_at,
             'first_response_due_at' => $this->first_response_due_at,
             'resolution_due_at' => $this->resolution_due_at,

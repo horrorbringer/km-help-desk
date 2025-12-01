@@ -18,10 +18,25 @@ class TicketCategorySeeder extends Seeder
                 'name' => 'IT Support',
                 'description' => 'General IT issues covering hardware, software, and access.',
                 'team_code' => 'IT-SD',
+                'requires_approval' => true, // Hardware/software requests need approval
                 'children' => [
-                    ['name' => 'Hardware', 'description' => 'Laptops, desktops, peripherals.'],
-                    ['name' => 'Network & VPN', 'description' => 'Connectivity, VPN, Wi-Fi'],
-                    ['name' => 'Application Access', 'description' => 'Login, MFA, permission problems.'],
+                    [
+                        'name' => 'Hardware', 
+                        'description' => 'Laptops, desktops, peripherals.',
+                        'requires_approval' => true, // Hardware purchases need approval
+                        'requires_hod_approval' => true, // Expensive hardware needs HOD approval
+                        'hod_approval_threshold' => 1000.00,
+                    ],
+                    [
+                        'name' => 'Network & VPN', 
+                        'description' => 'Connectivity, VPN, Wi-Fi',
+                        'requires_approval' => false, // Routine network issues don't need approval
+                    ],
+                    [
+                        'name' => 'Application Access', 
+                        'description' => 'Login, MFA, permission problems.',
+                        'requires_approval' => false, // Access requests are routine
+                    ],
                 ],
             ],
             [
@@ -47,11 +62,15 @@ class TicketCategorySeeder extends Seeder
                 'name' => 'Procurement Requests',
                 'description' => 'Purchase orders, vendor management, RFQs.',
                 'team_code' => 'PROC',
+                'requires_approval' => true,
+                'requires_hod_approval' => true, // Purchases need HOD approval
+                'hod_approval_threshold' => 500.00, // HOD approval for purchases > $500
             ],
             [
                 'name' => 'Finance Queries',
                 'description' => 'Invoices, payroll, reimbursements.',
                 'team_code' => 'FIN',
+                'requires_approval' => false, // Routine queries don't need approval
             ],
         ];
 
@@ -69,6 +88,17 @@ class TicketCategorySeeder extends Seeder
     {
         $slug = Str::slug($data['name']);
 
+        // Real-world approval settings:
+        // - IT Support: Requires approval (hardware/software requests need budget approval)
+        // - Site Operations: Requires approval (equipment failures need management approval)
+        // - Safety & Compliance: Requires approval (incidents need review)
+        // - Procurement: Requires approval + HOD approval (purchases need budget approval)
+        // - Finance Queries: No approval needed (routine queries)
+        
+        $requiresApproval = $data['requires_approval'] ?? true;
+        $requiresHODApproval = $data['requires_hod_approval'] ?? false;
+        $hodThreshold = $data['hod_approval_threshold'] ?? null;
+
         return TicketCategory::updateOrCreate(
             ['slug' => $slug],
             [
@@ -79,6 +109,9 @@ class TicketCategorySeeder extends Seeder
                 'default_team_id' => $teams[$data['team_code']] ?? null,
                 'sort_order' => $data['sort_order'] ?? 0,
                 'is_active' => true,
+                'requires_approval' => $requiresApproval,
+                'requires_hod_approval' => $requiresHODApproval,
+                'hod_approval_threshold' => $hodThreshold,
             ]
         );
     }

@@ -210,6 +210,121 @@ class TicketTemplateController extends Controller
         return response()->json(['templates' => $templates]);
     }
 
+    /**
+     * Bulk update templates
+     */
+    public function bulkUpdate(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('ticket-templates.edit'), 403);
+
+        $request->validate([
+            'template_ids' => ['required', 'array', 'min:1'],
+            'template_ids.*' => ['exists:ticket_templates,id'],
+            'action' => ['required', 'string', 'in:activate,deactivate'],
+        ]);
+
+        $templateIds = $request->input('template_ids');
+        $action = $request->input('action');
+
+        $templates = TicketTemplate::whereIn('id', $templateIds)
+            ->forUser(Auth::id())
+            ->get();
+
+        $updatedCount = 0;
+        $isActive = $action === 'activate';
+
+        foreach ($templates as $template) {
+            // Only allow users to update their own templates or public templates
+            if ($template->created_by === Auth::id() || $template->is_public) {
+                $template->update(['is_active' => $isActive]);
+                $updatedCount++;
+            }
+        }
+
+        $message = $updatedCount > 0
+            ? "Successfully {$action}d {$updatedCount} template(s)."
+            : "No templates were updated.";
+
+        return redirect()
+            ->route('admin.ticket-templates.index')
+            ->with('success', $message);
+    }
+
+    /**
+     * Bulk duplicate templates
+     */
+    public function bulkDuplicate(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('ticket-templates.create'), 403);
+
+        $request->validate([
+            'template_ids' => ['required', 'array', 'min:1'],
+            'template_ids.*' => ['exists:ticket_templates,id'],
+        ]);
+
+        $templateIds = $request->input('template_ids');
+
+        $templates = TicketTemplate::whereIn('id', $templateIds)
+            ->forUser(Auth::id())
+            ->get();
+
+        $duplicatedCount = 0;
+
+        foreach ($templates as $template) {
+            // Only allow users to duplicate templates they can access
+            if ($template->created_by === Auth::id() || $template->is_public) {
+                $newTemplate = $template->replicate();
+                $newTemplate->name = $template->name . ' (Copy)';
+                $newTemplate->slug = $template->slug . '-copy-' . time() . '-' . $duplicatedCount;
+                $newTemplate->usage_count = 0;
+                $newTemplate->created_by = Auth::id();
+                $newTemplate->is_active = false; // Set to inactive by default
+                $newTemplate->save();
+                $duplicatedCount++;
+            }
+        }
+
+        $message = $duplicatedCount > 0
+            ? "Successfully duplicated {$duplicatedCount} template(s)."
+            : "No templates were duplicated.";
+
+        return redirect()
+            ->route('admin.ticket-templates.index')
+            ->with('success', $message);
+    }
+
+    /**
+     * Bulk delete templates
+     */
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('ticket-templates.delete'), 403);
+
+        $request->validate([
+            'template_ids' => ['required', 'array', 'min:1'],
+            'template_ids.*' => ['exists:ticket_templates,id'],
+        ]);
+
+        $templateIds = $request->input('template_ids');
+
+        $templates = TicketTemplate::whereIn('id', $templateIds)
+            ->forUser(Auth::id())
+            ->get();
+
+        $deletedCount = 0;
+        foreach ($templates as $template) {
+            // Only allow users to delete their own templates
+            if ($template->created_by === Auth::id()) {
+                $template->delete();
+                $deletedCount++;
+            }
+        }
+
+        return redirect()
+            ->route('admin.ticket-templates.index')
+            ->with('success', "Successfully deleted {$deletedCount} template(s).");
+    }
+
     protected function getFormOptions(): array
     {
         return [

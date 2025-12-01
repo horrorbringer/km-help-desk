@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
@@ -26,8 +27,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { PageProps } from '@/types';
-import { Copy } from 'lucide-react';
+import { Copy, Trash2, CheckCircle2, XCircle } from 'lucide-react';
 
 interface TicketTemplate {
   id: number;
@@ -54,12 +63,18 @@ interface TicketTemplatesIndexProps extends PageProps {
     q?: string;
     is_active?: string;
   };
+  flash?: {
+    success?: string;
+  };
 }
 
 export default function TicketTemplatesIndex() {
   const { templates, filters, flash } = usePage<TicketTemplatesIndexProps>().props;
+  const [selectedTemplates, setSelectedTemplates] = useState<number[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<TicketTemplate | null>(null);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -72,7 +87,80 @@ export default function TicketTemplatesIndex() {
       preserveState: true,
       replace: true,
     });
+    setSelectedTemplates([]); // Clear selection when filters change
   };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedTemplates(templates.data.map((template) => template.id));
+    } else {
+      setSelectedTemplates([]);
+    }
+  };
+
+  const handleSelectTemplate = (templateId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedTemplates([...selectedTemplates, templateId]);
+    } else {
+      setSelectedTemplates(selectedTemplates.filter((id) => id !== templateId));
+    }
+  };
+
+  const handleBulkAction = (action: string) => {
+    if (selectedTemplates.length === 0) {
+      return;
+    }
+
+    setBulkDialogAction(action);
+    setBulkDialogOpen(true);
+  };
+
+  const handleBulkSubmit = () => {
+    if (selectedTemplates.length === 0) {
+      return;
+    }
+
+    if (bulkDialogAction === 'delete') {
+      router.post(
+        route('admin.ticket-templates.bulk-delete'),
+        { template_ids: selectedTemplates },
+        {
+          onSuccess: () => {
+            setSelectedTemplates([]);
+            setBulkDialogOpen(false);
+          },
+        }
+      );
+    } else if (bulkDialogAction === 'duplicate') {
+      router.post(
+        route('admin.ticket-templates.bulk-duplicate'),
+        { template_ids: selectedTemplates },
+        {
+          onSuccess: () => {
+            setSelectedTemplates([]);
+            setBulkDialogOpen(false);
+          },
+        }
+      );
+    } else {
+      router.post(
+        route('admin.ticket-templates.bulk-update'),
+        {
+          template_ids: selectedTemplates,
+          action: bulkDialogAction,
+        },
+        {
+          onSuccess: () => {
+            setSelectedTemplates([]);
+            setBulkDialogOpen(false);
+          },
+        }
+      );
+    }
+  };
+
+  const allSelected = templates.data.length > 0 && selectedTemplates.length === templates.data.length;
+  const someSelected = selectedTemplates.length > 0 && selectedTemplates.length < templates.data.length;
 
   return (
     <AppLayout>
@@ -131,6 +219,54 @@ export default function TicketTemplatesIndex() {
           </CardContent>
         </Card>
 
+        {/* Bulk Actions */}
+        {selectedTemplates.length > 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {selectedTemplates.length} template(s) selected
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkAction('duplicate')}
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    Duplicate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkAction('activate')}
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                    Activate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkAction('deactivate')}
+                  >
+                    <XCircle className="h-4 w-4 mr-1" />
+                    Deactivate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkAction('delete')}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Templates Table */}
         <Card>
           <CardHeader>
@@ -145,6 +281,13 @@ export default function TicketTemplatesIndex() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={handleSelectAll}
+                        aria-label="Select all templates"
+                      />
+                    </TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Usage</TableHead>
@@ -157,6 +300,13 @@ export default function TicketTemplatesIndex() {
                 <TableBody>
                   {templates.data.map((template) => (
                     <TableRow key={template.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedTemplates.includes(template.id)}
+                          onCheckedChange={(checked) => handleSelectTemplate(template.id, Boolean(checked))}
+                          aria-label={`Select ${template.name}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <p className="font-medium">{template.name}</p>
                         <p className="text-xs text-muted-foreground">{template.slug}</p>
@@ -278,6 +428,44 @@ export default function TicketTemplatesIndex() {
             )}
           </CardContent>
         </Card>
+
+        {/* Bulk Action Dialog */}
+        <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {bulkDialogAction === 'delete' && 'Delete Templates'}
+                {bulkDialogAction === 'duplicate' && 'Duplicate Templates'}
+                {bulkDialogAction === 'activate' && 'Activate Templates'}
+                {bulkDialogAction === 'deactivate' && 'Deactivate Templates'}
+              </DialogTitle>
+              <DialogDescription>
+                {bulkDialogAction === 'delete' &&
+                  `Are you sure you want to delete ${selectedTemplates.length} template(s)? This action cannot be undone.`}
+                {bulkDialogAction === 'duplicate' &&
+                  `Are you sure you want to duplicate ${selectedTemplates.length} template(s)? This will create copies with "(Copy)" suffix.`}
+                {bulkDialogAction === 'activate' &&
+                  `Are you sure you want to activate ${selectedTemplates.length} template(s)?`}
+                {bulkDialogAction === 'deactivate' &&
+                  `Are you sure you want to deactivate ${selectedTemplates.length} template(s)?`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleBulkSubmit}
+                variant={bulkDialogAction === 'delete' ? 'destructive' : 'default'}
+              >
+                {bulkDialogAction === 'delete' && 'Delete'}
+                {bulkDialogAction === 'duplicate' && 'Duplicate'}
+                {bulkDialogAction === 'activate' && 'Activate'}
+                {bulkDialogAction === 'deactivate' && 'Deactivate'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );

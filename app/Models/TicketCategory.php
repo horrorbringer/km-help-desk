@@ -20,11 +20,17 @@ class TicketCategory extends Model
         'default_team_id',
         'is_active',
         'sort_order',
+        'requires_approval',
+        'requires_hod_approval',
+        'hod_approval_threshold',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'sort_order' => 'integer',
+        'requires_approval' => 'boolean',
+        'requires_hod_approval' => 'boolean',
+        'hod_approval_threshold' => 'decimal:2',
     ];
 
     public function parent(): BelongsTo
