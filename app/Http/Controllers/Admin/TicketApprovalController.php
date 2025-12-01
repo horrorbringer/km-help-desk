@@ -49,6 +49,14 @@ class TicketApprovalController extends Controller
     {
         abort_unless(Auth::user()->can('tickets.edit'), 403);
 
+        // Prevent approving tickets that are already resolved, closed, or cancelled
+        $ticket = $approval->ticket;
+        if (in_array($ticket->status, ['resolved', 'closed', 'cancelled'])) {
+            return redirect()
+                ->route('admin.tickets.show', $ticket)
+                ->with('error', 'Cannot approve a ticket that is already ' . $ticket->status . '.');
+        }
+
         // Check if user is the approver or has admin rights
         if ($approval->approver_id && $approval->approver_id !== Auth::id()) {
             if (!Auth::user()->can('tickets.assign')) {
@@ -79,6 +87,14 @@ class TicketApprovalController extends Controller
     {
         abort_unless(Auth::user()->can('tickets.edit'), 403);
 
+        // Prevent rejecting tickets that are already resolved, closed, or cancelled
+        $ticket = $approval->ticket;
+        if (in_array($ticket->status, ['resolved', 'closed', 'cancelled'])) {
+            return redirect()
+                ->route('admin.tickets.show', $ticket)
+                ->with('error', 'Cannot reject a ticket that is already ' . $ticket->status . '.');
+        }
+
         // Check if user is the approver or has admin rights
         if ($approval->approver_id && $approval->approver_id !== Auth::id()) {
             if (!Auth::user()->can('tickets.assign')) {
@@ -99,6 +115,7 @@ class TicketApprovalController extends Controller
 
     /**
      * Get pending approvals for current user
+     * Excludes resolved, closed, and cancelled tickets (no action needed)
      */
     public function pending(): Response
     {
@@ -108,6 +125,11 @@ class TicketApprovalController extends Controller
             'ticket.assignedTeam',
         ])
         ->where('status', 'pending')
+        ->whereHas('ticket', function ($query) {
+            // Exclude tickets that are resolved, closed, or cancelled
+            // These tickets don't need approval action anymore
+            $query->whereNotIn('status', ['resolved', 'closed', 'cancelled']);
+        })
         ->where(function ($query) {
             $query->where('approver_id', Auth::id())
                 ->orWhereNull('approver_id');

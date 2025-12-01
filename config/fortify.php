@@ -144,7 +144,7 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Features::registration(), // Disabled: Admin-only user creation for enterprise security
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::twoFactorAuthentication([

@@ -662,7 +662,10 @@ export default function TicketShow(props: TicketShowProps) {
             )}
 
             {/* Current Pending Approval - Prominent Display */}
-            {ticket.current_approval && ticket.current_approval.status === 'pending' && (
+            {/* Only show pending approval banner if ticket is not resolved/closed/cancelled */}
+            {ticket.current_approval && 
+             ticket.current_approval.status === 'pending' && 
+             !['resolved', 'closed', 'cancelled'].includes(ticket.status) && (
               <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 mb-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">

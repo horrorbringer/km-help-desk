@@ -84,12 +84,12 @@ This document outlines realistic test scenarios for the approval workflow system
 ## Test Scenarios
 
 ### Scenario 1: Low Priority Ticket (No Approval Required)
-**Objective**: Test that low-priority tickets bypass approval workflow
+**Objective**: Test that tickets in categories without approval requirements bypass approval workflow
 
 **Steps**:
 1. Login as **Chanthou** (Requester)
 2. Create a new ticket:
-   - Category: IT Support (General)
+   - Category: IT Support → **Network & VPN** (or **Application Access**)
    - Priority: Low
    - Subject: "Need help with email setup"
 3. Submit ticket
@@ -105,6 +105,8 @@ This document outlines realistic test scenarios for the approval workflow system
 - Check ticket status = "assigned"
 - Check `ticket_approvals` table - should have 0 records
 - Check email logs - should only have ticket created/assigned emails
+
+**Note**: Approval is determined by **category settings**, not priority. The "IT Support" parent category requires approval, but subcategories like "Network & VPN" and "Application Access" have `requires_approval = false`, so they bypass approval even for high priority tickets.
 
 ---
 
