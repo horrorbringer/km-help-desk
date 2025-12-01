@@ -23,12 +23,21 @@ class UserSeeder extends Seeder
                 'employee_id' => 'EMP-1001',
                 'roles' => ['Super Admin'], // Super Admin has all permissions
             ],
+            // Head of Department - Organization level
+            [
+                'name' => 'Sokuntha',
+                'email' => 'sokuntha@kimmix.com',
+                'department_code' => 'IT-SD',
+                'employee_id' => 'EMP-0999',
+                'phone' => '+855 12 000 001',
+                'roles' => ['Head of Department'], // HOD for testing approval workflow
+            ],
             [
                 'name' => 'Vannak',
                 'email' => 'vannak@kimmix.com',
                 'department_code' => 'FIELD-ENG',
                 'employee_id' => 'EMP-1020',
-                'roles' => ['Manager'], // Manager role
+                'roles' => ['Line Manager'], // Line Manager role for approval workflow
             ],
             [
                 'name' => 'Vanny',
@@ -70,7 +79,32 @@ class UserSeeder extends Seeder
                 'email' => 'manager01@kimmix.com',
                 'department_code' => 'IT-SD',
                 'employee_id' => 'EMP-1175',
-                'roles' => ['Manager'], // Manager role
+                'roles' => ['Line Manager'], // Line Manager role for approval workflow
+            ],
+            // Additional Line Managers for different departments
+            [
+                'name' => 'Sopheap LM',
+                'email' => 'sopheap.lm@kimmix.com',
+                'department_code' => 'FIN',
+                'employee_id' => 'EMP-1500',
+                'phone' => '+855 12 345 700',
+                'roles' => ['Line Manager'],
+            ],
+            [
+                'name' => 'Vutty LM',
+                'email' => 'vutty.lm@kimmix.com',
+                'department_code' => 'HSE',
+                'employee_id' => 'EMP-1525',
+                'phone' => '+855 12 345 701',
+                'roles' => ['Line Manager'],
+            ],
+            [
+                'name' => 'Vanny LM',
+                'email' => 'vanny.lm@kimmix.com',
+                'department_code' => 'PROC',
+                'employee_id' => 'EMP-1550',
+                'phone' => '+855 12 345 702',
+                'roles' => ['Line Manager'],
             ],
             [
                 'name' => 'Requester 01',

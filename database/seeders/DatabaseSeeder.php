@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             CustomFieldSeeder::class,
             CannedResponseSeeder::class,
             KnowledgeBaseArticleSeeder::class,
+            EmailTemplateSeeder::class, // Email templates for notifications
             TicketTemplateSeeder::class, // Must run before TicketSeeder
             TicketSeeder::class,
             TicketAttachmentSeeder::class, // Must run after TicketSeeder

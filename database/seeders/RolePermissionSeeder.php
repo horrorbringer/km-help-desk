@@ -178,5 +178,68 @@ class RolePermissionSeeder extends Seeder
             'knowledge-base.view',
             'reports.view',
         ]);
+
+        // Line Manager role - Can approve tickets at first level
+        $lineManagerRole = Role::firstOrCreate(['name' => 'Line Manager']);
+        $lineManagerRole->givePermissionTo([
+            'tickets.view',
+            'tickets.create',
+            'tickets.edit',
+            'tickets.assign',
+            'tickets.resolve',
+            'tickets.close',
+            'tickets.auto-approve', // Can auto-approve tickets
+            'users.view',
+            'departments.view',
+            'categories.view',
+            'projects.view',
+            'tags.view',
+            'time-entries.view',
+            'time-entries.approve',
+            'knowledge-base.view',
+            'reports.view',
+        ]);
+
+        // Head of Department role - Can approve tickets at second level
+        $hodRole = Role::firstOrCreate(['name' => 'Head of Department']);
+        $hodRole->givePermissionTo([
+            'tickets.view',
+            'tickets.create',
+            'tickets.edit',
+            'tickets.assign',
+            'tickets.resolve',
+            'tickets.close',
+            'tickets.auto-approve', // Can auto-approve tickets
+            'users.view',
+            'departments.view',
+            'categories.view',
+            'projects.view',
+            'tags.view',
+            'time-entries.view',
+            'time-entries.approve',
+            'knowledge-base.view',
+            'reports.view',
+        ]);
+
+        // Director role - Similar to HOD but at organization level
+        $directorRole = Role::firstOrCreate(['name' => 'Director']);
+        $directorRole->givePermissionTo([
+            'tickets.view',
+            'tickets.create',
+            'tickets.edit',
+            'tickets.assign',
+            'tickets.resolve',
+            'tickets.close',
+            'tickets.auto-approve',
+            'users.view',
+            'departments.view',
+            'categories.view',
+            'projects.view',
+            'tags.view',
+            'time-entries.view',
+            'time-entries.approve',
+            'knowledge-base.view',
+            'reports.view',
+        ]);
     }
 }
