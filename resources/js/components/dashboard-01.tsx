@@ -107,25 +107,25 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
     count,
   }));
 
-  // Chart configurations
+  // Chart configurations using default shadcn colors
   const trendChartConfig = {
     tickets: {
       label: 'Tickets',
-      color: 'hsl(var(--chart-1))',
+      color: 'var(--chart-1)',
     },
   } satisfies ChartConfig;
 
   const statusChartConfig = {
     count: {
       label: 'Count',
-      color: 'hsl(var(--chart-2))',
+      color: 'var(--chart-2)',
     },
   } satisfies ChartConfig;
 
   const priorityChartConfig = {
     count: {
       label: 'Count',
-      color: 'hsl(var(--chart-3))',
+      color: 'var(--chart-3)',
     },
   } satisfies ChartConfig;
 

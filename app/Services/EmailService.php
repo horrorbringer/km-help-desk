@@ -55,12 +55,19 @@ class EmailService
                 }
             });
 
+            Log::info("Email sent successfully", [
+                'event_type' => $eventType,
+                'recipient' => $recipient->email,
+                'ticket_id' => $ticket?->id,
+            ]);
             return true;
         } catch (\Exception $e) {
             Log::error("Failed to send email: {$e->getMessage()}", [
                 'event_type' => $eventType,
                 'recipient' => $recipient->email,
                 'ticket_id' => $ticket?->id,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
             ]);
             return false;
         }
@@ -183,10 +190,13 @@ class EmailService
     /**
      * Send approval requested email
      */
-    public function sendApprovalRequested(Ticket $ticket, User $approver, string $approvalLevel): void
+    public function sendApprovalRequested(Ticket $ticket, User $approver, string $approvalLevel): bool
     {
         if (!$approver) {
-            return;
+            Log::warning("Cannot send approval requested email: approver is null", [
+                'ticket_id' => $ticket->id,
+            ]);
+            return false;
         }
 
         $data = $this->getTicketData($ticket);
@@ -194,41 +204,103 @@ class EmailService
         $data['approver_name'] = $approver->name;
         
         $eventType = $approvalLevel === 'lm' ? 'approval_lm_requested' : 'approval_hod_requested';
-        $this->sendTemplate($eventType, $approver, $data, $ticket);
+        
+        Log::info("Sending approval requested email", [
+            'event_type' => $eventType,
+            'ticket_id' => $ticket->id,
+            'approver_email' => $approver->email,
+        ]);
+        
+        $result = $this->sendTemplate($eventType, $approver, $data, $ticket);
+        
+        if (!$result) {
+            Log::error("Failed to send approval requested email", [
+                'event_type' => $eventType,
+                'ticket_id' => $ticket->id,
+                'approver_email' => $approver->email,
+            ]);
+        }
+        
+        return $result;
     }
 
     /**
      * Send approval approved email
      */
-    public function sendApprovalApproved(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): void
+    public function sendApprovalApproved(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): bool
     {
         // Notify requester
-        if ($ticket->requester) {
-            $data = $this->getTicketData($ticket);
-            $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
-            $data['approver_name'] = $approver->name;
-            $data['comments'] = $comments ?? '';
-            
-            $eventType = $approvalLevel === 'lm' ? 'approval_lm_approved' : 'approval_hod_approved';
-            $this->sendTemplate($eventType, $ticket->requester, $data, $ticket);
+        if (!$ticket->requester) {
+            Log::warning("Cannot send approval approved email: requester is null", [
+                'ticket_id' => $ticket->id,
+            ]);
+            return false;
         }
+        
+        $data = $this->getTicketData($ticket);
+        $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        $data['approver_name'] = $approver->name;
+        $data['comments'] = $comments ?? '';
+        
+        $eventType = $approvalLevel === 'lm' ? 'approval_lm_approved' : 'approval_hod_approved';
+        
+        Log::info("Sending approval approved email", [
+            'event_type' => $eventType,
+            'ticket_id' => $ticket->id,
+            'requester_email' => $ticket->requester->email,
+        ]);
+        
+        $result = $this->sendTemplate($eventType, $ticket->requester, $data, $ticket);
+        
+        if (!$result) {
+            Log::error("Failed to send approval approved email", [
+                'event_type' => $eventType,
+                'ticket_id' => $ticket->id,
+                'requester_email' => $ticket->requester->email,
+            ]);
+        }
+        
+        return $result;
     }
 
     /**
      * Send approval rejected email
      */
-    public function sendApprovalRejected(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): void
+    public function sendApprovalRejected(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): bool
     {
         // Notify requester
-        if ($ticket->requester) {
-            $data = $this->getTicketData($ticket);
-            $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
-            $data['approver_name'] = $approver->name;
-            $data['comments'] = $comments ?? '';
-            
-            $eventType = $approvalLevel === 'lm' ? 'approval_lm_rejected' : 'approval_hod_rejected';
-            $this->sendTemplate($eventType, $ticket->requester, $data, $ticket);
+        if (!$ticket->requester) {
+            Log::warning("Cannot send approval rejected email: requester is null", [
+                'ticket_id' => $ticket->id,
+            ]);
+            return false;
         }
+        
+        $data = $this->getTicketData($ticket);
+        $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        $data['approver_name'] = $approver->name;
+        $data['comments'] = $comments ?? '';
+        $data['rejection_comments'] = $comments ?? '';
+        
+        $eventType = $approvalLevel === 'lm' ? 'approval_lm_rejected' : 'approval_hod_rejected';
+        
+        Log::info("Sending approval rejected email", [
+            'event_type' => $eventType,
+            'ticket_id' => $ticket->id,
+            'requester_email' => $ticket->requester->email,
+        ]);
+        
+        $result = $this->sendTemplate($eventType, $ticket->requester, $data, $ticket);
+        
+        if (!$result) {
+            Log::error("Failed to send approval rejected email", [
+                'event_type' => $eventType,
+                'ticket_id' => $ticket->id,
+                'requester_email' => $ticket->requester->email,
+            ]);
+        }
+        
+        return $result;
     }
 
     /**

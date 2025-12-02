@@ -189,4 +189,16 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     });
 });
 
+// Route::get('/test-email', function () {
+//     try {
+//         \Illuminate\Support\Facades\Mail::raw('This is a test email from Kimmex Help Desk', function ($message) {
+//             $message->to('chanthou121@outlook.com')
+//                     ->subject('Test Email from Kimmex');
+//         });
+//         return 'Email sent successfully!';
+//     } catch (\Exception $e) {
+//         return 'Error: ' . $e->getMessage();
+//     }
+// })->middleware('auth');
+
 require __DIR__.'/settings.php';

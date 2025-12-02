@@ -46,6 +46,7 @@ class UserSeeder extends Seeder
      */
     protected function createUsers(array $departments, array $roles): void
     {
+        // Real users for testing IT interactions
         $users = [
             // ============================================
             // SUPER ADMINS
@@ -64,30 +65,6 @@ class UserSeeder extends Seeder
                 'department_code' => 'PROC',
                 'employee_id' => 'EMP-1050',
                 'phone' => '+855 12 000 002',
-                'role_key' => 'super_admin',
-            ],
-            [
-                'name' => 'Sopheap',
-                'email' => 'sopheap@kimmix.com',
-                'department_code' => 'FIN',
-                'employee_id' => 'EMP-1075',
-                'phone' => '+855 12 000 003',
-                'role_key' => 'super_admin',
-            ],
-            [
-                'name' => 'Vutty',
-                'email' => 'vutty@kimmix.com',
-                'department_code' => 'HSE',
-                'employee_id' => 'EMP-1100',
-                'phone' => '+855 12 000 004',
-                'role_key' => 'super_admin',
-            ],
-            [
-                'name' => 'Super Admin 01',
-                'email' => 'superadmin01@kimmix.com',
-                'department_code' => 'IT-SD',
-                'employee_id' => 'EMP-1225',
-                'phone' => '+855 12 000 005',
                 'role_key' => 'super_admin',
             ],
 
@@ -114,160 +91,64 @@ class UserSeeder extends Seeder
                 'phone' => '+855 12 345 678',
                 'role_key' => 'line_manager',
             ],
-            [
-                'name' => 'Manager 01',
-                'email' => 'manager01@kimmix.com',
-                'department_code' => 'IT-SD',
-                'employee_id' => 'EMP-1175',
-                'phone' => '+855 12 345 679',
-                'role_key' => 'line_manager',
-            ],
-            [
-                'name' => 'Sopheap LM',
-                'email' => 'sopheap.lm@kimmix.com',
-                'department_code' => 'FIN',
-                'employee_id' => 'EMP-1500',
-                'phone' => '+855 12 345 700',
-                'role_key' => 'line_manager',
-            ],
-            [
-                'name' => 'Vutty LM',
-                'email' => 'vutty.lm@kimmix.com',
-                'department_code' => 'HSE',
-                'employee_id' => 'EMP-1525',
-                'phone' => '+855 12 345 701',
-                'role_key' => 'line_manager',
-            ],
-            [
-                'name' => 'Vanny LM',
-                'email' => 'vanny.lm@kimmix.com',
-                'department_code' => 'PROC',
-                'employee_id' => 'EMP-1550',
-                'phone' => '+855 12 345 702',
-                'role_key' => 'line_manager',
-            ],
 
             // ============================================
             // MANAGERS
             // ============================================
             [
-                'name' => 'Sopheap Manager',
-                'email' => 'sopheap.manager@kimmix.com',
-                'department_code' => 'IT-SD',
-                'employee_id' => 'EMP-1425',
-                'phone' => '+855 12 345 685',
-                'role_key' => 'manager',
-            ],
-            [
-                'name' => 'Vannak Field',
-                'email' => 'vannak.field@kimmix.com',
-                'department_code' => 'FIELD-ENG',
-                'employee_id' => 'EMP-1450',
-                'phone' => '+855 12 345 686',
+                'name' => 'Vutty',
+                'email' => 'vutty63552@outlook.com',
+                'department_code' => 'HSE',
+                'employee_id' => 'EMP-1700',
+                'phone' => '+855 12 345 679',
                 'role_key' => 'manager',
             ],
 
             // ============================================
-            // AGENTS
+            // AGENTS (IT Support Staff)
             // ============================================
-            [
-                'name' => 'Pov',
-                'email' => 'pov@kimmix.com',
-                'department_code' => 'FIN',
-                'employee_id' => 'EMP-1125',
-                'phone' => '+855 12 345 680',
-                'role_key' => 'agent',
-            ],
-            [
-                'name' => 'Agent 01',
-                'email' => 'agent01@kimmix.com',
-                'department_code' => 'IT-SD',
-                'employee_id' => 'EMP-1150',
-                'phone' => '+855 12 345 681',
-                'role_key' => 'agent',
-            ],
             [
                 'name' => 'Sokha',
-                'email' => 'sokha@kimmix.com',
-                'department_code' => 'FIELD-ENG',
-                'employee_id' => 'EMP-1250',
-                'phone' => '+855 12 345 678',
-                'role_key' => 'agent',
-            ],
-            [
-                'name' => 'Ratha',
-                'email' => 'ratha@kimmix.com',
+                'email' => 'sokha6338@outlook.com',
                 'department_code' => 'IT-SD',
-                'employee_id' => 'EMP-1275',
-                'phone' => '+855 12 345 679',
-                'role_key' => 'agent',
-            ],
-            [
-                'name' => 'Srey',
-                'email' => 'srey@kimmix.com',
-                'department_code' => 'PROC',
-                'employee_id' => 'EMP-1300',
+                'employee_id' => 'EMP-1800',
                 'phone' => '+855 12 345 680',
                 'role_key' => 'agent',
             ],
             [
-                'name' => 'Dara',
-                'email' => 'dara@kimmix.com',
-                'department_code' => 'HSE',
-                'employee_id' => 'EMP-1325',
+                'name' => 'Sunwukhong',
+                'email' => 'sunwukhongking@gmail.com',
+                'department_code' => 'IT-SD',
+                'employee_id' => 'EMP-1900',
                 'phone' => '+855 12 345 681',
-                'role_key' => 'agent',
-            ],
-            [
-                'name' => 'Sophea',
-                'email' => 'sophea@kimmix.com',
-                'department_code' => 'FIN',
-                'employee_id' => 'EMP-1350',
-                'phone' => '+855 12 345 682',
                 'role_key' => 'agent',
             ],
 
             // ============================================
-            // REQUESTERS
+            // REQUESTERS (End Users)
             // ============================================
             [
                 'name' => 'Chanthou',
-                'email' => 'chanthou@kimmix.com',
+                'email' => 'chanthou121@outlook.com',
                 'department_code' => 'IT-SD',
-                'employee_id' => 'EMP-1375',
-                'phone' => '+855 12 345 683',
-                'role_key' => 'requester',
-            ],
-            [
-                'name' => 'Sokun',
-                'email' => 'sokun@kimmix.com',
-                'department_code' => 'FIELD-ENG',
-                'employee_id' => 'EMP-1400',
-                'phone' => '+855 12 345 684',
-                'role_key' => 'requester',
-            ],
-            [
-                'name' => 'Requester 01',
-                'email' => 'requester01@kimmix.com',
-                'department_code' => 'IT-SD',
-                'employee_id' => 'EMP-1200',
-                'phone' => '+855 12 345 687',
+                'employee_id' => 'EMP-2000',
+                'phone' => '+855 12 345 682',
                 'role_key' => 'requester',
             ],
             [
                 'name' => 'Dongdong',
                 'email' => 'dongdongmi72@gmail.com',
                 'department_code' => 'FIELD-ENG',
-                'employee_id' => 'EMP-1600',
-                'phone' => '+855 12 345 688',
+                'employee_id' => 'EMP-2100',
+                'phone' => '+855 12 345 683',
                 'role_key' => 'requester',
             ],
             [
-                'name' => 'Sunwukhong',
-                'email' => 'sunwukhongking@gmail.com',
-                'department_code' => 'IT-SD',
-                'employee_id' => 'EMP-1625',
-                'phone' => '+855 12 345 689',
+                'name' => 'Sokun',
+                'email' => 'sokun12442@outlook.com',
+                'department_code' => 'FIELD-ENG',
+                'employee_id' => 'EMP-2200',
+                'phone' => '+855 12 345 684',
                 'role_key' => 'requester',
             ],
         ];

@@ -59,6 +59,7 @@ class EmailTemplate extends Model
 
     /**
      * Replace variables in template with actual values
+     * Supports both {{variable}} and {{{variable}}} formats
      */
     public function render(array $data): array
     {
@@ -67,10 +68,21 @@ class EmailTemplate extends Model
         $bodyText = $this->body_text ?? '';
 
         foreach ($data as $key => $value) {
-            $placeholder = "{{{$key}}}";
-            $subject = str_replace($placeholder, $value, $subject);
-            $bodyHtml = str_replace($placeholder, $value, $bodyHtml);
-            $bodyText = str_replace($placeholder, $value, $bodyText);
+            // Support both {{variable}} (double braces) and {{{variable}}} (triple braces) formats
+            // Double braces: {{variable}} - PHP string: "{{{$key}}}"
+            // Triple braces: {{{variable}}} - PHP string: "{{{{$key}}}}"
+            $placeholderDouble = "{{{$key}}}";  // Results in {{variable}}
+            $placeholderTriple = "{{{{$key}}}}";  // Results in {{{variable}}}
+            
+            // Replace double braces format {{variable}}
+            $subject = str_replace($placeholderDouble, $value, $subject);
+            $bodyHtml = str_replace($placeholderDouble, $value, $bodyHtml);
+            $bodyText = str_replace($placeholderDouble, $value, $bodyText);
+            
+            // Replace triple braces format {{{variable}}}
+            $subject = str_replace($placeholderTriple, $value, $subject);
+            $bodyHtml = str_replace($placeholderTriple, $value, $bodyHtml);
+            $bodyText = str_replace($placeholderTriple, $value, $bodyText);
         }
 
         return [
