@@ -21,6 +21,7 @@ class TicketResource extends JsonResource
             'description' => $this->description,
             'status' => $this->status,
             'priority' => $this->priority,
+            'estimated_cost' => $this->estimated_cost,
             'source' => $this->source,
             'requester' => $this->whenLoaded('requester'),
             'assigned_team' => $this->whenLoaded('assignedTeam'),

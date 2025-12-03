@@ -34,6 +34,7 @@ class EmailTemplate extends Model
         'ticket_resolved',
         'ticket_closed',
         'ticket_commented',
+        'comment_added',
         'ticket_mentioned',
         'sla_breached',
         'sla_warning',
@@ -67,7 +68,38 @@ class EmailTemplate extends Model
         $bodyHtml = $this->body_html ?? '';
         $bodyText = $this->body_text ?? '';
 
+        // First, handle Handlebars conditionals {{#if variable}}...{{/if}}
+        // Only hide blocks if value is truly empty/null (not display strings like "Unassigned")
         foreach ($data as $key => $value) {
+            // Check if value is truly empty (null, empty string, or false)
+            // But keep display values like "Unassigned", "No category" - these should show
+            $isEmpty = ($value === null || $value === '' || $value === false);
+            
+            if ($isEmpty) {
+                // Remove entire {{#if variable}}...{{/if}} blocks when value is truly empty
+                $pattern = '/\{\{#if\s+' . preg_quote($key, '/') . '\}\}.*?\{\{\/if\}\}/s';
+                $subject = preg_replace($pattern, '', $subject);
+                $bodyHtml = preg_replace($pattern, '', $bodyHtml);
+                $bodyText = preg_replace($pattern, '', $bodyText);
+            } else {
+                // Remove the {{#if}} and {{/if}} tags but keep the content
+                $pattern = '/\{\{#if\s+' . preg_quote($key, '/') . '\}\}/';
+                $subject = preg_replace($pattern, '', $subject);
+                $bodyHtml = preg_replace($pattern, '', $bodyHtml);
+                $bodyText = preg_replace($pattern, '', $bodyText);
+                
+                $pattern = '/\{\{\/if\}\}/';
+                $subject = preg_replace($pattern, '', $subject);
+                $bodyHtml = preg_replace($pattern, '', $bodyHtml);
+                $bodyText = preg_replace($pattern, '', $bodyText);
+            }
+        }
+
+        // Then replace variables
+        foreach ($data as $key => $value) {
+            // Convert value to string
+            $stringValue = is_array($value) ? implode(', ', $value) : (string) $value;
+            
             // Support both {{variable}} (double braces) and {{{variable}}} (triple braces) formats
             // Double braces: {{variable}} - PHP string: "{{{$key}}}"
             // Triple braces: {{{variable}}} - PHP string: "{{{{$key}}}}"
@@ -75,14 +107,14 @@ class EmailTemplate extends Model
             $placeholderTriple = "{{{{$key}}}}";  // Results in {{{variable}}}
             
             // Replace double braces format {{variable}}
-            $subject = str_replace($placeholderDouble, $value, $subject);
-            $bodyHtml = str_replace($placeholderDouble, $value, $bodyHtml);
-            $bodyText = str_replace($placeholderDouble, $value, $bodyText);
+            $subject = str_replace($placeholderDouble, $stringValue, $subject);
+            $bodyHtml = str_replace($placeholderDouble, $stringValue, $bodyHtml);
+            $bodyText = str_replace($placeholderDouble, $stringValue, $bodyText);
             
             // Replace triple braces format {{{variable}}}
-            $subject = str_replace($placeholderTriple, $value, $subject);
-            $bodyHtml = str_replace($placeholderTriple, $value, $bodyHtml);
-            $bodyText = str_replace($placeholderTriple, $value, $bodyText);
+            $subject = str_replace($placeholderTriple, $stringValue, $subject);
+            $bodyHtml = str_replace($placeholderTriple, $stringValue, $bodyHtml);
+            $bodyText = str_replace($placeholderTriple, $stringValue, $bodyText);
         }
 
         return [

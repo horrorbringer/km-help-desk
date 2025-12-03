@@ -68,17 +68,30 @@ class ApprovalWorkflowService
         try {
             $notificationService = app(NotificationService::class);
             if ($lmApprover) {
+                Log::info('Sending approval requested notification', [
+                    'ticket_id' => $ticket->id,
+                    'approval_level' => 'lm',
+                    'approver_id' => $lmApprover->id,
+                    'approver_email' => $lmApprover->email,
+                ]);
                 $notificationService->notifyApprovalRequested($ticket, $lmApprover, 'lm');
-                Log::info('Approval workflow initialized', [
+                Log::info('Approval workflow initialized and notification sent', [
                     'ticket_id' => $ticket->id,
                     'approval_level' => 'lm',
                     'approver_id' => $lmApprover->id,
                 ]);
+            } else {
+                Log::warning('No Line Manager approver found for ticket', [
+                    'ticket_id' => $ticket->id,
+                    'requester_id' => $ticket->requester_id,
+                    'requester_department_id' => $ticket->requester?->department_id,
+                ]);
             }
         } catch (\Exception $e) {
-            Log::warning('Failed to send approval notification', [
+            Log::error('Failed to send approval notification', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
     }
@@ -111,12 +124,25 @@ class ApprovalWorkflowService
 
         // Send approval notification
         try {
+            Log::info('Sending approval approved notification', [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approval->approval_level,
+                'approver_id' => $approver->id,
+                'approver_email' => $approver->email,
+                'requester_id' => $ticket->requester_id,
+                'requester_email' => $ticket->requester?->email,
+            ]);
             $notificationService = app(NotificationService::class);
             $notificationService->notifyApprovalApproved($ticket, $approver, $approval->approval_level, $comments);
+            Log::info('Approval approved notification sent successfully', [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approval->approval_level,
+            ]);
         } catch (\Exception $e) {
-            Log::warning('Failed to send approval approved notification', [
+            Log::error('Failed to send approval approved notification', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
 
@@ -169,17 +195,26 @@ class ApprovalWorkflowService
 
         // Send notification to requester
         try {
+            Log::info('Sending approval rejected notification', [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approval->approval_level,
+                'approver_id' => $approver->id,
+                'approver_email' => $approver->email,
+                'requester_id' => $ticket->requester_id,
+                'requester_email' => $ticket->requester?->email,
+            ]);
             $notificationService = app(NotificationService::class);
             $notificationService->notifyApprovalRejected($ticket, $approver, $approval->approval_level, $comments);
-            Log::info('Ticket rejected', [
+            Log::info('Ticket rejected and notification sent', [
                 'ticket_id' => $ticket->id,
                 'approval_level' => $approval->approval_level,
                 'note' => 'Ticket preserved for audit - not deleted',
             ]);
         } catch (\Exception $e) {
-            Log::warning('Failed to send rejection notification', [
+            Log::error('Failed to send rejection notification', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
     }
@@ -252,13 +287,14 @@ class ApprovalWorkflowService
                 'status' => 'assigned',
             ]);
 
+            $team = Department::find($targetTeamId);
             $ticket->histories()->create([
                 'user_id' => Auth::id(),
                 'action' => 'routed',
                 'field_name' => 'assigned_team_id',
                 'old_value' => null,
                 'new_value' => $targetTeamId,
-                'description' => 'Ticket routed to IT Department after LM approval',
+                'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . ' after LM approval',
                 'created_at' => now(),
             ]);
         }
@@ -269,25 +305,32 @@ class ApprovalWorkflowService
      */
     protected function routeAfterHODApproval(Ticket $ticket, ?int $routedToTeamId = null): void
     {
-        // HOD can route to different destinations
-        if ($routedToTeamId) {
+        // HOD can route to different destinations, or use category's default team
+        $teamId = $routedToTeamId ?? $ticket->category?->default_team_id;
+        
+        if ($teamId) {
             $ticket->update([
-                'assigned_team_id' => $routedToTeamId,
+                'assigned_team_id' => $teamId,
                 'status' => 'assigned',
             ]);
 
-            $team = Department::find($routedToTeamId);
+            $team = Department::find($teamId);
             $ticket->histories()->create([
                 'user_id' => Auth::id(),
                 'action' => 'routed',
                 'field_name' => 'assigned_team_id',
                 'old_value' => null,
-                'new_value' => $routedToTeamId,
+                'new_value' => $teamId,
                 'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . ' after HOD approval',
                 'created_at' => now(),
             ]);
         } else {
-            // Default: Mark as resolved/completed
+            // Fallback: If no team specified and category has no default team, mark as resolved
+            // This should rarely happen if categories are properly configured
+            Log::warning('HOD approval completed but no team to route to', [
+                'ticket_id' => $ticket->id,
+                'category_id' => $ticket->category_id,
+            ]);
             $ticket->update(['status' => 'resolved']);
         }
     }
@@ -351,12 +394,26 @@ class ApprovalWorkflowService
                 try {
                     $notificationService = app(NotificationService::class);
                     if ($hodApprover) {
+                        Log::info('Sending HOD approval requested notification', [
+                            'ticket_id' => $ticket->id,
+                            'approval_level' => 'hod',
+                            'approver_id' => $hodApprover->id,
+                            'approver_email' => $hodApprover->email,
+                        ]);
                         $notificationService->notifyApprovalRequested($ticket, $hodApprover, 'hod');
+                        Log::info('HOD approval requested notification sent successfully', [
+                            'ticket_id' => $ticket->id,
+                        ]);
+                    } else {
+                        Log::warning('No HOD approver found for ticket', [
+                            'ticket_id' => $ticket->id,
+                        ]);
                     }
                 } catch (\Exception $e) {
-                    Log::warning('Failed to send HOD approval notification', [
+                    Log::error('Failed to send HOD approval notification', [
                         'ticket_id' => $ticket->id,
                         'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
                     ]);
                 }
             }
@@ -430,21 +487,64 @@ class ApprovalWorkflowService
     protected function requiresHODApproval(Ticket $ticket): bool
     {
         // Real-world logic: Require HOD approval when:
-        // 1. Category explicitly requires HOD approval
-        if ($ticket->category && $ticket->category->requires_hod_approval) {
-            return true;
-        }
-        
-        // 2. Priority is high/critical (unless category overrides)
+        // 1. Priority is high/critical
         $priorityBased = in_array($ticket->priority, ['high', 'critical']);
         
-        // 3. Cost exceeds threshold (if cost field exists and category has threshold)
-        // Future: $costExceedsThreshold = $ticket->estimated_cost && 
-        //         $ticket->category->hod_approval_threshold &&
-        //         $ticket->estimated_cost > $ticket->category->hod_approval_threshold;
+        // 2. Cost exceeds threshold (if cost field exists and category has threshold)
+        // This takes precedence over category flag for cost-based decisions
+        $costExceedsThreshold = false;
+        if ($ticket->category && $ticket->category->hod_approval_threshold) {
+            $ticketCost = $ticket->estimated_cost ?? 0;
+            if ($ticketCost >= $ticket->category->hod_approval_threshold) {
+                $costExceedsThreshold = true;
+                Log::info('HOD approval required due to cost threshold', [
+                    'ticket_id' => $ticket->id,
+                    'cost' => $ticketCost,
+                    'threshold' => $ticket->category->hod_approval_threshold,
+                    'category' => $ticket->category->name,
+                ]);
+            } else {
+                Log::info('HOD approval NOT required - cost below threshold', [
+                    'ticket_id' => $ticket->id,
+                    'cost' => $ticketCost,
+                    'threshold' => $ticket->category->hod_approval_threshold,
+                    'category' => $ticket->category->name,
+                ]);
+            }
+        }
         
-        // Return true if priority-based OR category requires it
-        return $priorityBased || ($ticket->category && $ticket->category->requires_hod_approval);
+        // 3. Category explicitly requires HOD approval (only if no cost threshold or cost not set)
+        // If category has a threshold, we use cost-based logic instead
+        $categoryRequiresHOD = false;
+        if ($ticket->category && $ticket->category->requires_hod_approval) {
+            // If category has a threshold, only require HOD if cost exceeds it
+            // Otherwise, use the category flag
+            if ($ticket->category->hod_approval_threshold) {
+                // Category has threshold - use cost-based logic (already checked above)
+                $categoryRequiresHOD = false; // Cost-based logic handles this
+            } else {
+                // Category requires HOD but no threshold - always require HOD
+                $categoryRequiresHOD = true;
+                Log::info('HOD approval required due to category flag (no threshold)', [
+                    'ticket_id' => $ticket->id,
+                    'category' => $ticket->category->name,
+                ]);
+            }
+        }
+        
+        // Return true if priority-based OR cost exceeds threshold OR category requires it (without threshold)
+        $requiresHOD = $priorityBased || $costExceedsThreshold || $categoryRequiresHOD;
+        
+        if ($requiresHOD) {
+            Log::info('HOD approval required', [
+                'ticket_id' => $ticket->id,
+                'priority_based' => $priorityBased,
+                'category_requires' => $ticket->category && $ticket->category->requires_hod_approval,
+                'cost_exceeds' => $costExceedsThreshold,
+            ]);
+        }
+        
+        return $requiresHOD;
     }
 
     /**
@@ -494,14 +594,62 @@ class ApprovalWorkflowService
      */
     protected function findHOD(Ticket $ticket): ?User
     {
-        // Find HOD (can be based on department or organization level)
+        // Priority 1: Find HOD in the ticket's assigned team/department
+        if ($ticket->assigned_team_id) {
+            $hod = User::where('department_id', $ticket->assigned_team_id)
+                ->whereHas('roles', function ($query) {
+                    $query->whereIn('name', ['Head of Department', 'HOD']);
+                })
+                ->where('is_active', true)
+                ->first();
+            
+            if ($hod) {
+                return $hod;
+            }
+        }
+        
+        // Priority 2: Find HOD in requester's department
+        if ($ticket->requester && $ticket->requester->department_id) {
+            $hod = User::where('department_id', $ticket->requester->department_id)
+                ->whereHas('roles', function ($query) {
+                    $query->whereIn('name', ['Head of Department', 'HOD']);
+                })
+                ->where('is_active', true)
+                ->first();
+            
+            if ($hod) {
+                return $hod;
+            }
+        }
+        
+        // Priority 3: Find any Head of Department (prioritize HOD role over Super Admin)
         $hod = User::whereHas('roles', function ($query) {
-            $query->whereIn('name', ['HOD', 'Head of Department', 'Director', 'Super Admin']);
+            $query->whereIn('name', ['Head of Department', 'HOD']);
         })
         ->where('is_active', true)
         ->first();
-
-        return $hod;
+        
+        if ($hod) {
+            return $hod;
+        }
+        
+        // Priority 4: Fallback to Director
+        $director = User::whereHas('roles', function ($query) {
+            $query->where('name', 'Director');
+        })
+        ->where('is_active', true)
+        ->first();
+        
+        if ($director) {
+            return $director;
+        }
+        
+        // Priority 5: Last resort - Super Admin (only if no HOD/Director found)
+        return User::whereHas('roles', function ($query) {
+            $query->where('name', 'Super Admin');
+        })
+        ->where('is_active', true)
+        ->first();
     }
 }
 

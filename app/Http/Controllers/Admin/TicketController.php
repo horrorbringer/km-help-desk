@@ -107,12 +107,27 @@ class TicketController extends Controller
 
             // Send notifications (wrap in try-catch to prevent failures from blocking ticket creation)
             try {
+                \Log::info('TicketController::store - Calling notification service', [
+                    'ticket_id' => $ticket->id,
+                    'assigned_agent_id' => $ticket->assigned_agent_id,
+                    'assigned_team_id' => $ticket->assigned_team_id,
+                ]);
                 $notificationService = app(NotificationService::class);
                 $notificationService->notifyTicketCreated($ticket);
+                
+                // If ticket was created with an assigned agent, also send assignment notification
+                if ($ticket->assigned_agent_id) {
+                    \Log::info('TicketController::store - Ticket created with assigned agent, calling notifyTicketAssigned', [
+                        'ticket_id' => $ticket->id,
+                        'assigned_agent_id' => $ticket->assigned_agent_id,
+                    ]);
+                    $notificationService->notifyTicketAssigned($ticket);
+                }
             } catch (\Exception $e) {
-                \Log::warning('Notification service failed on ticket creation', [
+                \Log::error('Notification service failed on ticket creation', [
                     'ticket_id' => $ticket->id,
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                 ]);
             }
 
@@ -211,22 +226,60 @@ class TicketController extends Controller
         $originalData = $ticket->getOriginal();
         $data = $this->preparePayload($request->validated(), $ticket);
 
-        // Track changes
+        // Track changes - normalize values for comparison
+        // Skip array values (they're handled by syncRelations)
         $changes = [];
         foreach ($data as $key => $value) {
-            if (isset($originalData[$key]) && $originalData[$key] != $value) {
+            // Skip array values - they're handled separately by syncRelations
+            if (is_array($value)) {
+                continue;
+            }
+            
+            $oldValue = $originalData[$key] ?? null;
+            $newValue = $value;
+            
+            // Normalize null/empty string comparisons
+            if (($oldValue === null || $oldValue === '') && ($newValue === null || $newValue === '')) {
+                continue; // Both are empty, no change
+            }
+            
+            // Normalize for comparison (convert to string for comparison)
+            $oldNormalized = $oldValue === null ? null : (string) $oldValue;
+            $newNormalized = $newValue === null ? null : (string) $newValue;
+            
+            if ($oldNormalized !== $newNormalized) {
                 $changes[$key] = [
-                    'old' => $originalData[$key],
-                    'new' => $value,
+                    'old' => $oldValue,
+                    'new' => $newValue,
                 ];
             }
         }
+        
+        // Debug: Log status field specifically
+        if (isset($data['status'])) {
+            \Log::info('TicketController::update - Status field in data', [
+                'ticket_id' => $ticket->id,
+                'old_status' => $originalData['status'] ?? null,
+                'new_status' => $data['status'],
+                'status_in_changes' => isset($changes['status']),
+            ]);
+        }
+        
+        \Log::info('TicketController::update - Changes detected', [
+            'ticket_id' => $ticket->id,
+            'changes_count' => count($changes),
+            'changes' => $changes,
+        ]);
 
         $statusChanged = isset($changes['status']);
         
         $ticket->update($data);
 
         $this->syncRelations($ticket, $request->validated());
+        
+        // Refresh ticket to ensure all relationships are loaded for notifications
+        $ticket->refresh();
+        $ticket->load(['requester', 'assignedAgent', 'assignedTeam', 'category', 'project']);
 
         // Record history for changes
         foreach ($changes as $field => $change) {
@@ -268,14 +321,127 @@ class TicketController extends Controller
         $escalationService->checkTicket($ticket);
 
         // Send notifications if there were changes
+        \Log::info('TicketController::update - Checking for notifications', [
+            'ticket_id' => $ticket->id,
+            'changes_count' => count($changes),
+            'changes_keys' => array_keys($changes),
+        ]);
+        
         if (!empty($changes)) {
-            $notificationService = app(NotificationService::class);
-            $notificationService->notifyTicketUpdated($ticket, Auth::user(), $changes);
+            try {
+                $notificationService = app(NotificationService::class);
+                
+                \Log::info('TicketController::update - Calling notification service', [
+                    'ticket_id' => $ticket->id,
+                ]);
+                
+                // Check if ticket was assigned (agent or team)
+                // Only send assignment email if:
+                // 1. New assignment (old was null/empty, new is not null)
+                // 2. Reassignment (old was not null, new is different and not null)
+                if (isset($changes['assigned_agent_id'])) {
+                    $oldAgent = $changes['assigned_agent_id']['old'];
+                    $newAgent = $changes['assigned_agent_id']['new'];
+                    \Log::info('TicketController::update - Assignment change detected', [
+                        'ticket_id' => $ticket->id,
+                        'old_agent' => $oldAgent,
+                        'new_agent' => $newAgent,
+                    ]);
+                    // Only notify if there's a new assignment (not unassigning)
+                    if ($newAgent && $oldAgent != $newAgent) {
+                        \Log::info('TicketController::update - Calling notifyTicketAssigned', [
+                            'ticket_id' => $ticket->id,
+                        ]);
+                        $notificationService->notifyTicketAssigned($ticket);
+                    }
+                } elseif (isset($changes['assigned_team_id'])) {
+                    $oldTeam = $changes['assigned_team_id']['old'];
+                    $newTeam = $changes['assigned_team_id']['new'];
+                    \Log::info('TicketController::update - Team assignment change detected', [
+                        'ticket_id' => $ticket->id,
+                        'old_team' => $oldTeam,
+                        'new_team' => $newTeam,
+                    ]);
+                    // Only notify if there's a new assignment (not unassigning)
+                    if ($newTeam && $oldTeam != $newTeam) {
+                        \Log::info('TicketController::update - Calling notifyTicketAssigned for team', [
+                            'ticket_id' => $ticket->id,
+                        ]);
+                        $notificationService->notifyTicketAssigned($ticket);
+                    }
+                }
+                
+                \Log::info('TicketController::update - Calling notifyTicketUpdated', [
+                    'ticket_id' => $ticket->id,
+                ]);
+                $notificationService->notifyTicketUpdated($ticket, Auth::user(), $changes);
 
-            // Check if ticket was resolved
-            if (isset($changes['status']) && $changes['status']['new'] === 'resolved') {
-                $notificationService->notifyTicketResolved($ticket, Auth::user());
+                // Check if ticket was resolved or closed
+                // Also check the ticket's current status after update (in case changes array missed it)
+                $currentStatus = strtolower(trim((string) $ticket->status));
+                
+                if (isset($changes['status'])) {
+                    $oldStatus = $changes['status']['old'] ?? null;
+                    $newStatus = trim((string) $changes['status']['new']);
+                    \Log::info('TicketController::update - Status change detected', [
+                        'ticket_id' => $ticket->id,
+                        'old_status' => $oldStatus,
+                        'new_status' => $newStatus,
+                        'current_status' => $ticket->status,
+                        'status_is_resolved' => (strtolower($newStatus) === 'resolved'),
+                        'status_is_closed' => (strtolower($newStatus) === 'closed'),
+                    ]);
+                    
+                    // Check if ticket was resolved (use case-insensitive comparison to be safe)
+                    if (strtolower($newStatus) === 'resolved') {
+                        \Log::info('TicketController::update - Calling notifyTicketResolved', [
+                            'ticket_id' => $ticket->id,
+                            'new_status' => $newStatus,
+                        ]);
+                        $notificationService->notifyTicketResolved($ticket, Auth::user());
+                    }
+                    
+                    // Check if ticket was closed (use case-insensitive comparison to be safe)
+                    if (strtolower($newStatus) === 'closed') {
+                        \Log::info('TicketController::update - Calling notifyTicketClosed', [
+                            'ticket_id' => $ticket->id,
+                            'new_status' => $newStatus,
+                        ]);
+                        $notificationService->notifyTicketClosed($ticket, Auth::user());
+                    }
+                } else {
+                    // Fallback: Check current status even if not in changes array
+                    // This handles cases where status might have been set differently
+                    \Log::info('TicketController::update - No status in changes, checking current status', [
+                        'ticket_id' => $ticket->id,
+                        'current_status' => $ticket->status,
+                    ]);
+                    
+                    if ($currentStatus === 'resolved') {
+                        \Log::info('TicketController::update - Current status is resolved, calling notifyTicketResolved', [
+                            'ticket_id' => $ticket->id,
+                        ]);
+                        $notificationService->notifyTicketResolved($ticket, Auth::user());
+                    }
+                    
+                    if ($currentStatus === 'closed') {
+                        \Log::info('TicketController::update - Current status is closed, calling notifyTicketClosed', [
+                            'ticket_id' => $ticket->id,
+                        ]);
+                        $notificationService->notifyTicketClosed($ticket, Auth::user());
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::error('TicketController::update - Notification error', [
+                    'ticket_id' => $ticket->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
             }
+        } else {
+            \Log::info('TicketController::update - No changes detected, skipping notifications', [
+                'ticket_id' => $ticket->id,
+            ]);
         }
 
         // Clear search cache
@@ -314,9 +480,20 @@ class TicketController extends Controller
 
         $tickets = Ticket::whereIn('id', $ticketIds)->get();
         $updatedCount = 0;
+        $notificationService = app(NotificationService::class);
+
+        \Log::info('TicketController::bulkUpdate - Starting bulk update', [
+            'action' => $action,
+            'value' => $value,
+            'ticket_count' => count($tickets),
+        ]);
 
         foreach ($tickets as $ticket) {
             $changed = false;
+
+            // Refresh ticket to ensure relationships are loaded
+            $ticket->refresh();
+            $ticket->load(['requester', 'assignedAgent', 'assignedTeam', 'category', 'project']);
 
             switch ($action) {
                 case 'status':
@@ -351,6 +528,45 @@ class TicketController extends Controller
                         // Execute automation
                         $automationService = app(AutomationService::class);
                         $automationService->onTicketStatusChanged($ticket);
+
+                        // Send email notifications for status changes
+                        try {
+                            \Log::info('TicketController::bulkUpdate - Status changed, sending notifications', [
+                                'ticket_id' => $ticket->id,
+                                'old_status' => $oldStatus,
+                                'new_status' => $value,
+                            ]);
+
+                            // Send update notification
+                            $notificationService->notifyTicketUpdated($ticket, Auth::user(), [
+                                'status' => [
+                                    'old' => $oldStatus,
+                                    'new' => $value,
+                                ],
+                            ]);
+
+                            // Send resolved notification if status is resolved
+                            if (strtolower($value) === 'resolved') {
+                                \Log::info('TicketController::bulkUpdate - Calling notifyTicketResolved', [
+                                    'ticket_id' => $ticket->id,
+                                ]);
+                                $notificationService->notifyTicketResolved($ticket, Auth::user());
+                            }
+
+                            // Send closed notification if status is closed
+                            if (strtolower($value) === 'closed') {
+                                \Log::info('TicketController::bulkUpdate - Calling notifyTicketClosed', [
+                                    'ticket_id' => $ticket->id,
+                                ]);
+                                $notificationService->notifyTicketClosed($ticket, Auth::user());
+                            }
+                        } catch (\Exception $e) {
+                            \Log::error('TicketController::bulkUpdate - Notification error for status change', [
+                                'ticket_id' => $ticket->id,
+                                'error' => $e->getMessage(),
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                        }
                     }
                     break;
 
@@ -371,6 +587,26 @@ class TicketController extends Controller
                             'description' => "Priority changed from {$oldPriority} to {$value}",
                             'created_at' => now(),
                         ]);
+
+                        // Send email notification for priority change
+                        try {
+                            \Log::info('TicketController::bulkUpdate - Priority changed, sending update notification', [
+                                'ticket_id' => $ticket->id,
+                                'old_priority' => $oldPriority,
+                                'new_priority' => $value,
+                            ]);
+                            $notificationService->notifyTicketUpdated($ticket, Auth::user(), [
+                                'priority' => [
+                                    'old' => $oldPriority,
+                                    'new' => $value,
+                                ],
+                            ]);
+                        } catch (\Exception $e) {
+                            \Log::error('TicketController::bulkUpdate - Notification error for priority change', [
+                                'ticket_id' => $ticket->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     }
                     break;
 
@@ -383,6 +619,10 @@ class TicketController extends Controller
                         $ticket->save();
                         $changed = true;
 
+                        // Refresh to load relationships
+                        $ticket->refresh();
+                        $ticket->load(['requester', 'assignedAgent', 'assignedTeam']);
+
                         // Record history
                         $ticket->histories()->create([
                             'user_id' => Auth::id(),
@@ -394,14 +634,26 @@ class TicketController extends Controller
                             'created_at' => now(),
                         ]);
 
-                        // Send notification
-                        $notificationService = app(NotificationService::class);
-                        $notificationService->notifyAgent(
-                            $ticket,
-                            'ticket_assigned',
-                            'Ticket Assigned',
-                            "You have been assigned to ticket {$ticket->ticket_number}: {$ticket->subject}"
-                        );
+                        // Send email notification for assignment
+                        try {
+                            \Log::info('TicketController::bulkUpdate - Agent assigned, sending notifications', [
+                                'ticket_id' => $ticket->id,
+                                'old_agent' => $oldAgent,
+                                'new_agent' => $value,
+                            ]);
+                            $notificationService->notifyTicketAssigned($ticket);
+                            $notificationService->notifyTicketUpdated($ticket, Auth::user(), [
+                                'assigned_agent_id' => [
+                                    'old' => $oldAgent,
+                                    'new' => $value,
+                                ],
+                            ]);
+                        } catch (\Exception $e) {
+                            \Log::error('TicketController::bulkUpdate - Notification error for agent assignment', [
+                                'ticket_id' => $ticket->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     }
                     break;
 
@@ -414,6 +666,10 @@ class TicketController extends Controller
                         $ticket->save();
                         $changed = true;
 
+                        // Refresh to load relationships
+                        $ticket->refresh();
+                        $ticket->load(['requester', 'assignedAgent', 'assignedTeam']);
+
                         // Record history
                         $ticket->histories()->create([
                             'user_id' => Auth::id(),
@@ -424,6 +680,27 @@ class TicketController extends Controller
                             'description' => "Assigned to team {$team->name}",
                             'created_at' => now(),
                         ]);
+
+                        // Send email notification for team assignment
+                        try {
+                            \Log::info('TicketController::bulkUpdate - Team assigned, sending notifications', [
+                                'ticket_id' => $ticket->id,
+                                'old_team' => $oldTeam,
+                                'new_team' => $value,
+                            ]);
+                            $notificationService->notifyTicketAssigned($ticket);
+                            $notificationService->notifyTicketUpdated($ticket, Auth::user(), [
+                                'assigned_team_id' => [
+                                    'old' => $oldTeam,
+                                    'new' => $value,
+                                ],
+                            ]);
+                        } catch (\Exception $e) {
+                            \Log::error('TicketController::bulkUpdate - Notification error for team assignment', [
+                                'ticket_id' => $ticket->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     }
                     break;
 
@@ -533,7 +810,7 @@ class TicketController extends Controller
             }
         }
 
-        return Arr::except($data, ['tag_ids', 'watcher_ids']);
+        return Arr::except($data, ['tag_ids', 'watcher_ids', 'custom_fields']);
     }
 
     protected function syncRelations(Ticket $ticket, array $data): void

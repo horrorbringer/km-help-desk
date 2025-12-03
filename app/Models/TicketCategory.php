@@ -63,14 +63,14 @@ class TicketCategory extends Model
      */
     public function descendants(): \Illuminate\Database\Eloquent\Collection
     {
-        $descendants = collect();
+        $allDescendants = [];
         
         foreach ($this->children as $child) {
-            $descendants->push($child);
-            $descendants = $descendants->merge($child->descendants());
+            $allDescendants[] = $child;
+            $allDescendants = array_merge($allDescendants, $child->descendants()->all());
         }
         
-        return $descendants;
+        return new \Illuminate\Database\Eloquent\Collection($allDescendants);
     }
 }
 

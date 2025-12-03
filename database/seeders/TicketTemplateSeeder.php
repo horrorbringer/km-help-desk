@@ -32,7 +32,7 @@ class TicketTemplateSeeder extends Seeder
                 'template_data' => [
                     'subject' => 'Hardware Issue: [Device Type]',
                     'description' => "Please provide the following information:\n\n1. Device Type:\n2. Device Model/Serial Number:\n3. Issue Description:\n4. When did the issue start?\n5. Steps already taken:\n6. Urgency Level:",
-                    'category_id' => $categories->get('hardware')?->id,
+                    'category_id' => $categories->get('hardware-issues')?->id,
                     'assigned_team_id' => $itDepartment?->id,
                     'priority' => 'medium',
                     'status' => 'open',
@@ -64,7 +64,7 @@ class TicketTemplateSeeder extends Seeder
                 'template_data' => [
                     'subject' => 'Network/VPN Connectivity Issue',
                     'description' => "Please provide the following information:\n\n1. Location (Office/Remote):\n2. Device Type:\n3. Error Message (if any):\n4. When did the issue start?\n5. Can you access other websites?\n6. VPN Client Version:",
-                    'category_id' => $categories->get('network-vpn')?->id,
+                    'category_id' => $categories->get('network-connectivity')?->id,
                     'assigned_team_id' => $itDepartment?->id,
                     'priority' => 'high',
                     'status' => 'open',
@@ -96,7 +96,7 @@ class TicketTemplateSeeder extends Seeder
                 'template_data' => [
                     'subject' => 'Procurement Request: [Item Name]',
                     'description' => "Please provide the following information:\n\n1. Item Description:\n2. Quantity:\n3. Business Justification:\n4. Budget Code:\n5. Required Delivery Date:\n6. Preferred Vendor (if any):",
-                    'category_id' => $categories->get('procurement-requests')?->id,
+                    'category_id' => $categories->get('purchase-request')?->id,
                     'assigned_team_id' => $itDepartment?->id,
                     'priority' => 'medium',
                     'status' => 'open',

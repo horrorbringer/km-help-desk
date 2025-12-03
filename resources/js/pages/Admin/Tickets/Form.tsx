@@ -32,6 +32,7 @@ type TicketFormProps = {
     sla_policy?: BaseOption;
     status: string;
     priority: string;
+    estimated_cost?: number | null;
     source: string;
     first_response_at?: string | null;
     first_response_due_at?: string | null;
@@ -172,6 +173,7 @@ export default function TicketForm(props: TicketFormProps) {
     sla_policy_id: ticket?.sla_policy?.id ?? '',
     status: ticket?.status ?? formOptions.statuses[0] ?? 'open',
     priority: ticket?.priority ?? formOptions.priorities[1] ?? 'medium',
+    estimated_cost: ticket?.estimated_cost ?? null,
     source: ticket?.source ?? formOptions.sources[0] ?? 'web',
     first_response_at: defaultDate(ticket?.first_response_at),
     first_response_due_at: defaultDate(ticket?.first_response_due_at),
@@ -211,6 +213,13 @@ export default function TicketForm(props: TicketFormProps) {
       transformed.sla_policy_id = null;
     } else {
       transformed.sla_policy_id = Number(transformed.sla_policy_id) || null;
+    }
+    
+    // Handle estimated_cost - convert empty string to null, convert to number
+    if (transformed.estimated_cost === '' || transformed.estimated_cost === null) {
+      transformed.estimated_cost = null;
+    } else {
+      transformed.estimated_cost = Number(transformed.estimated_cost) || null;
     }
     
     // Handle date fields
@@ -703,6 +712,30 @@ export default function TicketForm(props: TicketFormProps) {
                   </SelectContent>
                 </Select>
                 <Badge className={cn('mt-2', priorityColorMap[priority] ?? '')}>{priority}</Badge>
+              </div>
+
+              <div>
+                <Label htmlFor="estimated_cost">
+                  Estimated Cost ($)
+                  <span className="text-muted-foreground text-xs font-normal ml-1">
+                    (For purchase/expense tickets)
+                  </span>
+                </Label>
+                <Input
+                  id="estimated_cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={data.estimated_cost ?? ''}
+                  onChange={(e) => setData('estimated_cost', e.target.value === '' ? null : e.target.value)}
+                />
+                {formErrors.estimated_cost && (
+                  <p className="text-xs text-destructive mt-1">{formErrors.estimated_cost}</p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  HOD approval required if cost exceeds category threshold (e.g., Hardware: $1,000, Procurement: $500)
+                </p>
               </div>
 
               <div>

@@ -3,158 +3,186 @@
 /**
  * Quick Approval Workflow Test Script
  * 
- * Run this script to quickly test approval workflow features:
- * php artisan tinker < test-approval-workflow.php
+ * Run with: php test-approval-workflow.php
  * 
- * Or copy-paste into tinker:
- * php artisan tinker
+ * This script creates test tickets and demonstrates the approval workflow
  */
+
+require __DIR__ . '/vendor/autoload.php';
+
+$app = require_once __DIR__ . '/bootstrap/app.php';
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\Ticket;
 use App\Models\TicketCategory;
-use App\Models\TicketApproval;
-use App\Models\Department;
 use App\Models\User;
 use App\Services\ApprovalWorkflowService;
 
-echo "=== Approval Workflow Testing ===\n\n";
+echo "=== Approval Workflow Test Script ===\n\n";
 
-// Test 1: Check Categories
-echo "1. Checking Category Settings...\n";
-$categories = TicketCategory::select('name', 'requires_approval', 'requires_hod_approval', 'hod_approval_threshold')
-    ->get();
-foreach ($categories as $cat) {
-    echo "   - {$cat->name}: requires_approval=" . ($cat->requires_approval ? 'YES' : 'NO');
-    if ($cat->requires_hod_approval) {
-        echo ", requires_hod=" . ($cat->requires_hod_approval ? 'YES' : 'NO');
-        if ($cat->hod_approval_threshold) {
-            echo ", threshold=\${$cat->hod_approval_threshold}";
-        }
+$approvalService = app(ApprovalWorkflowService::class);
+
+// Get test users
+$requester = User::where('email', 'chanthou121@outlook.com')->first();
+$lineManager = User::role('Line Manager')->first();
+$hod = User::role('Head of Department')->first();
+
+if (!$requester || !$lineManager || !$hod) {
+    echo "❌ Error: Required test users not found. Please run seeders first.\n";
+    exit(1);
+}
+
+echo "✓ Test users found\n";
+echo "  - Requester: {$requester->name} ({$requester->email})\n";
+echo "  - Line Manager: {$lineManager->name} ({$lineManager->email})\n";
+echo "  - HOD: {$hod->name} ({$hod->email})\n\n";
+
+// Test 1: No Approval Required
+echo "--- Test 1: No Approval Required ---\n";
+$category1 = TicketCategory::where('slug', 'network-connectivity')->first();
+$ticket1 = Ticket::create([
+    'ticket_number' => Ticket::generateTicketNumber(),
+    'subject' => '[TEST] Wi-Fi Connection Issue',
+    'description' => 'Testing direct routing without approval',
+    'requester_id' => $requester->id,
+    'category_id' => $category1->id,
+    'priority' => 'medium',
+    'status' => 'open',
+]);
+
+$approvalService->initializeWorkflow($ticket1);
+$ticket1->refresh();
+
+echo "Ticket #{$ticket1->ticket_number} created\n";
+echo "  Approvals: " . $ticket1->approvals()->count() . "\n";
+echo "  Status: {$ticket1->status}\n";
+echo ($ticket1->approvals()->count() === 0 ? "✓ PASS" : "✗ FAIL") . "\n\n";
+
+// Test 2: LM Approval Only
+echo "--- Test 2: LM Approval Only (Low Cost) ---\n";
+$category2 = TicketCategory::where('slug', 'hardware-requests')->first();
+$ticket2 = Ticket::create([
+    'ticket_number' => Ticket::generateTicketNumber(),
+    'subject' => '[TEST] Request for Keyboard',
+    'description' => 'Testing LM approval workflow',
+    'requester_id' => $requester->id,
+    'category_id' => $category2->id,
+    'priority' => 'medium',
+    'estimated_cost' => 50.00,
+    'status' => 'open',
+]);
+
+$approvalService->initializeWorkflow($ticket2);
+$ticket2->refresh();
+
+echo "Ticket #{$ticket2->ticket_number} created\n";
+echo "  Approvals: " . $ticket2->approvals()->count() . "\n";
+echo "  Status: {$ticket2->status}\n";
+
+$lmApproval = $ticket2->approvals()->where('approval_level', 'lm')->first();
+if ($lmApproval) {
+    echo "  LM Approval: {$lmApproval->status}\n";
+    echo "  Approver: " . ($lmApproval->approver ? $lmApproval->approver->name : 'Not assigned') . "\n";
+}
+
+// Approve LM
+if ($lmApproval) {
+    $approvalService->approve($lmApproval, 'Test approval - within budget');
+    $ticket2->refresh();
+    echo "\n  After LM Approval:\n";
+    echo "    Status: {$ticket2->status}\n";
+    echo "    Total Approvals: " . $ticket2->approvals()->count() . "\n";
+    echo "    HOD Approval Created: " . ($ticket2->approvals()->where('approval_level', 'hod')->exists() ? 'Yes' : 'No') . "\n";
+    echo ($ticket2->approvals()->where('approval_level', 'hod')->count() === 0 ? "✓ PASS" : "✗ FAIL") . "\n\n";
+} else {
+    echo "✗ FAIL: LM approval not created\n\n";
+}
+
+// Test 3: LM + HOD Approval (High Cost)
+echo "--- Test 3: LM + HOD Approval (High Cost) ---\n";
+$ticket3 = Ticket::create([
+    'ticket_number' => Ticket::generateTicketNumber(),
+    'subject' => '[TEST] Request for 10 Laptops',
+    'description' => 'Testing both LM and HOD approval',
+    'requester_id' => $requester->id,
+    'category_id' => $category2->id,
+    'priority' => 'high',
+    'estimated_cost' => 15000.00, // Above $1,000 threshold
+    'status' => 'open',
+]);
+
+$approvalService->initializeWorkflow($ticket3);
+$ticket3->refresh();
+
+echo "Ticket #{$ticket3->ticket_number} created\n";
+echo "  Cost: $" . number_format($ticket3->estimated_cost, 2) . "\n";
+echo "  Approvals: " . $ticket3->approvals()->count() . "\n";
+
+$lmApproval3 = $ticket3->approvals()->where('approval_level', 'lm')->first();
+if ($lmApproval3) {
+    echo "  LM Approval: {$lmApproval3->status}\n";
+    
+    // Approve LM
+    $approvalService->approve($lmApproval3, 'LM approved - needed for project');
+    $ticket3->refresh();
+    
+    echo "\n  After LM Approval:\n";
+    echo "    Total Approvals: " . $ticket3->approvals()->count() . "\n";
+    
+    $hodApproval = $ticket3->approvals()->where('approval_level', 'hod')->first();
+    if ($hodApproval) {
+        echo "    HOD Approval: {$hodApproval->status}\n";
+        echo "    HOD Approver: " . ($hodApproval->approver ? $hodApproval->approver->name : 'Not assigned') . "\n";
+        
+        // Approve HOD
+        $approvalService->approve($hodApproval, 'HOD approved - budget allocated');
+        $ticket3->refresh();
+        
+        echo "\n  After HOD Approval:\n";
+        echo "    Status: {$ticket3->status}\n";
+        echo "    Assigned Team: " . ($ticket3->assignedTeam ? $ticket3->assignedTeam->name : 'None') . "\n";
+        echo ($ticket3->status === 'assigned' ? "✓ PASS" : "✗ FAIL") . "\n\n";
+    } else {
+        echo "✗ FAIL: HOD approval not created after LM approval\n\n";
     }
-    echo "\n";
-}
-echo "\n";
-
-// Test 2: Check Departments
-echo "2. Checking Departments...\n";
-$departments = Department::select('id', 'name', 'code')->get();
-foreach ($departments as $dept) {
-    echo "   - {$dept->name} ({$dept->code}): ID={$dept->id}\n";
-}
-echo "\n";
-
-// Test 3: Check Approvers
-echo "3. Checking Available Approvers...\n";
-$managers = User::whereHas('roles', function($q) {
-    $q->whereIn('name', ['Manager', 'Line Manager', 'Super Admin']);
-})->get(['id', 'name', 'email']);
-echo "   Line Managers: " . $managers->count() . "\n";
-foreach ($managers as $mgr) {
-    echo "   - {$mgr->name} ({$mgr->email})\n";
-}
-
-$hods = User::whereHas('roles', function($q) {
-    $q->whereIn('name', ['HOD', 'Head of Department', 'Director', 'Super Admin']);
-})->get(['id', 'name', 'email']);
-echo "   HODs: " . $hods->count() . "\n";
-foreach ($hods as $hod) {
-    echo "   - {$hod->name} ({$hod->email})\n";
-}
-echo "\n";
-
-// Test 4: Create Test Ticket (No Approval Required)
-echo "4. Testing Ticket Without Approval (Finance Queries)...\n";
-$financeCategory = TicketCategory::where('slug', 'finance-queries')->first();
-if ($financeCategory) {
-    $ticket1 = Ticket::create([
-        'ticket_number' => Ticket::generateTicketNumber(),
-        'subject' => 'Test Finance Query',
-        'description' => 'Testing approval bypass',
-        'requester_id' => User::first()->id,
-        'category_id' => $financeCategory->id,
-        'priority' => 'low',
-        'status' => 'open',
-    ]);
-    
-    $service = app(ApprovalWorkflowService::class);
-    $service->initializeWorkflow($ticket1);
-    
-    $approvals = $ticket1->approvals()->count();
-    echo "   Ticket ID: {$ticket1->id}\n";
-    echo "   Approvals Created: {$approvals} (Expected: 0)\n";
-    echo "   Status: {$ticket1->status}\n";
-    echo "   Assigned Team: " . ($ticket1->assignedTeam ? $ticket1->assignedTeam->name : 'None') . "\n";
-    echo "   ✅ " . ($approvals === 0 ? "PASS" : "FAIL") . "\n\n";
 } else {
-    echo "   ⚠️  Finance Queries category not found\n\n";
+    echo "✗ FAIL: LM approval not created\n\n";
 }
 
-// Test 5: Create Test Ticket (With Approval Required)
-echo "5. Testing Ticket With Approval (Hardware)...\n";
-$hardwareCategory = TicketCategory::where('slug', 'hardware')->first();
-if ($hardwareCategory) {
-    $ticket2 = Ticket::create([
-        'ticket_number' => Ticket::generateTicketNumber(),
-        'subject' => 'Test Hardware Request',
-        'description' => 'Testing approval workflow',
-        'requester_id' => User::first()->id,
-        'category_id' => $hardwareCategory->id,
-        'priority' => 'medium',
-        'status' => 'open',
-    ]);
+// Test 4: Approval Rejection
+echo "--- Test 4: Approval Rejection ---\n";
+$ticket4 = Ticket::create([
+    'ticket_number' => Ticket::generateTicketNumber(),
+    'subject' => '[TEST] Request for Gaming Laptop',
+    'description' => 'Testing rejection workflow',
+    'requester_id' => $requester->id,
+    'category_id' => $category2->id,
+    'priority' => 'medium',
+    'estimated_cost' => 2500.00,
+    'status' => 'open',
+]);
+
+$approvalService->initializeWorkflow($ticket4);
+$approval4 = $ticket4->approvals()->first();
+
+if ($approval4) {
+    $approvalService->reject($approval4, 'Rejected - not business justified');
+    $ticket4->refresh();
+    $approval4->refresh();
     
-    $service = app(ApprovalWorkflowService::class);
-    $service->initializeWorkflow($ticket2);
-    
-    $approvals = $ticket2->approvals()->count();
-    $lmApproval = $ticket2->approvals()->where('approval_level', 'lm')->first();
-    echo "   Ticket ID: {$ticket2->id}\n";
-    echo "   Approvals Created: {$approvals} (Expected: 1)\n";
-    if ($lmApproval) {
-        echo "   LM Approval Status: {$lmApproval->status}\n";
-        echo "   LM Approver: " . ($lmApproval->approver ? $lmApproval->approver->name : 'Not assigned') . "\n";
-    }
-    echo "   ✅ " . ($approvals === 1 && $lmApproval && $lmApproval->status === 'pending' ? "PASS" : "FAIL") . "\n\n";
+    echo "Ticket #{$ticket4->ticket_number} rejected\n";
+    echo "  Approval Status: {$approval4->status}\n";
+    echo "  Rejection Comment: {$approval4->comments}\n";
+    echo "  Rejected At: {$approval4->rejected_at}\n";
+    echo ($approval4->status === 'rejected' ? "✓ PASS" : "✗ FAIL") . "\n\n";
 } else {
-    echo "   ⚠️  Hardware category not found\n\n";
+    echo "✗ FAIL: Approval not created\n\n";
 }
 
-// Test 6: Test Approval Process
-echo "6. Testing Approval Process...\n";
-$pendingApproval = TicketApproval::where('status', 'pending')->first();
-if ($pendingApproval) {
-    $ticket = $pendingApproval->ticket;
-    echo "   Approving Ticket #{$ticket->id}...\n";
-    
-    $service = app(ApprovalWorkflowService::class);
-    $service->approve($pendingApproval, 'Test approval comment');
-    
-    $pendingApproval->refresh();
-    $ticket->refresh();
-    
-    echo "   Approval Status: {$pendingApproval->status} (Expected: approved)\n";
-    echo "   Ticket Status: {$ticket->status} (Expected: assigned)\n";
-    echo "   Assigned Team: " . ($ticket->assignedTeam ? $ticket->assignedTeam->name : 'None') . "\n";
-    echo "   ✅ " . ($pendingApproval->status === 'approved' && $ticket->status === 'assigned' ? "PASS" : "FAIL") . "\n\n";
-} else {
-    echo "   ⚠️  No pending approvals found\n\n";
-}
-
-// Test 7: Summary
+// Summary
 echo "=== Test Summary ===\n";
-$totalTickets = Ticket::count();
-$ticketsWithApprovals = Ticket::has('approvals')->count();
-$pendingApprovals = TicketApproval::where('status', 'pending')->count();
-$approvedApprovals = TicketApproval::where('status', 'approved')->count();
-$rejectedApprovals = TicketApproval::where('status', 'rejected')->count();
-
-echo "Total Tickets: {$totalTickets}\n";
-echo "Tickets with Approvals: {$ticketsWithApprovals}\n";
-echo "Pending Approvals: {$pendingApprovals}\n";
-echo "Approved Approvals: {$approvedApprovals}\n";
-echo "Rejected Approvals: {$rejectedApprovals}\n";
-echo "\n";
-
-echo "✅ Testing Complete!\n";
-echo "Check the database and ticket history for detailed results.\n";
+echo "All tests completed. Check results above.\n";
+echo "\nTo view tickets in database:\n";
+echo "  php artisan tinker\n";
+echo "  Ticket::where('subject', 'like', '%[TEST]%')->get();\n";
 

@@ -27,6 +27,7 @@ class TicketRequest extends FormRequest
             'sla_policy_id' => ['nullable', 'exists:sla_policies,id'],
             'status' => ['required', 'in:open,assigned,in_progress,pending,resolved,closed,cancelled'],
             'priority' => ['required', 'in:low,medium,high,critical'],
+            'estimated_cost' => ['nullable', 'numeric', 'min:0'],
             'source' => ['required', 'string', 'max:50'],
             'first_response_at' => ['nullable', 'date'],
             'first_response_due_at' => ['nullable', 'date'],

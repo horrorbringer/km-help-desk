@@ -86,6 +86,10 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
 
     Route::resource('categories', CategoryController::class)
         ->names('admin.categories');
+    Route::post('categories/bulk-update', [CategoryController::class, 'bulkUpdate'])
+        ->name('admin.categories.bulk-update');
+    Route::post('categories/bulk-delete', [CategoryController::class, 'bulkDelete'])
+        ->name('admin.categories.bulk-delete');
 
     Route::resource('canned-responses', CannedResponseController::class)
         ->names('admin.canned-responses');

@@ -101,18 +101,93 @@ class NotificationService
     {
         // Send email notifications
         try {
+            Log::info('NotificationService: Calling EmailService::sendTicketCreated', [
+                'ticket_id' => $ticket->id,
+                'requester_email' => $ticket->requester?->email,
+            ]);
             $emailService = app(\App\Services\EmailService::class);
-            $emailService->sendTicketCreated($ticket);
+            $result = $emailService->sendTicketCreated($ticket);
+            Log::info('NotificationService: EmailService::sendTicketCreated result', [
+                'ticket_id' => $ticket->id,
+                'result' => $result ? 'success' : 'failed',
+            ]);
             
             // Notify assigned agent via email
             if ($ticket->assigned_agent_id) {
-                $emailService->sendTicketAssigned($ticket);
+                Log::info('NotificationService: Calling EmailService::sendTicketAssigned', [
+                    'ticket_id' => $ticket->id,
+                    'assigned_agent_id' => $ticket->assigned_agent_id,
+                ]);
+                $result = $emailService->sendTicketAssigned($ticket);
+                Log::info('NotificationService: EmailService::sendTicketAssigned result', [
+                    'ticket_id' => $ticket->id,
+                    'result' => $result ? 'success' : 'failed',
+                ]);
             }
         } catch (\Exception $e) {
-            Log::error("Failed to send email notification: {$e->getMessage()}");
+            Log::error("Failed to send email notification: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
 
         // Notify assigned team/agent if assigned
+        if ($ticket->assigned_agent_id) {
+            $this->notifyAgent(
+                $ticket,
+                'ticket_assigned',
+                'New Ticket Assigned',
+                "Ticket #{$ticket->ticket_number} has been assigned to you: {$ticket->subject}"
+            );
+        } elseif ($ticket->assigned_team_id) {
+            // Notify all active users in the team
+            $team = $ticket->assignedTeam;
+            if ($team) {
+                foreach ($team->users()->where('is_active', true)->get() as $user) {
+                    $this->create(
+                        $user->id,
+                        'ticket_assigned',
+                        'New Ticket for Team',
+                        "Ticket #{$ticket->ticket_number} has been assigned to your team: {$ticket->subject}",
+                        $ticket->id
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Notify on ticket assigned
+     */
+    public function notifyTicketAssigned(Ticket $ticket): void
+    {
+        // Send email notifications
+        try {
+            Log::info('NotificationService: Calling EmailService::sendTicketAssigned', [
+                'ticket_id' => $ticket->id,
+                'assigned_agent_id' => $ticket->assigned_agent_id,
+                'assigned_team_id' => $ticket->assigned_team_id,
+            ]);
+            $emailService = app(\App\Services\EmailService::class);
+            
+            // Notify assigned agent via email
+            if ($ticket->assigned_agent_id) {
+                $result = $emailService->sendTicketAssigned($ticket);
+                Log::info('NotificationService: EmailService::sendTicketAssigned result', [
+                    'ticket_id' => $ticket->id,
+                    'result' => $result ? 'success' : 'failed',
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error("Failed to send ticket assigned email: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+
+        // Create in-app notification
         if ($ticket->assigned_agent_id) {
             $this->notifyAgent(
                 $ticket,
@@ -146,10 +221,23 @@ class NotificationService
 
         // Send email notifications
         try {
+            Log::info('NotificationService: Calling EmailService::sendTicketUpdated', [
+                'ticket_id' => $ticket->id,
+                'updated_by_id' => $updatedBy->id,
+                'changes' => array_keys($changes),
+            ]);
             $emailService = app(\App\Services\EmailService::class);
-            $emailService->sendTicketUpdated($ticket, $updatedBy, $changes);
+            $result = $emailService->sendTicketUpdated($ticket, $updatedBy, $changes);
+            Log::info('NotificationService: EmailService::sendTicketUpdated result', [
+                'ticket_id' => $ticket->id,
+                'result' => $result ? 'success' : 'failed',
+            ]);
         } catch (\Exception $e) {
-            Log::error("Failed to send email notification: {$e->getMessage()}");
+            Log::error("Failed to send email notification: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
 
         // Notify requester
@@ -239,10 +327,24 @@ class NotificationService
 
         // Send email notifications
         try {
+            Log::info('NotificationService: Calling EmailService::sendCommentAdded', [
+                'ticket_id' => $ticket->id,
+                'comment_id' => $comment->id,
+                'commenter_id' => $commenter->id,
+                'is_internal' => $comment->is_internal,
+            ]);
             $emailService = app(\App\Services\EmailService::class);
-            $emailService->sendCommentAdded($ticket, $comment, $commenter);
+            $result = $emailService->sendCommentAdded($ticket, $comment, $commenter);
+            Log::info('NotificationService: EmailService::sendCommentAdded result', [
+                'ticket_id' => $ticket->id,
+                'result' => $result ? 'success' : 'failed',
+            ]);
         } catch (\Exception $e) {
-            Log::error("Failed to send email notification: {$e->getMessage()}");
+            Log::error("Failed to send email notification: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
 
         // Only notify requester if comment is not internal
@@ -288,10 +390,23 @@ class NotificationService
 
         // Send email notifications
         try {
+            Log::info('NotificationService: Calling EmailService::sendTicketResolved', [
+                'ticket_id' => $ticket->id,
+                'resolved_by_id' => $resolvedBy->id,
+                'requester_email' => $ticket->requester?->email,
+            ]);
             $emailService = app(\App\Services\EmailService::class);
-            $emailService->sendTicketResolved($ticket, $resolvedBy);
+            $result = $emailService->sendTicketResolved($ticket, $resolvedBy);
+            Log::info('NotificationService: EmailService::sendTicketResolved result', [
+                'ticket_id' => $ticket->id,
+                'result' => $result ? 'success' : 'failed',
+            ]);
         } catch (\Exception $e) {
-            Log::error("Failed to send email notification: {$e->getMessage()}");
+            Log::error("Failed to send email notification: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
 
         // Notify requester
@@ -353,6 +468,42 @@ class NotificationService
     }
 
     /**
+     * Notify on ticket closed
+     */
+    public function notifyTicketClosed(Ticket $ticket, User $closedBy): void
+    {
+        // Send email notification to requester
+        try {
+            Log::info('NotificationService: Calling EmailService::sendTicketClosed', [
+                'ticket_id' => $ticket->id,
+                'requester_email' => $ticket->requester?->email,
+            ]);
+            $emailService = app(\App\Services\EmailService::class);
+            $result = $emailService->sendTicketClosed($ticket, $closedBy);
+            Log::info('NotificationService: EmailService::sendTicketClosed result', [
+                'ticket_id' => $ticket->id,
+                'result' => $result ? 'success' : 'failed',
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to send ticket closed email: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+
+        // Notify requester
+        if ($ticket->requester_id && $ticket->requester_id !== $closedBy->id) {
+            $this->notifyRequester(
+                $ticket,
+                'ticket_closed',
+                'Ticket Closed',
+                "Ticket #{$ticket->ticket_number} has been closed: {$ticket->subject}"
+            );
+        }
+    }
+
+    /**
      * Notify approval requested
      */
     public function notifyApprovalRequested(Ticket $ticket, User $approver, string $approvalLevel): void
@@ -367,10 +518,25 @@ class NotificationService
 
         // Send email notification
         try {
+            Log::info('NotificationService: Calling EmailService::sendApprovalRequested', [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approvalLevel,
+                'approver_email' => $approver->email,
+            ]);
             $emailService = app(\App\Services\EmailService::class);
-            $emailService->sendApprovalRequested($ticket, $approver, $approvalLevel);
+            $result = $emailService->sendApprovalRequested($ticket, $approver, $approvalLevel);
+            Log::info('NotificationService: EmailService::sendApprovalRequested result', [
+                'ticket_id' => $ticket->id,
+                'result' => $result ? 'success' : 'failed',
+            ]);
         } catch (\Exception $e) {
-            Log::error("Failed to send approval request email: {$e->getMessage()}");
+            Log::error("Failed to send approval request email: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approvalLevel,
+                'approver_email' => $approver->email,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
 
         // Create in-app notification
@@ -392,10 +558,25 @@ class NotificationService
         
         // Send email notification to requester
         try {
+            Log::info('NotificationService: Calling EmailService::sendApprovalApproved', [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approvalLevel,
+                'requester_email' => $ticket->requester?->email,
+            ]);
             $emailService = app(\App\Services\EmailService::class);
-            $emailService->sendApprovalApproved($ticket, $approver, $approvalLevel, $comments);
+            $result = $emailService->sendApprovalApproved($ticket, $approver, $approvalLevel, $comments);
+            Log::info('NotificationService: EmailService::sendApprovalApproved result', [
+                'ticket_id' => $ticket->id,
+                'result' => $result ? 'success' : 'failed',
+            ]);
         } catch (\Exception $e) {
-            Log::error("Failed to send approval approved email: {$e->getMessage()}");
+            Log::error("Failed to send approval approved email: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approvalLevel,
+                'requester_email' => $ticket->requester?->email,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
 
         // Notify requester
@@ -418,10 +599,25 @@ class NotificationService
         
         // Send email notification to requester
         try {
+            Log::info('NotificationService: Calling EmailService::sendApprovalRejected', [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approvalLevel,
+                'requester_email' => $ticket->requester?->email,
+            ]);
             $emailService = app(\App\Services\EmailService::class);
-            $emailService->sendApprovalRejected($ticket, $approver, $approvalLevel, $comments);
+            $result = $emailService->sendApprovalRejected($ticket, $approver, $approvalLevel, $comments);
+            Log::info('NotificationService: EmailService::sendApprovalRejected result', [
+                'ticket_id' => $ticket->id,
+                'result' => $result ? 'success' : 'failed',
+            ]);
         } catch (\Exception $e) {
-            Log::error("Failed to send approval rejected email: {$e->getMessage()}");
+            Log::error("Failed to send approval rejected email: {$e->getMessage()}", [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approvalLevel,
+                'requester_email' => $ticket->requester?->email,
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
 
         // Notify requester

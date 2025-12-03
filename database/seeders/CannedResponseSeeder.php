@@ -57,10 +57,10 @@ class CannedResponseSeeder extends Seeder
         $categories = TicketCategory::whereIn('slug', [
             'it-support',
             'safety-compliance',
-            'procurement-requests',
-            'finance-queries',
-            'hardware',
-            'network-vpn',
+            'purchase-request',
+            'invoice-processing',
+            'hardware-issues',
+            'network-connectivity',
             'equipment-failure',
         ])->get()->keyBy('slug');
 
@@ -83,7 +83,7 @@ class CannedResponseSeeder extends Seeder
             [
                 'title' => 'Procurement Request Acknowledged',
                 'content' => "Hello {{requester_name}},\n\nWe've received your procurement request and it's being processed. You'll receive updates as we progress through vendor selection and approval.\n\nEstimated processing time: 3-5 business days\n\nRegards,\nProcurement Team",
-                'category_slug' => 'procurement-requests',
+                'category_slug' => 'purchase-request',
             ],
             [
                 'title' => 'Equipment Maintenance Scheduled',
@@ -93,17 +93,17 @@ class CannedResponseSeeder extends Seeder
             [
                 'title' => 'Finance Query Under Review',
                 'content' => "Hello {{requester_name}},\n\nWe're reviewing your finance query and will get back to you within 2 business days. If you have any supporting documents, please attach them to this ticket.\n\nBest regards,\nFinance Team",
-                'category_slug' => 'finance-queries',
+                'category_slug' => 'invoice-processing',
             ],
             [
                 'title' => 'VPN Connection Troubleshooting',
                 'content' => "Hi {{requester_name}},\n\nTo troubleshoot VPN connection issues:\n1. Check your internet connection\n2. Verify your credentials\n3. Try connecting to a different server\n4. Restart the VPN client\n\nIf the issue persists, please provide:\n- Error message (if any)\n- Your location\n- Device type\n\nIT Support",
-                'category_slug' => 'network-vpn',
+                'category_slug' => 'network-connectivity',
             ],
             [
                 'title' => 'Hardware Issue - On-Site Visit Required',
                 'content' => "Hello {{requester_name}},\n\nWe've reviewed your hardware issue and determined an on-site visit is needed. Our technician will contact you to schedule a convenient time.\n\nPlease ensure the equipment is accessible when we arrive.\n\nThanks,\nIT Support",
-                'category_slug' => 'hardware',
+                'category_slug' => 'hardware-issues',
             ],
             [
                 'title' => 'Ticket Resolved - Follow-up',

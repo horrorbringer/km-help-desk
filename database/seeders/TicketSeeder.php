@@ -31,13 +31,15 @@ class TicketSeeder extends Seeder
             ?? User::first();
 
         $categories = TicketCategory::whereIn('slug', [
-            'hardware',
+            'hardware-requests',
+            'hardware-issues',
             'equipment-failure',
             'incident-reporting',
-            'procurement-requests',
+            'purchase-request',
             'application-access',
-            'network-vpn',
-            'finance-queries',
+            'network-connectivity',
+            'invoice-processing',
+            'expense-reimbursement',
         ])->get()->keyBy('slug');
 
         $slaPolicies = SlaPolicy::get()->keyBy('priority');
@@ -50,9 +52,9 @@ class TicketSeeder extends Seeder
                 'subject' => 'Laptop won\'t connect to site VPN',
                 'description' => 'Unable to reach VPN gateway while on remote site. Error 809 displayed.',
                 'requester' => 'vannak@kimmix.com', // Field Ops Manager
-                'assigned_team_id' => optional($categories['hardware'] ?? null)->default_team_id,
+                'assigned_team_id' => optional($categories['hardware-issues'] ?? null)->default_team_id,
                 'assigned_agent' => 'makara@kimmix.com', // System Administrator
-                'category' => 'hardware',
+                'category' => 'hardware-issues',
                 'project' => 'PRJ-DTE-01',
                 'sla' => 'medium',
                 'priority' => 'high',
@@ -104,9 +106,9 @@ class TicketSeeder extends Seeder
                 'subject' => 'Request for fast-setting concrete mix',
                 'description' => 'Need expedited PO for 200m3 of fast-setting mix for Riverside pour.',
                 'requester' => 'vannak@kimmix.com',
-                'assigned_team_id' => optional($categories['procurement-requests'] ?? null)->default_team_id,
+                'assigned_team_id' => optional($categories['purchase-request'] ?? null)->default_team_id,
                 'assigned_agent' => 'vanny@kimmix.com',
-                'category' => 'procurement-requests',
+                'category' => 'purchase-request',
                 'project' => 'PRJ-RBU-02',
                 'sla' => 'high',
                 'priority' => 'high',
@@ -186,9 +188,9 @@ class TicketSeeder extends Seeder
                 'subject' => 'Printer not printing in color',
                 'description' => 'Office printer on 3rd floor only prints in black and white. Color cartridge was just replaced.',
                 'requester' => 'chanthou@kimmix.com',
-                'assigned_team_id' => optional($categories['hardware'] ?? null)->default_team_id,
+                'assigned_team_id' => optional($categories['hardware-issues'] ?? null)->default_team_id,
                 'assigned_agent' => 'ratha@kimmix.com',
-                'category' => 'hardware',
+                'category' => 'hardware-issues',
                 'sla' => 'medium',
                 'priority' => 'low',
                 'status' => 'resolved',
@@ -208,9 +210,9 @@ class TicketSeeder extends Seeder
                 'subject' => 'Request for office supplies',
                 'description' => 'Need to order office supplies: pens, notebooks, staplers, and printer paper for Q1.',
                 'requester' => 'sophea@kimmix.com',
-                'assigned_team_id' => optional($categories['procurement-requests'] ?? null)->default_team_id,
+                'assigned_team_id' => optional($categories['purchase-request'] ?? null)->default_team_id,
                 'assigned_agent' => 'srey@kimmix.com',
-                'category' => 'procurement-requests',
+                'category' => 'purchase-request',
                 'sla' => 'medium',
                 'priority' => 'low',
                 'status' => 'open',
@@ -245,9 +247,9 @@ class TicketSeeder extends Seeder
                 'subject' => 'Payroll query - missing overtime hours',
                 'description' => 'My overtime hours from last week are not showing in this week\'s payroll. I worked 8 hours overtime on Tuesday.',
                 'requester' => 'pov@kimmix.com',
-                'assigned_team_id' => optional($categories['finance-queries'] ?? null)->default_team_id,
+                'assigned_team_id' => optional($categories['invoice-processing'] ?? null)->default_team_id,
                 'assigned_agent' => 'sopheap@kimmix.com',
-                'category' => 'finance-queries',
+                'category' => 'invoice-processing',
                 'sla' => 'medium',
                 'priority' => 'medium',
                 'status' => 'pending',
@@ -268,9 +270,9 @@ class TicketSeeder extends Seeder
                 'subject' => 'Wi-Fi connection issues in conference room',
                 'description' => 'Wi-Fi signal is very weak in Conference Room B. Cannot connect to network during meetings.',
                 'requester' => 'sopheap.manager@kimmix.com',
-                'assigned_team_id' => optional($categories['network-vpn'] ?? null)->default_team_id,
+                'assigned_team_id' => optional($categories['network-connectivity'] ?? null)->default_team_id,
                 'assigned_agent' => 'makara@kimmix.com',
-                'category' => 'network-vpn',
+                'category' => 'network-connectivity',
                 'sla' => 'medium',
                 'priority' => 'medium',
                 'status' => 'open',
@@ -291,6 +293,13 @@ class TicketSeeder extends Seeder
                 continue;
             }
 
+            // Get category with fallback
+            $category = $categories[$data['category']] ?? null;
+            if (!$category) {
+                $this->command->warn("Skipping ticket {$data['ticket_number']}: Category '{$data['category']}' not found.");
+                continue;
+            }
+
             $ticket = Ticket::updateOrCreate(
                 ['ticket_number' => $data['ticket_number']],
                 [
@@ -299,7 +308,7 @@ class TicketSeeder extends Seeder
                     'requester_id' => $requester->id,
                     'assigned_team_id' => $data['assigned_team_id'],
                     'assigned_agent_id' => $assignedAgent?->id,
-                    'category_id' => optional($categories[$data['category']] ?? null)->id, 
+                    'category_id' => $category->id, 
                     'project_id' => optional($projects[$data['project'] ?? null] ?? null)->id,
                     'sla_policy_id' => optional($slaPolicies[$data['sla']] ?? null)->id,
                     'status' => $data['status'],

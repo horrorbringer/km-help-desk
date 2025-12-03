@@ -29,6 +29,7 @@ class Ticket extends Model
         'sla_policy_id',
         'status',
         'priority',
+        'estimated_cost',
         'source',
         'first_response_at',
         'first_response_due_at',
@@ -47,6 +48,7 @@ class Ticket extends Model
         'closed_at' => 'datetime',
         'response_sla_breached' => 'boolean',
         'resolution_sla_breached' => 'boolean',
+        'estimated_cost' => 'decimal:2',
     ];
 
     public static function generateTicketNumber(): string

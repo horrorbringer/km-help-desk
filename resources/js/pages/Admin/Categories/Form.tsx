@@ -33,6 +33,9 @@ interface Category {
   default_team_id?: string | number | null;
   is_active: boolean;
   sort_order: number;
+  requires_approval?: boolean;
+  requires_hod_approval?: boolean;
+  hod_approval_threshold?: number | null;
 }
 
 interface CategoryFormProps {
@@ -57,15 +60,28 @@ export default function CategoryForm({
     default_team_id: category?.default_team_id ? category.default_team_id.toString() : '',
     is_active: category?.is_active ?? true,
     sort_order: category?.sort_order ?? 0,
+    requires_approval: category?.requires_approval ?? false,
+    requires_hod_approval: category?.requires_hod_approval ?? false,
+    hod_approval_threshold: category?.hod_approval_threshold ?? null,
   });
 
   // Transform data before submission
-  transform((data) => ({
-    ...data,
-    parent_id: data.parent_id === '__none' ? null : Number(data.parent_id),
-    default_team_id: data.default_team_id ? Number(data.default_team_id) : null,
-    sort_order: Number(data.sort_order),
-  }));
+  transform((data) => {
+    const transformed: any = {
+      ...data,
+      parent_id: data.parent_id === '__none' ? null : Number(data.parent_id),
+      default_team_id: data.default_team_id && data.default_team_id !== '' ? Number(data.default_team_id) : undefined,
+      sort_order: Number(data.sort_order) || 0,
+      hod_approval_threshold: data.hod_approval_threshold ? Number(data.hod_approval_threshold) : null,
+    };
+    
+    // Remove slug if empty (let backend auto-generate)
+    if (!transformed.slug || transformed.slug.trim() === '') {
+      delete transformed.slug;
+    }
+    
+    return transformed;
+  });
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -210,14 +226,14 @@ export default function CategoryForm({
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="sort_order">Sort Order</Label>
-                  <Input
-                    id="sort_order"
-                    type="number"
-                    min="0"
-                    value={data.sort_order}
-                    onChange={(e) => setData('sort_order', e.target.value)}
-                    placeholder="0"
-                  />
+                    <Input
+                      id="sort_order"
+                      type="number"
+                      min="0"
+                      value={data.sort_order}
+                      onChange={(e) => setData('sort_order', Number(e.target.value) || 0)}
+                      placeholder="0"
+                    />
                   <p className="text-xs text-muted-foreground">
                     Lower numbers appear first in lists
                   </p>
@@ -241,6 +257,87 @@ export default function CategoryForm({
                   <p className="text-xs text-muted-foreground ml-6">
                     Inactive categories won't appear in ticket creation forms
                   </p>
+                </div>
+              </div>
+
+              {/* Approval Settings */}
+              <div className="space-y-4 border-t pt-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Approval Workflow Settings</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Configure how tickets in this category flow through the approval process
+                  </p>
+                </div>
+
+                {/* Requires Approval */}
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="requires_approval"
+                      checked={data.requires_approval}
+                      onCheckedChange={(checked) => setData('requires_approval', Boolean(checked))}
+                    />
+                    <Label htmlFor="requires_approval" className="text-sm font-normal cursor-pointer">
+                      Require Line Manager (LM) approval
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-6">
+                    Tickets in this category will require Line Manager approval before routing to the assigned team
+                  </p>
+                  {errors.requires_approval && (
+                    <p className="text-xs text-red-500 ml-6">{errors.requires_approval}</p>
+                  )}
+                </div>
+
+                {/* Requires HOD Approval */}
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="requires_hod_approval"
+                      checked={data.requires_hod_approval}
+                      onCheckedChange={(checked) => setData('requires_hod_approval', Boolean(checked))}
+                      disabled={!!data.hod_approval_threshold}
+                    />
+                    <Label 
+                      htmlFor="requires_hod_approval" 
+                      className={`text-sm font-normal cursor-pointer ${data.hod_approval_threshold ? 'text-muted-foreground' : ''}`}
+                    >
+                      Always require Head of Department (HOD) approval
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-6">
+                    {data.hod_approval_threshold 
+                      ? 'Disabled: Cost-based HOD approval is enabled (threshold takes precedence)'
+                      : 'If enabled, all tickets in this category will require HOD approval regardless of cost or priority'}
+                  </p>
+                  {errors.requires_hod_approval && (
+                    <p className="text-xs text-red-500 ml-6">{errors.requires_hod_approval}</p>
+                  )}
+                </div>
+
+                {/* HOD Approval Threshold */}
+                <div className="space-y-2">
+                  <Label htmlFor="hod_approval_threshold">
+                    HOD Approval Cost Threshold ($)
+                  </Label>
+                    <Input
+                      id="hod_approval_threshold"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={data.hod_approval_threshold ?? ''}
+                      onChange={(e) => setData('hod_approval_threshold', e.target.value === '' ? null : Number(e.target.value))}
+                      placeholder="e.g. 1000.00"
+                    />
+                  <p className="text-xs text-muted-foreground">
+                    If set, HOD approval will be required when ticket cost exceeds this amount. 
+                    This takes precedence over the "Always require HOD approval" checkbox above.
+                    <br />
+                    <strong>Example:</strong> Set to $1,000 means tickets with cost ≥ $1,000 will require HOD approval.
+                  </p>
+                  {errors.hod_approval_threshold && (
+                    <p className="text-xs text-red-500">{errors.hod_approval_threshold}</p>
+                  )}
                 </div>
               </div>
             </CardContent>

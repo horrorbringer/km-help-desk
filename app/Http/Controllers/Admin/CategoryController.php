@@ -56,6 +56,9 @@ class CategoryController extends Controller
                 ] : null,
                 'is_active' => $category->is_active,
                 'sort_order' => $category->sort_order,
+                'requires_approval' => $category->requires_approval ?? false,
+                'requires_hod_approval' => $category->requires_hod_approval ?? false,
+                'hod_approval_threshold' => $category->hod_approval_threshold,
                 'children_count' => $category->children_count,
                 'tickets_count' => $category->tickets_count,
                 'created_at' => $category->created_at->toDateTimeString(),
@@ -95,6 +98,37 @@ class CategoryController extends Controller
             ->with('success', 'Category created successfully.');
     }
 
+    public function show(TicketCategory $category): Response
+    {
+        $category->load(['parent:id,name', 'defaultTeam:id,name', 'children', 'tickets']);
+
+        return Inertia::render('Admin/Categories/Show', [
+            'category' => [
+                'id' => $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+                'description' => $category->description,
+                'parent' => $category->parent ? [
+                    'id' => $category->parent->id,
+                    'name' => $category->parent->name,
+                ] : null,
+                'default_team' => $category->defaultTeam ? [
+                    'id' => $category->defaultTeam->id,
+                    'name' => $category->defaultTeam->name,
+                ] : null,
+                'is_active' => $category->is_active,
+                'sort_order' => $category->sort_order,
+                'requires_approval' => $category->requires_approval ?? false,
+                'requires_hod_approval' => $category->requires_hod_approval ?? false,
+                'hod_approval_threshold' => $category->hod_approval_threshold,
+                'children_count' => $category->children()->count(),
+                'tickets_count' => $category->tickets()->count(),
+                'created_at' => $category->created_at->toDateTimeString(),
+                'updated_at' => $category->updated_at->toDateTimeString(),
+            ],
+        ]);
+    }
+
     public function edit(TicketCategory $category): Response
     {
         $category->load(['parent:id,name', 'defaultTeam:id,name']);
@@ -109,6 +143,9 @@ class CategoryController extends Controller
                 'default_team_id' => $category->default_team_id ? $category->default_team_id : '',
                 'is_active' => $category->is_active,
                 'sort_order' => $category->sort_order,
+                'requires_approval' => $category->requires_approval ?? false,
+                'requires_hod_approval' => $category->requires_hod_approval ?? false,
+                'hod_approval_threshold' => $category->hod_approval_threshold ?? null,
             ],
             'parentCategories' => TicketCategory::whereNull('parent_id')
                 ->where('id', '!=', $category->id)
@@ -177,6 +214,96 @@ class CategoryController extends Controller
         return redirect()
             ->route('admin.categories.index')
             ->with('success', 'Category deleted successfully.');
+    }
+
+    public function bulkUpdate(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'category_ids' => ['required', 'array', 'min:1'],
+            'category_ids.*' => ['exists:ticket_categories,id'],
+            'action' => ['required', 'string', 'in:activate,deactivate'],
+        ]);
+
+        $categoryIds = $request->input('category_ids');
+        $action = $request->input('action');
+
+        $categories = TicketCategory::whereIn('id', $categoryIds)->get();
+
+        $updated = 0;
+        $skipped = 0;
+
+        foreach ($categories as $category) {
+            if ($action === 'activate') {
+                $category->update(['is_active' => true]);
+                $updated++;
+            } elseif ($action === 'deactivate') {
+                $category->update(['is_active' => false]);
+                $updated++;
+            }
+        }
+
+        $categoryWord = $updated === 1 ? 'category' : 'categories';
+        $message = "Successfully {$action}d {$updated} {$categoryWord}.";
+        if ($skipped > 0) {
+            $skippedWord = $skipped === 1 ? 'category was' : 'categories were';
+            $message .= " {$skipped} {$skippedWord} skipped.";
+        }
+
+        return redirect()
+            ->route('admin.categories.index')
+            ->with('success', $message);
+    }
+
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'category_ids' => ['required', 'array', 'min:1'],
+            'category_ids.*' => ['exists:ticket_categories,id'],
+        ]);
+
+        $categoryIds = $request->input('category_ids');
+        $categories = TicketCategory::whereIn('id', $categoryIds)->get();
+
+        $deleted = 0;
+        $skipped = 0;
+        $errors = [];
+
+        foreach ($categories as $category) {
+            // Check if category has children
+            if ($category->children()->count() > 0) {
+                $skipped++;
+                $errors[] = "Cannot delete '{$category->name}': has subcategories.";
+                continue;
+            }
+
+            // Check if category has tickets
+            if ($category->tickets()->count() > 0) {
+                $skipped++;
+                $errors[] = "Cannot delete '{$category->name}': has assigned tickets.";
+                continue;
+            }
+
+            $category->delete();
+            $deleted++;
+        }
+
+        if ($deleted > 0) {
+            $categoryWord = $deleted === 1 ? 'category' : 'categories';
+            $message = "Successfully deleted {$deleted} {$categoryWord}.";
+            if ($skipped > 0) {
+                $skippedWord = $skipped === 1 ? 'category was' : 'categories were';
+                $message .= " {$skipped} {$skippedWord} skipped.";
+            }
+
+            return redirect()
+                ->route('admin.categories.index')
+                ->with('success', $message)
+                ->with('bulk_errors', $errors);
+        } else {
+            return redirect()
+                ->route('admin.categories.index')
+                ->with('error', 'No categories could be deleted. ' . implode(' ', $errors));
+        }
     }
 }
 

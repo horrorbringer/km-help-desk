@@ -25,13 +25,16 @@ class KnowledgeBaseArticleSeeder extends Seeder
         // Get categories
         $categories = TicketCategory::whereIn('slug', [
             'it-support',
-            'hardware',
-            'network-vpn',
+            'hardware-requests',
+            'hardware-issues',
+            'network-connectivity',
             'application-access',
             'site-operations',
             'equipment-failure',
             'safety-compliance',
             'incident-reporting',
+            'purchase-request',
+            'invoice-processing',
         ])->get()->keyBy('slug');
 
         $articles = [
@@ -39,7 +42,7 @@ class KnowledgeBaseArticleSeeder extends Seeder
                 'title' => 'How to Connect to Company VPN',
                 'excerpt' => 'Step-by-step guide to connecting to the company VPN from remote locations.',
                 'content' => "## Connecting to Company VPN\n\n### Prerequisites\n- Valid company email account\n- VPN client installed on your device\n- Internet connection\n\n### Steps\n\n1. **Open VPN Client**\n   - Launch the VPN application on your device\n   - Enter your company email address\n\n2. **Enter Credentials**\n   - Username: Your company email\n   - Password: Your network password\n   - If prompted, enter your MFA code\n\n3. **Select Server**\n   - Choose the nearest server location\n   - Click 'Connect'\n\n4. **Troubleshooting**\n   - If connection fails, check your internet connection\n   - Verify your credentials are correct\n   - Contact IT Support if issues persist\n\n### Common Issues\n\n- **Error 809**: Usually indicates certificate or gateway issues. Contact IT Support.\n- **Slow Connection**: Try connecting to a different server location.\n- **Authentication Failed**: Verify your password and MFA settings.",
-                'category_slug' => 'network-vpn',
+                'category_slug' => 'network-connectivity',
                 'status' => 'published',
                 'is_featured' => true,
                 'published_at' => now()->subDays(30),
@@ -75,7 +78,7 @@ class KnowledgeBaseArticleSeeder extends Seeder
                 'title' => 'Procurement Request Guidelines',
                 'excerpt' => 'Step-by-step process for submitting procurement requests and purchase orders.',
                 'content' => "## Procurement Request Guidelines\n\n### Before Submitting\n\n1. **Check Inventory**\n   - Verify if item is already in stock\n   - Check with warehouse team\n\n2. **Get Approvals**\n   - Manager approval required for items over $500\n   - Department head approval for items over $2,000\n   - Finance approval for items over $10,000\n\n3. **Gather Information**\n   - Item description and specifications\n   - Quantity needed\n   - Preferred vendor (if any)\n   - Budget code\n   - Expected delivery date\n\n### Submitting the Request\n\n1. Create a ticket in 'Procurement Requests' category\n2. Fill in all required fields\n3. Attach quotes or specifications if available\n4. Add any special instructions\n\n### Processing Timeline\n\n- **Standard Items**: 3-5 business days\n- **Custom Orders**: 1-2 weeks\n- **International Orders**: 2-4 weeks\n\n### Tracking Your Request\n\n- You'll receive email updates\n- Check ticket status in the system\n- Contact Procurement team for urgent requests\n\n### Tips\n\n- Submit requests early to avoid delays\n- Provide complete specifications\n- Include alternative options if available",
-                'category_slug' => 'procurement-requests',
+                'category_slug' => 'purchase-request',
                 'status' => 'published',
                 'is_featured' => false,
                 'published_at' => now()->subDays(10),
@@ -84,7 +87,7 @@ class KnowledgeBaseArticleSeeder extends Seeder
                 'title' => 'Laptop Setup for New Employees',
                 'excerpt' => 'Complete checklist for setting up laptops for new team members.',
                 'content' => "## Laptop Setup for New Employees\n\n### Initial Setup\n\n1. **Unbox and Inspect**\n   - Check for physical damage\n   - Verify all accessories are included\n   - Note serial number\n\n2. **Power On**\n   - Connect to power adapter\n   - Press power button\n   - Wait for initial boot\n\n3. **Windows Setup**\n   - Follow on-screen instructions\n   - Connect to Wi-Fi\n   - Sign in with company account\n\n### Software Installation\n\n1. **Required Software**\n   - Microsoft Office 365\n   - VPN Client\n   - Antivirus software\n   - Company communication tools\n\n2. **Access Setup**\n   - Email configuration\n   - Shared drive mapping\n   - Printer setup\n\n### Security Configuration\n\n1. **Enable BitLocker**\n   - Encrypt hard drive\n   - Save recovery key securely\n\n2. **MFA Setup**\n   - Configure multi-factor authentication\n   - Set up backup codes\n\n3. **Password Manager**\n   - Install company password manager\n   - Import credentials\n\n### Final Steps\n\n1. Test all applications\n2. Verify network access\n3. Test VPN connection\n4. Contact IT if issues arise\n\n### Support\n\nFor assistance, contact IT Service Desk or create a ticket.",
-                'category_slug' => 'hardware',
+                'category_slug' => 'hardware-requests',
                 'status' => 'published',
                 'is_featured' => false,
                 'published_at' => now()->subDays(5),

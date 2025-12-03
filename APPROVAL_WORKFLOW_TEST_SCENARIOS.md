@@ -1,463 +1,685 @@
 # Approval Workflow Test Scenarios
 
+This document provides comprehensive test scenarios for the ticket approval workflow system.
+
 ## Overview
 
-This document outlines realistic test scenarios for the approval workflow system, including user roles, test cases, and expected behaviors.
+The approval workflow follows this structure:
+1. **Ticket Created** → Check if approval required
+2. **Line Manager (LM) Approval** → First level (if required)
+3. **Head of Department (HOD) Approval** → Second level (if cost threshold met or category requires)
+4. **Ticket Routed** → Assigned to appropriate team
 
-## User Roles Setup
+## Test Setup
 
-### Roles Created
-1. **Super Admin** - Full access to all features
-2. **Head of Department (HOD)** - Can approve tickets at the highest level
-3. **Director** - Similar to HOD, organization-level approval
-4. **Line Manager (LM)** - Can approve tickets at the first level
-5. **Manager** - Department management with ticket assignment capabilities
-6. **Agent** - Support staff who handle tickets
-7. **Requester** - Regular users who submit tickets
+### Prerequisites
+- Run all seeders: `php artisan db:seed --force`
+- Ensure you have users with appropriate roles:
+  - Super Admin
+  - Head of Department (HOD)
+  - Line Manager
+  - Requester (regular user)
 
-### Test Users Created
-
-#### Head of Department
-- **Sokuntha** (`sokuntha@kimmix.com`)
-  - Department: IT Service Desk
-  - Role: Head of Department
-  - Password: `password`
-  - **Use Case**: Final approval for high-priority tickets
-
-#### Line Managers
-- **Vannak** (`vannak@kimmix.com`)
-  - Department: Field Engineering
-  - Role: Line Manager
-  - Password: `password`
-  - **Use Case**: First-level approval for Field Engineering tickets
-
-- **Manager 01** (`manager01@kimmix.com`)
-  - Department: IT Service Desk
-  - Role: Line Manager
-  - Password: `password`
-  - **Use Case**: First-level approval for IT tickets
-
-- **Sopheap LM** (`sopheap.lm@kimmix.com`)
-  - Department: Finance & Accounts
-  - Role: Line Manager
-  - Password: `password`
-  - **Use Case**: First-level approval for Finance tickets
-
-- **Vutty LM** (`vutty.lm@kimmix.com`)
-  - Department: Health & Safety
-  - Role: Line Manager
-  - Password: `password`
-  - **Use Case**: First-level approval for HSE tickets
-
-- **Vanny LM** (`vanny.lm@kimmix.com`)
-  - Department: Procurement
-  - Role: Line Manager
-  - Password: `password`
-  - **Use Case**: First-level approval for Procurement tickets
-
-#### Requesters
-- **Chanthou** (`chanthou@kimmix.com`)
-  - Department: IT Service Desk
-  - Role: Requester
-  - Password: `password`
-  - **Use Case**: Submit tickets for IT support
-
-- **Sokun** (`sokun@kimmix.com`)
-  - Department: Field Engineering
-  - Role: Requester
-  - Password: `password`
-  - **Use Case**: Submit tickets for field engineering
-
-- **Requester 01** (`requester01@kimmix.com`)
-  - Department: IT Service Desk
-  - Role: Requester
-  - Password: `password`
-  - **Use Case**: General ticket submission
-
-#### Agents
-- **Agent 01** (`agent01@kimmix.com`)
-  - Department: IT Service Desk
-  - Role: Agent
-  - Password: `password`
-  - **Use Case**: Handle assigned tickets
-
-## Test Scenarios
-
-### Scenario 1: Low Priority Ticket (No Approval Required)
-**Objective**: Test that tickets in categories without approval requirements bypass approval workflow
-
-**Steps**:
-1. Login as **Chanthou** (Requester)
-2. Create a new ticket:
-   - Category: IT Support → **Network & VPN** (or **Application Access**)
-   - Priority: Low
-   - Subject: "Need help with email setup"
-3. Submit ticket
-
-**Expected Result**:
-- Ticket is created with status "assigned"
-- Ticket is routed directly to IT Service Desk team
-- No approval requests are created
-- Email notification sent to assigned team/agent
-- No approval emails sent
-
-**Verification**:
-- Check ticket status = "assigned"
-- Check `ticket_approvals` table - should have 0 records
-- Check email logs - should only have ticket created/assigned emails
-
-**Note**: Approval is determined by **category settings**, not priority. The "IT Support" parent category requires approval, but subcategories like "Network & VPN" and "Application Access" have `requires_approval = false`, so they bypass approval even for high priority tickets.
+### Test Users
+- **Super Admin**: `bringerhorror@gmail.com` / `password`
+- **HOD**: `kmhodsokun@outlook.com` / `password`
+- **Line Manager**: `fnak98755@gmail.com` / `password`
+- **Requester**: `chanthou121@outlook.com` / `password`
 
 ---
 
-### Scenario 2: Medium Priority Ticket (LM Approval Only)
-**Objective**: Test that medium-priority tickets require only Line Manager approval
+## Scenario 1: No Approval Required (Routine Ticket)
 
-**Steps**:
-1. Login as **Chanthou** (Requester, IT Service Desk)
-2. Create a new ticket:
-   - Category: IT Support (Hardware)
+### Objective
+Test that tickets in categories without approval requirements are routed directly to the team.
+
+### Steps
+1. **Create Ticket**
+   - Category: `Network & Connectivity` (no approval required)
+   - Subject: "Wi-Fi connection issue in office"
    - Priority: Medium
-   - Subject: "Laptop replacement request"
-3. Submit ticket
+   - Estimated Cost: $0
+   - Requester: Regular user
 
-**Expected Result**:
-- Ticket is created with status "pending_approval"
-- LM approval is created for **Manager 01** (IT Service Desk Line Manager)
-- Email sent to Manager 01 requesting approval
-- In-app notification created for Manager 01
+### Expected Results
+- ✅ Ticket created with status: `assigned` (not `pending`)
+- ✅ No approval records created
+- ✅ Ticket automatically assigned to IT Service Desk team
+- ✅ No approval emails sent
+- ✅ Ticket can be worked on immediately
 
-**Verification**:
-- Check ticket status = "pending_approval"
-- Check `ticket_approvals` table - should have 1 record with `approval_level = 'lm'` and `status = 'pending'`
-- Check email sent to `manager01@kimmix.com`
-- Login as Manager 01 and check "Pending Approvals" page
-
-**Next Steps**:
-4. Login as **Manager 01** (Line Manager)
-5. Go to "Pending Approvals" page
-6. Approve the ticket with optional comments
-7. Route to IT Service Desk team
-
-**Expected Result After Approval**:
-- Ticket status changes to "assigned"
-- LM approval status = "approved"
-- Ticket routed to IT Service Desk team
-- Email sent to **Chanthou** (requester) confirming approval
-- No HOD approval created (medium priority doesn't require it)
-
-**Verification**:
-- Check ticket status = "assigned"
-- Check `ticket_approvals` table - 1 record with `status = 'approved'`
-- Check email sent to `chanthou@kimmix.com`
-- Check ticket `assigned_team_id` = IT Service Desk
+### Verification
+```php
+// In Tinker
+$ticket = Ticket::where('subject', 'Wi-Fi connection issue')->first();
+$ticket->approvals()->count(); // Should be 0
+$ticket->status; // Should be 'assigned'
+$ticket->assigned_team_id; // Should be IT-SD team ID
+```
 
 ---
 
-### Scenario 3: High Priority Ticket (LM + HOD Approval)
-**Objective**: Test that high-priority tickets require both LM and HOD approval
+## Scenario 2: LM Approval Only (Low Cost)
 
-**Steps**:
-1. Login as **Sokun** (Requester, Field Engineering)
-2. Create a new ticket:
-   - Category: IT Support (Critical System)
-   - Priority: High
-   - Subject: "Server downtime - production affected"
-3. Submit ticket
+### Objective
+Test that tickets requiring LM approval but below HOD threshold only need LM approval.
 
-**Expected Result**:
-- Ticket is created with status "pending_approval"
-- LM approval is created for **Vannak** (Field Engineering Line Manager)
-- Email sent to Vannak requesting approval
-
-**Verification**:
-- Check ticket status = "pending_approval"
-- Check `ticket_approvals` table - 1 record with `approval_level = 'lm'`
-
-**Next Steps**:
-4. Login as **Vannak** (Line Manager)
-5. Approve the ticket
-6. Route to IT Service Desk team
-
-**Expected Result After LM Approval**:
-- LM approval status = "approved"
-- HOD approval is automatically created for **Sokuntha** (Head of Department)
-- Email sent to Sokuntha requesting HOD approval
-- Email sent to **Sokun** (requester) confirming LM approval
-- Ticket status remains "pending_approval" (waiting for HOD)
- 
-**Verification**:
-- Check `ticket_approvals` table - should have 2 records:
-  - 1 with `approval_level = 'lm'` and `status = 'approved'`
-  - 1 with `approval_level = 'hod'` and `status = 'pending'`
-- Check email sent to `sokuntha@kimmix.com`
-- Check email sent to `sokun@kimmix.com`
-
-**Final Steps**:
-7. Login as **Sokuntha** (Head of Department)
-8. Approve the ticket
-9. Route to IT Service Desk team
-
-**Expected Result After HOD Approval**:
-- HOD approval status = "approved"
-- Ticket status changes to "assigned"
-- Ticket routed to IT Service Desk team
-- Email sent to **Sokun** (requester) confirming HOD approval
-- No further approvals needed
-
-**Verification**:
-- Check ticket status = "assigned"
-- Check `ticket_approvals` table - 2 records, both `status = 'approved'`
-- Check email sent to `sokun@kimmix.com`
-- Check ticket `assigned_team_id` = IT Service Desk
-
----
-
-### Scenario 4: Ticket Rejection by Line Manager
-**Objective**: Test rejection workflow at LM level
-
-**Steps**:
-1. Login as **Requester 01** (Requester)
-2. Create a ticket:
-   - Category: Procurement
+### Steps
+1. **Create Ticket**
+   - Category: `Hardware Requests` (requires approval, HOD threshold: $1,000)
+   - Subject: "Request for new keyboard"
    - Priority: Medium
-   - Subject: "Purchase request for office supplies"
-3. Submit ticket
+   - Estimated Cost: $50
+   - Requester: Regular user
 
-**Next Steps**:
-4. Login as **Vanny LM** (Line Manager, Procurement)
-5. Reject the ticket with comments: "Budget not approved for this quarter"
+### Expected Results
+- ✅ Ticket created with status: `pending`
+- ✅ LM approval record created (status: `pending`)
+- ✅ Line Manager receives approval request email
+- ✅ Ticket NOT assigned to team yet
+- ✅ No HOD approval created (cost < $1,000)
 
-**Expected Result**:
-- Ticket status changes to "cancelled"
-- LM approval status = "rejected"
-- Email sent to **Requester 01** with rejection reason
-- Ticket preserved in database (not deleted)
-- No HOD approval created
+### Verification
+```php
+$ticket = Ticket::where('subject', 'Request for new keyboard')->first();
+$approvals = $ticket->approvals;
+$approvals->count(); // Should be 1
+$approvals->first()->approval_level; // Should be 'lm'
+$approvals->first()->status; // Should be 'pending'
+```
 
-**Verification**:
-- Check ticket status = "cancelled"
-- Check `ticket_approvals` table - 1 record with `status = 'rejected'`
-- Check email sent to `requester01@kimmix.com` with rejection reason
-- Check ticket still exists in database
+### Approval Steps
+1. **Line Manager Approves**
+   - Login as Line Manager
+   - Go to Pending Approvals page
+   - Approve the ticket
+   - Add comment: "Approved - within budget"
 
-**Resubmission**:
-6. Login as **Requester 01**
-7. View rejected ticket
-8. Click "Resubmit" button
-9. Update ticket with additional information
-
-**Expected Result**:
-- New approval workflow starts
-- New LM approval created
-- Previous rejection history preserved
-
----
-
-### Scenario 5: Ticket Rejection by HOD
-**Objective**: Test rejection workflow at HOD level
-
-**Steps**:
-1. Create a high-priority ticket (follows Scenario 3 steps 1-6)
-2. LM approves the ticket
-3. Login as **Sokuntha** (Head of Department)
-4. Reject the ticket with comments: "Not aligned with company strategy"
-
-**Expected Result**:
-- Ticket status changes to "cancelled"
-- HOD approval status = "rejected"
-- Email sent to requester with rejection reason
-- LM approval remains "approved" (history preserved)
-- Ticket preserved in database
-
-**Verification**:
-- Check ticket status = "cancelled"
-- Check `ticket_approvals` table:
-  - LM approval: `status = 'approved'`
-  - HOD approval: `status = 'rejected'`
-- Check email sent to requester
+### Expected Results After LM Approval
+- ✅ LM approval status: `approved`
+- ✅ Ticket status: `assigned`
+- ✅ Ticket assigned to IT Service Desk team
+- ✅ Requester receives approval notification
+- ✅ No HOD approval created (cost below threshold)
+- ✅ Ticket can be worked on
 
 ---
 
-### Scenario 6: Category-Based Approval Requirements
-**Objective**: Test that category settings override priority-based approval
+## Scenario 3: LM + HOD Approval (High Cost)
 
-**Steps**:
-1. Login as Admin
-2. Edit "Procurement" category:
-   - Set `requires_approval = true`
-   - Set `requires_hod_approval = true`
-   - Set `hod_approval_threshold = 1000`
-3. Login as **Requester 01**
-4. Create a ticket:
-   - Category: Procurement
-   - Priority: Low (normally wouldn't require approval)
-   - Subject: "Purchase request"
-5. Submit ticket
+### Objective
+Test that tickets exceeding cost threshold require both LM and HOD approval.
 
-**Expected Result**:
-- Ticket requires approval (category setting overrides priority)
-- LM approval created
-- After LM approval, HOD approval created (category requires it)
-
-**Verification**:
-- Check that approval workflow is triggered despite low priority
-- Check that both LM and HOD approvals are created
-
----
-
-### Scenario 7: Auto-Approval Permission
-**Objective**: Test that users with auto-approve permission bypass approval
-
-**Steps**:
-1. Login as **Sokuntha** (Head of Department - has auto-approve permission)
-2. Create a ticket:
-   - Category: IT Support
+### Steps
+1. **Create Ticket**
+   - Category: `Hardware Requests` (HOD threshold: $1,000)
+   - Subject: "Request for 10 new laptops"
    - Priority: High
-   - Subject: "System upgrade request"
-3. Submit ticket
+   - Estimated Cost: $15,000
+   - Requester: Regular user
 
-**Expected Result**:
-- Ticket is created with status "assigned"
-- No approval requests created
-- Ticket routed directly to team
-- Auto-approved due to user's permission
+### Expected Results
+- ✅ Ticket created with status: `pending`
+- ✅ LM approval created (status: `pending`)
+- ✅ Line Manager receives approval request email
+- ✅ No HOD approval yet (waiting for LM approval)
 
-**Verification**:
-- Check ticket status = "assigned"
-- Check `ticket_approvals` table - 0 records
-- Check ticket `assigned_team_id` is set
+### Verification
+```php
+$ticket = Ticket::where('subject', 'Request for 10 new laptops')->first();
+$approvals = $ticket->approvals;
+$approvals->count(); // Should be 1 (only LM)
+$approvals->first()->approval_level; // Should be 'lm'
+```
+
+### Step 1: Line Manager Approves
+1. Login as Line Manager
+2. Approve the ticket
+3. Comment: "Approved - needed for new project team"
+
+### Expected Results After LM Approval
+- ✅ LM approval status: `approved`
+- ✅ HOD approval automatically created (cost > $1,000)
+- ✅ HOD receives approval request email
+- ✅ Ticket status: Still `pending` (waiting for HOD)
+- ✅ Ticket NOT assigned to team yet
+
+### Verification After LM Approval
+```php
+$ticket->refresh();
+$approvals = $ticket->approvals()->orderBy('sequence')->get();
+$approvals->count(); // Should be 2
+$approvals[0]->approval_level; // Should be 'lm'
+$approvals[0]->status; // Should be 'approved'
+$approvals[1]->approval_level; // Should be 'hod'
+$approvals[1]->status; // Should be 'pending'
+```
+
+### Step 2: HOD Approves
+1. Login as Head of Department
+2. Go to Pending Approvals page
+3. Approve the ticket
+4. Comment: "Approved - budget allocated"
+
+### Expected Results After HOD Approval
+- ✅ HOD approval status: `approved`
+- ✅ Ticket status: `assigned`
+- ✅ Ticket assigned to IT Service Desk team
+- ✅ Requester receives final approval notification
+- ✅ Ticket can be processed
 
 ---
 
-### Scenario 8: Multiple Approvals - No Duplicates
-**Objective**: Verify that duplicate HOD approvals are not created
+## Scenario 4: LM Approval Rejected
 
-**Steps**:
-1. Create a high-priority ticket
-2. LM approves (triggers HOD approval creation)
-3. Verify only ONE HOD approval exists
-4. Try to trigger approval workflow again (should not create duplicate)
+### Objective
+Test that rejected tickets are properly handled and requester is notified.
 
-**Expected Result**:
-- Only one HOD approval record exists
-- System prevents duplicate approvals
+### Steps
+1. **Create Ticket**
+   - Category: `Hardware Requests`
+   - Subject: "Request for gaming laptop"
+   - Priority: Medium
+   - Estimated Cost: $2,500
+   - Requester: Regular user
 
-**Verification**:
-- Check `ticket_approvals` table - should have exactly 1 HOD approval
-- Check logs for any duplicate creation attempts
+2. **Line Manager Rejects**
+   - Login as Line Manager
+   - Reject the ticket
+   - Comment: "Rejected - not business justified"
+
+### Expected Results
+- ✅ LM approval status: `rejected`
+- ✅ Ticket status: `rejected` or `cancelled`
+- ✅ Requester receives rejection notification
+- ✅ No HOD approval created
+- ✅ Ticket cannot be processed
+
+### Verification
+```php
+$ticket = Ticket::where('subject', 'Request for gaming laptop')->first();
+$approval = $ticket->approvals()->first();
+$approval->status; // Should be 'rejected'
+$approval->comments; // Should contain rejection reason
+$ticket->status; // Should be 'rejected' or 'cancelled'
+```
 
 ---
 
-## Email Notifications Testing
+## Scenario 5: HOD Approval Rejected
 
-### Email Templates Created
-All approval-related email templates are seeded:
-- `approval_lm_requested` - Email to Line Manager
-- `approval_hod_requested` - Email to Head of Department
-- `approval_lm_approved` - Email to requester (LM approved)
-- `approval_hod_approved` - Email to requester (HOD approved)
-- `approval_lm_rejected` - Email to requester (LM rejected)
-- `approval_hod_rejected` - Email to requester (HOD rejected)
+### Objective
+Test that HOD can reject tickets even after LM approval.
 
-### Email Testing Checklist
-- [ ] LM receives approval request email
-- [ ] HOD receives approval request email
-- [ ] Requester receives approval confirmation email
-- [ ] Requester receives rejection email with reason
-- [ ] Email templates use correct variables
-- [ ] Email formatting is correct (HTML and plain text)
-- [ ] Email links work correctly
+### Steps
+1. **Create Ticket**
+   - Category: `Hardware Requests`
+   - Subject: "Request for server equipment"
+   - Priority: High
+   - Estimated Cost: $25,000
+   - Requester: Regular user
 
-## Database Verification Queries
+2. **Line Manager Approves**
+   - Approve with comment: "Approved - needed for infrastructure"
 
-### Check Approval Records
-```sql
-SELECT * FROM ticket_approvals 
-WHERE ticket_id = [TICKET_ID]
-ORDER BY sequence, created_at;
+3. **HOD Rejects**
+   - Login as HOD
+   - Reject the ticket
+   - Comment: "Rejected - exceeds annual budget limit"
+
+### Expected Results
+- ✅ LM approval status: `approved`
+- ✅ HOD approval status: `rejected`
+- ✅ Ticket status: `rejected` or `cancelled`
+- ✅ Requester receives rejection notification
+- ✅ Ticket cannot be processed
+
+---
+
+## Scenario 6: Auto-Approve Permission (Bypass Workflow)
+
+### Objective
+Test that users with `tickets.auto-approve` permission bypass approval workflow.
+
+### Steps
+1. **Create Ticket as Super Admin**
+   - Category: `Hardware Requests` (normally requires approval)
+   - Subject: "Urgent server replacement"
+   - Priority: Critical
+   - Estimated Cost: $5,000
+   - Requester: Super Admin user
+
+### Expected Results
+- ✅ Ticket created with status: `assigned` (not `pending`)
+- ✅ No approval records created
+- ✅ Ticket automatically assigned to team
+- ✅ Workflow bypassed due to auto-approve permission
+
+### Verification
+```php
+$ticket = Ticket::where('subject', 'Urgent server replacement')->first();
+$ticket->approvals()->count(); // Should be 0
+$ticket->status; // Should be 'assigned'
+$ticket->requester->can('tickets.auto-approve'); // Should be true
 ```
 
-### Check Ticket Status
-```sql
-SELECT id, ticket_number, status, priority, category_id 
-FROM tickets 
-WHERE id = [TICKET_ID];
+---
+
+## Scenario 7: Category with Always Require HOD Approval
+
+### Objective
+Test categories that always require HOD approval regardless of cost.
+
+### Steps
+1. **Create Ticket**
+   - Category: `Purchase Request` (if configured to always require HOD)
+   - Subject: "Office supplies order"
+   - Priority: Medium
+   - Estimated Cost: $200
+   - Requester: Regular user
+
+### Expected Results
+- ✅ LM approval created first
+- ✅ After LM approval, HOD approval created (even though cost < threshold)
+- ✅ Both approvals required
+
+---
+
+## Scenario 8: Cost Threshold Edge Cases
+
+### Objective
+Test cost threshold boundaries.
+
+### Test Cases
+
+#### 8a: Cost Exactly at Threshold
+- Category: `Hardware Requests` (threshold: $1,000)
+- Estimated Cost: $1,000.00
+- **Expected**: HOD approval required (cost >= threshold)
+
+#### 8b: Cost Just Below Threshold
+- Category: `Hardware Requests` (threshold: $1,000)
+- Estimated Cost: $999.99
+- **Expected**: No HOD approval (cost < threshold)
+
+#### 8c: Cost Just Above Threshold
+- Category: `Hardware Requests` (threshold: $1,000)
+- Estimated Cost: $1,000.01
+- **Expected**: HOD approval required (cost >= threshold)
+
+#### 8d: No Cost Provided
+- Category: `Hardware Requests` (threshold: $1,000)
+- Estimated Cost: NULL or $0
+- **Expected**: No HOD approval (cost is 0 or null)
+
+---
+
+## Scenario 9: Multiple Approvals Sequence
+
+### Objective
+Test that approvals are processed in correct sequence.
+
+### Steps
+1. Create ticket requiring both LM and HOD approval
+2. Try to approve HOD before LM
+
+### Expected Results
+- ✅ HOD approval should not be processable until LM is approved
+- ✅ System enforces sequence order
+- ✅ Only current pending approval can be processed
+
+---
+
+## Scenario 10: Bulk Approval Operations
+
+### Objective
+Test approving multiple tickets at once.
+
+### Steps
+1. Create 3 tickets requiring LM approval
+2. Login as Line Manager
+3. Go to Pending Approvals page
+4. Approve all 3 tickets
+
+### Expected Results
+- ✅ All 3 tickets approved
+- ✅ All tickets routed to appropriate teams
+- ✅ All requesters notified
+- ✅ HOD approvals created for tickets exceeding threshold
+
+---
+
+## Scenario 11: Approval Comments and History
+
+### Objective
+Test that approval comments and history are properly recorded.
+
+### Steps
+1. Create ticket requiring approval
+2. Approve with comment: "Approved for Q1 budget"
+3. Check ticket history
+
+### Expected Results
+- ✅ Approval comment saved
+- ✅ History entry created
+- ✅ Comment visible in ticket details
+- ✅ Approval timestamp recorded
+
+### Verification
+```php
+$ticket = Ticket::find($ticketId);
+$approval = $ticket->approvals()->approved()->first();
+$approval->comments; // Should contain "Approved for Q1 budget"
+$approval->approved_at; // Should be set
+$ticket->histories()->where('action', 'approved')->exists(); // Should be true
 ```
 
-### Check User Roles
-```sql
-SELECT u.name, u.email, r.name as role_name
-FROM users u
-JOIN model_has_roles mhr ON u.id = mhr.model_id
-JOIN roles r ON mhr.role_id = r.id
-WHERE u.email = '[EMAIL]';
+---
+
+## Scenario 12: Approval Timeout/Escalation
+
+### Objective
+Test handling of overdue approvals (if implemented).
+
+### Steps
+1. Create ticket requiring approval
+2. Wait for approval deadline to pass
+3. Check if escalation occurs
+
+### Expected Results
+- ✅ System detects overdue approval
+- ✅ Escalation notification sent (if implemented)
+- ✅ Manager notified of pending approval
+
+---
+
+## Scenario 13: Different Category Approval Settings
+
+### Objective
+Test various category approval configurations.
+
+### Test Cases
+
+#### 13a: No Approval Required
+- Category: `Application Access`
+- **Expected**: Direct routing, no approvals
+
+#### 13b: LM Approval Only
+- Category: `Hardware Issues` (repairs)
+- **Expected**: Only LM approval
+
+#### 13c: LM + HOD (Cost-Based)
+- Category: `Hardware Requests` (threshold: $1,000)
+- Cost: $1,500
+- **Expected**: Both LM and HOD approval
+
+#### 13d: LM + HOD (Always Required)
+- Category: `Purchase Request` (if configured)
+- **Expected**: Both approvals always required
+
+---
+
+## Scenario 14: Approval Workflow with Different Priorities
+
+### Objective
+Test if priority affects approval requirements.
+
+### Steps
+1. Create tickets with different priorities:
+   - Low priority ticket
+   - Medium priority ticket
+   - High priority ticket
+   - Critical priority ticket
+
+### Expected Results
+- ✅ Approval workflow consistent regardless of priority
+- ✅ Priority may affect SLA but not approval requirements
+- ✅ Approval notifications include priority information
+
+---
+
+## Scenario 15: Approval Workflow Email Notifications
+
+### Objective
+Test all email notifications in approval workflow.
+
+### Test Cases
+
+#### 15a: Approval Request Email
+- **Recipient**: Approver (LM or HOD)
+- **Content**: Ticket details, requester info, approval link
+- **Trigger**: When approval is created
+
+#### 15b: Approval Approved Email
+- **Recipient**: Requester
+- **Content**: Approval confirmation, approver name, comments
+- **Trigger**: When approval is approved
+
+#### 15c: Approval Rejected Email
+- **Recipient**: Requester
+- **Content**: Rejection reason, approver name, comments
+- **Trigger**: When approval is rejected
+
+#### 15d: Final Approval Email
+- **Recipient**: Requester
+- **Content**: Final approval confirmation, ticket routed
+- **Trigger**: When all approvals complete
+
+---
+
+## Scenario 16: Approval Workflow with Missing Approvers
+
+### Objective
+Test behavior when approver cannot be found.
+
+### Steps
+1. Create ticket from user without Line Manager
+2. Check system behavior
+
+### Expected Results
+- ✅ System attempts to find approver
+- ✅ Falls back to department manager or Super Admin
+- ✅ Logs warning if approver not found
+- ✅ Ticket still created (may need manual assignment)
+
+---
+
+## Scenario 17: Resubmission After Rejection
+
+### Objective
+Test that rejected tickets can be resubmitted.
+
+### Steps
+1. Create ticket
+2. Get it rejected
+3. Resubmit with modifications
+
+### Expected Results
+- ✅ Resubmission creates new approval workflow
+- ✅ Previous rejection history preserved
+- ✅ New approval cycle starts
+
+---
+
+## Scenario 18: Approval Workflow with Project Association
+
+### Objective
+Test approval workflow for tickets associated with projects.
+
+### Steps
+1. Create ticket with project assigned
+2. Go through approval workflow
+
+### Expected Results
+- ✅ Approval workflow works normally
+- ✅ Project information included in approval notifications
+- ✅ Project manager may be notified (if configured)
+
+---
+
+## Scenario 19: Approval Workflow Performance
+
+### Objective
+Test system performance with multiple concurrent approvals.
+
+### Steps
+1. Create 50 tickets requiring approval
+2. Process approvals concurrently
+3. Monitor system performance
+
+### Expected Results
+- ✅ System handles concurrent approvals efficiently
+- ✅ No database deadlocks
+- ✅ Email notifications sent correctly
+- ✅ No data corruption
+
+---
+
+## Scenario 20: Approval Workflow Audit Trail
+
+### Objective
+Test that all approval actions are properly logged.
+
+### Steps
+1. Create ticket
+2. Approve/reject at each level
+3. Check audit trail
+
+### Expected Results
+- ✅ All approval actions logged in ticket history
+- ✅ Timestamps recorded accurately
+- ✅ User IDs tracked
+- ✅ Comments preserved
+- ✅ Status changes documented
+
+---
+
+## Quick Test Checklist
+
+Use this checklist for quick validation:
+
+- [ ] Ticket without approval requirement routes directly
+- [ ] Ticket with approval requirement creates LM approval
+- [ ] LM approval sends email notification
+- [ ] LM approval routes ticket after approval
+- [ ] High-cost ticket creates HOD approval after LM
+- [ ] HOD approval sends email notification
+- [ ] HOD approval routes ticket after approval
+- [ ] Rejected ticket notifies requester
+- [ ] Auto-approve permission bypasses workflow
+- [ ] Approval comments saved correctly
+- [ ] Approval history recorded
+- [ ] Bulk approvals work correctly
+- [ ] Cost threshold logic works correctly
+- [ ] Email notifications sent for all events
+
+---
+
+## Testing Commands
+
+### Create Test Ticket
+```php
+php artisan tinker
+
+$requester = User::where('email', 'chanthou121@outlook.com')->first();
+$category = TicketCategory::where('slug', 'hardware-requests')->first();
+
+$ticket = Ticket::create([
+    'ticket_number' => Ticket::generateTicketNumber(),
+    'subject' => 'Test Hardware Request',
+    'description' => 'Testing approval workflow',
+    'requester_id' => $requester->id,
+    'category_id' => $category->id,
+    'priority' => 'high',
+    'estimated_cost' => 1500.00,
+    'status' => 'open',
+]);
+
+// Initialize workflow
+app(\App\Services\ApprovalWorkflowService::class)->initializeWorkflow($ticket);
 ```
 
-## Common Issues & Solutions
+### Check Approval Status
+```php
+$ticket = Ticket::find($ticketId);
+$ticket->approvals()->get();
+$ticket->currentApproval();
+$ticket->pendingApprovals()->get();
+```
+
+### Approve Ticket
+```php
+$approval = TicketApproval::find($approvalId);
+app(\App\Services\ApprovalWorkflowService::class)->approve($approval, 'Test approval comment');
+```
+
+### Reject Ticket
+```php
+$approval = TicketApproval::find($approvalId);
+app(\App\Services\ApprovalWorkflowService::class)->reject($approval, 'Test rejection reason');
+```
+
+---
+
+## Expected Email Flow
+
+### Scenario: High-Cost Hardware Request ($15,000)
+
+1. **Ticket Created**
+   - Email to: Requester
+   - Subject: "Ticket Created: Request for 10 new laptops"
+
+2. **LM Approval Requested**
+   - Email to: Line Manager
+   - Subject: "Approval Required: Request for 10 new laptops"
+   - Content: Ticket details, cost, approval link
+
+3. **LM Approved**
+   - Email to: Requester
+   - Subject: "Ticket Approved by Line Manager"
+   - Content: Approval confirmation
+
+4. **HOD Approval Requested** (auto-created)
+   - Email to: Head of Department
+   - Subject: "Approval Required: Request for 10 new laptops"
+   - Content: Ticket details, cost, LM approval status
+
+5. **HOD Approved**
+   - Email to: Requester
+   - Subject: "Ticket Approved - Ready for Processing"
+   - Content: Final approval, ticket routed to team
+
+---
+
+## Troubleshooting
 
 ### Issue: Approval not created
-**Solution**: Check category settings (`requires_approval`, `requires_hod_approval`)
+- Check category `requires_approval` setting
+- Check user has `tickets.auto-approve` permission
+- Check logs for errors
 
-### Issue: Wrong approver assigned
-**Solution**: Verify user's department and role match ticket requester's department
+### Issue: HOD approval not triggered
+- Verify cost exceeds threshold
+- Check category `requires_hod_approval` setting
+- Check `hod_approval_threshold` value
 
-### Issue: Duplicate approvals
-**Solution**: Check `checkNextApproval()` method - should prevent duplicates
+### Issue: Email not sent
+- Check email configuration
+- Check email template exists
+- Check logs for email errors
 
-### Issue: Emails not sending
-**Solution**: 
-1. Check email template is active
-2. Check mail settings (`mail_enabled`)
-3. Check Laravel logs for email errors
+### Issue: Ticket not routed
+- Check category has `default_team_id`
+- Check approval was actually approved
+- Check ticket status
 
-## Quick Test Commands
+---
 
-### Reset Database and Seed
-```bash
-php artisan migrate:fresh --seed
-```
+## Notes
 
-### Clear Cache
-```bash
-php artisan cache:clear
-php artisan config:clear
-php artisan route:clear
-```
-
-### Test Email Sending
-```bash
-php artisan tinker
->>> Mail::raw('Test email', function($msg) { $msg->to('test@example.com')->subject('Test'); });
-```
-
-## Test Data Summary
-
-### Users by Role
-- **Super Admin**: 4 users
-- **Head of Department**: 1 user (Sokuntha)
-- **Line Manager**: 5 users (Vannak, Manager 01, Sopheap LM, Vutty LM, Vanny LM)
-- **Manager**: 2 users
-- **Agent**: 6 users
-- **Requester**: 3 users
-
-### Departments
-- IT Service Desk (IT-SD)
-- Field Engineering (FIELD-ENG)
-- Procurement (PROC)
-- Health & Safety (HSE)
-- Finance & Accounts (FIN)
-
-### Email Templates
-- 6 approval-related templates (all active)
-- Professional HTML and plain text versions
-- All variables properly configured
-
-## Next Steps
-
-1. Run database seeder: `php artisan migrate:fresh --seed`
-2. Test each scenario above
-3. Verify email notifications
-4. Check approval workflow logic
-5. Test edge cases (missing approvers, inactive users, etc.)
+- Approval workflow is initialized when ticket is created
+- Approvals are processed sequentially (LM → HOD)
+- Cost-based HOD approval only triggers after LM approval
+- Rejected tickets stop the workflow immediately
+- Users with `tickets.auto-approve` bypass all approvals
 
