@@ -59,6 +59,14 @@ class TicketCategory extends Model
     }
 
     /**
+     * Scope to get only active categories
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    /**
      * Get all descendant categories (recursive)
      */
     public function descendants(): \Illuminate\Database\Eloquent\Collection

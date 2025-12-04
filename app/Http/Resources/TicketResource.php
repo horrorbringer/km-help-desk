@@ -120,6 +120,9 @@ class TicketResource extends JsonResource
                     ] : null,
                 ];
             }),
+            'rejected_approval_count' => $this->whenLoaded('approvals', function () {
+                return $this->approvals()->where('status', 'rejected')->count();
+            }, 0),
             'first_response_at' => $this->first_response_at,
             'first_response_due_at' => $this->first_response_due_at,
             'resolution_due_at' => $this->resolution_due_at,

@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronUp, Upload, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Upload, X, Check, Search, Loader2 } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { CustomFieldsForm } from '@/components/custom-fields-form';
 import { cn } from '@/lib/utils';
 
@@ -115,7 +118,7 @@ export default function TicketForm(props: TicketFormProps) {
   const isEdit = Boolean(ticket?.id);
   const auth = pageProps.auth;
   const subjectInputRef = useRef<HTMLInputElement>(null);
-  useToast(); // Handle flash messages
+  const { toast: toastFromHook } = useToast(); // Handle flash messages
   
   // Auto-select current user as requester if creating new ticket
   const defaultRequesterId = useMemo(() => {
@@ -347,7 +350,20 @@ export default function TicketForm(props: TicketFormProps) {
       });
 
       if (response.ok) {
+        const fileCount = selectedFiles.length;
         setSelectedFiles([]);
+        toast.success('Files uploaded successfully', {
+          description: `${fileCount} file${fileCount === 1 ? '' : 's'} uploaded successfully`,
+          duration: 3000,
+          icon: <Check className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+          },
+        });
         // Reload the page to show the new attachments
         router.reload({ only: ['ticket'], preserveScroll: true });
       } else {
@@ -365,11 +381,33 @@ export default function TicketForm(props: TicketFormProps) {
         }
         
         console.error('Upload error:', response.status, errorMessage);
-        alert(errorMessage);
+        toast.error('Upload failed', {
+          description: errorMessage,
+          duration: 5000,
+          icon: <X className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          },
+        });
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload files. Please try again.');
+      toast.error('Upload failed', {
+        description: 'Failed to upload files. Please try again.',
+        duration: 5000,
+        icon: <X className="size-5 text-white" />,
+        style: {
+          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+        },
+      });
     } finally {
       setUploadingFiles(false);
     }
@@ -391,7 +429,122 @@ export default function TicketForm(props: TicketFormProps) {
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    setSelectedFiles((prev) => [...prev, ...files]);
+    // Validate file sizes (10MB max)
+    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    const invalidFiles: File[] = [];
+    const validFiles = files.filter((file) => {
+      if (file.size > maxSize) {
+        invalidFiles.push(file);
+        return false;
+      }
+      return true;
+    });
+    
+    // Show error toast for invalid files
+    if (invalidFiles.length > 0) {
+      invalidFiles.forEach((file) => {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        toast.error('File too large', {
+          description: `"${file.name}" (${fileSizeMB}MB) exceeds the maximum size of 10MB per file.`,
+          duration: 5000,
+          icon: <X className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          },
+        });
+      });
+    }
+    
+    // Show success toast if files were added
+    if (validFiles.length > 0) {
+      toast.success(
+        validFiles.length === 1 ? 'File added' : `${validFiles.length} files added`,
+        {
+          description: validFiles.length === 1 
+            ? `"${validFiles[0].name}" is ready to upload`
+            : `${validFiles.length} files are ready to upload`,
+          duration: 3000,
+          icon: <Check className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+          },
+        }
+      );
+    }
+    
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
+    // Reset input to allow selecting the same file again
+    event.target.value = '';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(e.dataTransfer.files || []);
+    const maxSize = 10 * 1024 * 1024;
+    const invalidFiles: File[] = [];
+    const validFiles = files.filter((file) => {
+      if (file.size > maxSize) {
+        invalidFiles.push(file);
+        return false;
+      }
+      return true;
+    });
+    
+    // Show error toast for invalid files
+    if (invalidFiles.length > 0) {
+      invalidFiles.forEach((file) => {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        toast.error('File too large', {
+          description: `"${file.name}" (${fileSizeMB}MB) exceeds the maximum size of 10MB per file.`,
+          duration: 5000,
+          icon: <X className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          },
+        });
+      });
+    }
+    
+    // Show success toast if files were added
+    if (validFiles.length > 0) {
+      toast.success(
+        validFiles.length === 1 ? 'File added' : `${validFiles.length} files added`,
+        {
+          description: validFiles.length === 1 
+            ? `"${validFiles[0].name}" is ready to upload`
+            : `${validFiles.length} files are ready to upload`,
+          duration: 3000,
+          icon: <Check className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+          },
+        }
+      );
+    }
+    
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
   };
 
   const handleFileRemove = (index: number) => {
@@ -434,7 +587,20 @@ export default function TicketForm(props: TicketFormProps) {
       });
 
       if (response.ok) {
+        const fileCount = selectedFiles.length;
         setSelectedFiles([]);
+        toast.success('Files uploaded successfully', {
+          description: `${fileCount} file${fileCount === 1 ? '' : 's'} uploaded successfully`,
+          duration: 3000,
+          icon: <Check className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+          },
+        });
         router.reload({ only: ['ticket'] });
       } else {
         let errorMessage = 'Failed to upload files. ';
@@ -451,11 +617,33 @@ export default function TicketForm(props: TicketFormProps) {
         }
         
         console.error('Upload error:', response.status, errorMessage);
-        alert(errorMessage);
+        toast.error('Upload failed', {
+          description: errorMessage,
+          duration: 5000,
+          icon: <X className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          },
+        });
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload files. Please try again.');
+      toast.error('Upload failed', {
+        description: 'Failed to upload files. Please try again.',
+        duration: 5000,
+        icon: <X className="size-5 text-white" />,
+        style: {
+          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+        },
+      });
     } finally {
       setUploadingFiles(false);
     }
@@ -476,6 +664,10 @@ export default function TicketForm(props: TicketFormProps) {
   // File upload state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  
+  // Category search state
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categorySearch, setCategorySearch] = useState('');
   
   // Auto-focus subject field on mount for new tickets
   useEffect(() => {
@@ -625,19 +817,105 @@ export default function TicketForm(props: TicketFormProps) {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label>Category *</Label>
-                <Select value={data.category_id?.toString()} onValueChange={(value) => setData('category_id', Number(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id.toString()}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={categoryOpen}
+                      className="w-full justify-between"
+                    >
+                      {data.category_id
+                        ? formOptions.categories.find((c) => c.id === data.category_id)?.name ||
+                          (isEdit && ticket?.category ? `${ticket.category.name}${!formOptions.categories.find((c) => c.id === ticket.category?.id) ? ' (Inactive)' : ''}` : 'Select category...')
+                        : 'Select category...'}
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[320px] p-0" align="start">
+                    <div className="p-2 border-b">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search categories..."
+                          value={categorySearch}
+                          onChange={(e) => setCategorySearch(e.target.value)}
+                          className="pl-8"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+                    <ScrollArea className="h-[280px]">
+                      <div className="p-1.5">
+                        {formOptions.categories
+                          .filter((category) =>
+                            category.name.toLowerCase().includes(categorySearch.toLowerCase())
+                          )
+                          .length === 0 &&
+                          (!isEdit ||
+                            !ticket?.category ||
+                            formOptions.categories.find((c) => c.id === ticket.category?.id) ||
+                            !ticket.category.name.toLowerCase().includes(categorySearch.toLowerCase())) ? (
+                          <div className="py-8 text-center text-sm text-muted-foreground">
+                            <p>No category found.</p>
+                            <p className="text-xs mt-1">Try a different search term</p>
+                          </div>
+                        ) : (
+                          <>
+                            {formOptions.categories
+                              .filter((category) =>
+                                category.name.toLowerCase().includes(categorySearch.toLowerCase())
+                              )
+                              .map((category) => (
+                                <button
+                                  key={category.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setData('category_id', category.id);
+                                    setCategoryOpen(false);
+                                    setCategorySearch('');
+                                  }}
+                                  className={cn(
+                                    'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer',
+                                    data.category_id === category.id && 'bg-accent text-accent-foreground font-medium'
+                                  )}
+                                >
+                                  <Check
+                                    className={cn(
+                                      'h-4 w-4 shrink-0',
+                                      data.category_id === category.id ? 'opacity-100 text-primary' : 'opacity-0'
+                                    )}
+                                  />
+                                  <span className="truncate">{category.name}</span>
+                                </button>
+                              ))}
+                            {/* Show current category if it's inactive (for edit mode) */}
+                            {isEdit &&
+                              ticket?.category &&
+                              !formOptions.categories.find((c) => c.id === ticket.category?.id) &&
+                              (categorySearch === '' ||
+                                ticket.category.name.toLowerCase().includes(categorySearch.toLowerCase())) && (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md opacity-50 cursor-not-allowed"
+                                >
+                                  <Check className="h-4 w-4 shrink-0 opacity-0" />
+                                  <span className="truncate">{ticket.category.name} (Inactive)</span>
+                                </button>
+                              )}
+                          </>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
                 {errors.category_id && <p className="text-xs text-red-500 mt-1">{errors.category_id}</p>}
+                {isEdit && ticket?.category && !formOptions.categories.find((c) => c.id === ticket.category?.id) && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    ⚠️ This category is currently inactive. Please select an active category.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -771,6 +1049,105 @@ export default function TicketForm(props: TicketFormProps) {
         </Card>
 
         <div className="space-y-6">
+          {/* Attachments Section - Moved outside Advanced Options */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Attachments</CardTitle>
+              <CardDescription>
+                {isEdit 
+                  ? 'Upload files related to this ticket'
+                  : 'Select files to attach after ticket is created'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div 
+                className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                onClick={() => document.getElementById('file-upload')?.click()}
+              >
+                <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                <Label htmlFor="file-upload" className="cursor-pointer">
+                  <span className="text-sm font-medium text-primary hover:underline">
+                    Click to upload
+                  </span>
+                  <span className="text-sm text-muted-foreground"> or drag and drop</span>
+                </Label>
+                <Input
+                  id="file-upload"
+                  type="file"
+                  multiple
+                  onChange={handleFileSelect}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.zip,.rar,.7z"
+                  className="hidden"
+                  disabled={uploadingFiles}
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  PDF, Office documents, images, archives (Max 10MB per file)
+                </p>
+              </div>
+
+              {selectedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      Selected Files ({selectedFiles.length})
+                    </Label>
+                    {isEdit && ticket?.id && (
+                      <Button
+                        type="button"
+                        onClick={handleFileUpload}
+                        disabled={uploadingFiles}
+                        size="sm"
+                        className="h-8"
+                      >
+                        {uploadingFiles ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-3 w-3 mr-2" />
+                            Upload All
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {!isEdit && (
+                      <span className="text-xs text-muted-foreground">
+                        Will upload after ticket creation
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+                    {selectedFiles.map((file, index) => (
+                      <div 
+                        key={index} 
+                        className="flex items-center gap-3 p-2 rounded-md bg-background border hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{file.name}</p>
+                          <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleFileRemove(index)}
+                          disabled={uploadingFiles}
+                          className="h-8 w-8 p-0 shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Advanced Options Collapsible */}
           <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
             <Card>
@@ -1012,70 +1389,6 @@ export default function TicketForm(props: TicketFormProps) {
                     </div>
                   </Collapsible>
 
-                  {/* Attachments Section */}
-                  <div>
-                    <Label className="text-base font-semibold mb-2 block">Attachments</Label>
-                    <CardDescription className="text-xs mb-3">
-                      {isEdit 
-                        ? 'Upload files related to this ticket (PDF, images, documents, etc.)'
-                        : 'Select files to attach after ticket is created (PDF, images, documents, etc.)'}
-                    </CardDescription>
-                      
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="file"
-                            multiple
-                            onChange={handleFileSelect}
-                            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.zip,.rar,.7z"
-                            className="flex-1"
-                            disabled={uploadingFiles}
-                          />
-                          {selectedFiles.length > 0 && isEdit && ticket?.id && (
-                            <Button
-                              type="button"
-                              onClick={handleFileUpload}
-                              disabled={uploadingFiles}
-                              size="sm"
-                            >
-                              {uploadingFiles ? 'Uploading...' : <><Upload className="h-4 w-4 mr-2" />Upload</>}
-                            </Button>
-                          )}
-                          {selectedFiles.length > 0 && !isEdit && (
-                            <span className="text-xs text-muted-foreground">
-                              Files will be uploaded after ticket creation
-                            </span>
-                          )}
-                        </div>
-
-                        {selectedFiles.length > 0 && (
-                          <div className="space-y-2 border rounded-lg p-3 bg-muted/20">
-                            {selectedFiles.map((file, index) => (
-                              <div key={index} className="flex items-center justify-between text-sm">
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium truncate">{file.name}</p>
-                                  <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleFileRemove(index)}
-                                  disabled={uploadingFiles}
-                                  className="ml-2"
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <p className="text-xs text-muted-foreground">
-                          Maximum file size: 10MB per file. Supported formats: PDF, Office documents, images, archives.
-                        </p>
-                      </div>
-                  </div>
                 </CardContent>
               </CollapsibleContent>
             </Card>

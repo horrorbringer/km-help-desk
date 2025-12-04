@@ -90,6 +90,8 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
         ->name('admin.categories.bulk-update');
     Route::post('categories/bulk-delete', [CategoryController::class, 'bulkDelete'])
         ->name('admin.categories.bulk-delete');
+    Route::post('categories/{category}/toggle-status', [CategoryController::class, 'toggleStatus'])
+        ->name('admin.categories.toggle-status');
 
     Route::resource('canned-responses', CannedResponseController::class)
         ->names('admin.canned-responses');

@@ -118,6 +118,7 @@ type TicketShowProps = {
       rejected_at?: string | null;
       approver?: BaseOption & { email?: string };
     } | null;
+    rejected_approval_count?: number;
     created_at: string;
     updated_at: string;
   };
@@ -143,8 +144,11 @@ const priorityColorMap: Record<string, string> = {
 export default function TicketShow(props: TicketShowProps) {
   const { can } = usePermissions();
   useToast(); // Handle flash messages
-  const departments = props.departments || [];
+  const page = usePage();
+  const pageProps = page.props as any;
+  const departments = pageProps.departments || [];
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteAttachmentDialogOpen, setDeleteAttachmentDialogOpen] = useState<number | null>(null);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewImageName, setPreviewImageName] = useState<string>('');
@@ -171,8 +175,7 @@ export default function TicketShow(props: TicketShowProps) {
   const [replyingToCommentId, setReplyingToCommentId] = useState<number | null>(null);
 
   // Get current user ID
-  const page = usePage();
-  const currentUserId = (page.props as any).auth?.user?.id;
+  const currentUserId = pageProps.auth?.user?.id;
 
   // Comment edit form
   const editCommentForm = useForm({
@@ -348,30 +351,30 @@ export default function TicketShow(props: TicketShowProps) {
     <AppLayout>
       <Head title={`Ticket ${ticket.ticket_number}`} />
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div className="flex flex-col gap-4 mb-6">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <p className="text-sm font-medium text-muted-foreground">Ticket #{ticket.ticket_number}</p>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <p className="text-xs sm:text-sm font-medium text-muted-foreground">Ticket #{ticket.ticket_number}</p>
             {ticket.status && (
-              <Badge className={cn('capitalize', statusColorMap[ticket.status] ?? '')}>
+              <Badge className={cn('capitalize text-xs', statusColorMap[ticket.status] ?? '')}>
                 {ticket.status.replace('_', ' ')}
               </Badge>
             )}
             {ticket.priority && (
-              <Badge className={cn('capitalize', priorityColorMap[ticket.priority] ?? '')}>
+              <Badge className={cn('capitalize text-xs', priorityColorMap[ticket.priority] ?? '')}>
                 {ticket.priority}
               </Badge>
             )}
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{ticket.subject}</h1>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold break-words">{ticket.subject}</h1>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button asChild variant="outline" className="w-full sm:w-auto">
             <Link href={route('admin.tickets.index')}>← Back to list</Link>
           </Button>
           {can('tickets.edit') && (
-            <Button asChild>
+            <Button asChild className="w-full sm:w-auto">
               <Link href={route('admin.tickets.edit', { ticket: ticket.id })}>Edit Ticket</Link>
             </Button>
           )}
@@ -381,6 +384,7 @@ export default function TicketShow(props: TicketShowProps) {
                 <Button
                   variant="destructive"
                   onClick={() => setDeleteDialogOpen(true)}
+                  className="w-full sm:w-auto"
                 >
                   Delete
                 </Button>
@@ -423,23 +427,24 @@ export default function TicketShow(props: TicketShowProps) {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-xl">Details & Context</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Created {new Date(ticket.created_at).toLocaleString()} · Last updated{' '}
-              {new Date(ticket.updated_at).toLocaleString()}
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl">Details & Context</CardTitle>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
+              Created {new Date(ticket.created_at).toLocaleString()}
+              <span className="hidden sm:inline"> · </span>
+              <span className="block sm:inline">Last updated {new Date(ticket.updated_at).toLocaleString()}</span>
             </p>
           </CardHeader>
 
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
             <div className="space-y-2">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Description</h2>
-              <div className="p-4 bg-muted/50 rounded-lg border">
-                <p className="whitespace-pre-line text-sm leading-relaxed">{ticket.description}</p>
+              <h2 className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wide">Description</h2>
+              <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+                <p className="whitespace-pre-line text-sm leading-relaxed break-words">{ticket.description}</p>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
               <div className="p-3 bg-muted/30 rounded-lg border">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Requester</h3>
                 <p className="text-sm font-semibold">{ticket.requester?.name ?? '—'}</p>
@@ -567,12 +572,13 @@ export default function TicketShow(props: TicketShowProps) {
                           isRejected && "bg-red-50 border-red-200"
                         )}
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
                               <Badge
                                 variant={isPending ? 'default' : isApproved ? 'default' : 'destructive'}
                                 className={cn(
+                                  'text-xs',
                                   isPending && 'bg-amber-100 text-amber-800',
                                   isApproved && 'bg-emerald-100 text-emerald-800',
                                   isRejected && 'bg-red-100 text-red-800'
@@ -580,15 +586,15 @@ export default function TicketShow(props: TicketShowProps) {
                               >
                                 {approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
                               </Badge>
-                              {isPending && <Badge variant="outline" className="flex items-center gap-1">
+                              {isPending && <Badge variant="outline" className="flex items-center gap-1 text-xs">
                                 <Clock className="h-3 w-3" />
                                 Pending
                               </Badge>}
-                              {isApproved && <Badge variant="outline" className="flex items-center gap-1 bg-emerald-100 text-emerald-800">
+                              {isApproved && <Badge variant="outline" className="flex items-center gap-1 bg-emerald-100 text-emerald-800 text-xs">
                                 <CheckCircle2 className="h-3 w-3" />
                                 Approved
                               </Badge>}
-                              {isRejected && <Badge variant="outline" className="flex items-center gap-1 bg-red-100 text-red-800">
+                              {isRejected && <Badge variant="outline" className="flex items-center gap-1 bg-red-100 text-red-800 text-xs">
                                 <XCircle className="h-3 w-3" />
                                 Rejected
                               </Badge>}
@@ -627,7 +633,7 @@ export default function TicketShow(props: TicketShowProps) {
                           </div>
 
                           {canApprove && (
-                            <div className="flex gap-2 ml-4">
+                            <div className="flex flex-col sm:flex-row gap-2 sm:ml-4 w-full sm:w-auto">
                               <Button
                                 size="sm"
                                 variant="default"
@@ -635,7 +641,7 @@ export default function TicketShow(props: TicketShowProps) {
                                   setSelectedApprovalId(approval.id);
                                   setApprovalDialogOpen(true);
                                 }}
-                                className="bg-emerald-600 hover:bg-emerald-700"
+                                className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto"
                               >
                                 <CheckCircle2 className="h-4 w-4 mr-1" />
                                 Approve
@@ -647,6 +653,7 @@ export default function TicketShow(props: TicketShowProps) {
                                   setSelectedApprovalId(approval.id);
                                   setRejectDialogOpen(true);
                                 }}
+                                className="w-full sm:w-auto"
                               >
                                 <XCircle className="h-4 w-4 mr-1" />
                                 Reject
@@ -666,30 +673,30 @@ export default function TicketShow(props: TicketShowProps) {
             {ticket.current_approval && 
              ticket.current_approval.status === 'pending' && 
              !['resolved', 'closed', 'cancelled'].includes(ticket.status) && (
-              <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 mb-4">
-                <div className="flex items-start justify-between">
+              <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-3 sm:p-4 mb-4">
+                <div className="flex flex-col gap-3">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock className="h-5 w-5 text-amber-600" />
-                      <h3 className="text-lg font-semibold text-amber-900">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 flex-shrink-0" />
+                      <h3 className="text-base sm:text-lg font-semibold text-amber-900 break-words">
                         {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'} Approval Required
                       </h3>
                     </div>
-                    <p className="text-sm text-amber-800 mb-3">
+                    <p className="text-xs sm:text-sm text-amber-800 mb-3 break-words">
                       This ticket is waiting for {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'} approval.
                       {ticket.current_approval.approver && (
                         <> Assigned to: <strong>{ticket.current_approval.approver.name}</strong></>
                       )}
                     </p>
                     {can('tickets.edit') && (!ticket.current_approval.approver || ticket.current_approval.approver.id === currentUserId) && (
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <Button
                           size="sm"
                           onClick={() => {
                             setSelectedApprovalId(ticket.current_approval!.id);
                             setApprovalDialogOpen(true);
                           }}
-                          className="bg-emerald-600 hover:bg-emerald-700"
+                          className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto"
                         >
                           <CheckCircle2 className="h-4 w-4 mr-1" />
                           Approve Ticket
@@ -701,6 +708,7 @@ export default function TicketShow(props: TicketShowProps) {
                             setSelectedApprovalId(ticket.current_approval!.id);
                             setRejectDialogOpen(true);
                           }}
+                          className="w-full sm:w-auto"
                         >
                           <XCircle className="h-4 w-4 mr-1" />
                           Reject Ticket
@@ -714,16 +722,16 @@ export default function TicketShow(props: TicketShowProps) {
 
             {/* Rejected Ticket - Prominent Display */}
             {ticket.rejected_approval && ticket.status === 'cancelled' && (
-              <div className="rounded-lg border-2 border-red-300 bg-red-50 p-4 mb-4">
-                <div className="flex items-start justify-between">
+              <div className="rounded-lg border-2 border-red-300 bg-red-50 p-3 sm:p-4 mb-4">
+                <div className="flex flex-col gap-3">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <XCircle className="h-5 w-5 text-red-600" />
-                      <h3 className="text-lg font-semibold text-red-900">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 flex-shrink-0" />
+                      <h3 className="text-base sm:text-lg font-semibold text-red-900">
                         Ticket Rejected
                       </h3>
                     </div>
-                    <p className="text-sm text-red-800 mb-2">
+                    <p className="text-xs sm:text-sm text-red-800 mb-2 break-words">
                       This ticket was rejected by {ticket.rejected_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
                       {ticket.rejected_approval.approver && (
                         <>: <strong>{ticket.rejected_approval.approver.name}</strong></>
@@ -733,48 +741,81 @@ export default function TicketShow(props: TicketShowProps) {
                       )}
                     </p>
                     {ticket.rejected_approval.comments && (
-                      <div className="bg-red-100 border border-red-200 rounded p-3 mb-3">
-                        <p className="text-sm font-medium text-red-900 mb-1">Rejection Reason:</p>
-                        <p className="text-sm text-red-800">{ticket.rejected_approval.comments}</p>
+                      <div className="bg-red-100 border border-red-200 rounded p-2 sm:p-3 mb-3">
+                        <p className="text-xs sm:text-sm font-medium text-red-900 mb-1">Rejection Reason:</p>
+                        <p className="text-xs sm:text-sm text-red-800 break-words">{ticket.rejected_approval.comments}</p>
                       </div>
                     )}
-                    {can('tickets.edit') && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-green-200 text-green-700 hover:bg-green-50"
-                          >
-                            <RotateCcw className="h-4 w-4 mr-1" />
-                            Resubmit for Approval
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Resubmit Ticket for Approval?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will reopen the ticket and resubmit it for approval. The ticket status will be changed from "cancelled" to "open" and a new approval request will be created.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => {
-                                router.post(route('admin.tickets.resubmit', { ticket: ticket.id }), {}, {
-                                  onSuccess: () => {
-                                    // Success handled by flash message
-                                  },
-                                });
-                              }}
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              Resubmit
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
+                    {can('tickets.edit') && (() => {
+                      const rejectedCount = ticket.rejected_approval_count || 0;
+                      const maxResubmissions = 3;
+                      const canResubmit = rejectedCount < maxResubmissions;
+                      
+                      return (
+                        <div className="space-y-2">
+                          {rejectedCount > 0 && (
+                            <p className="text-xs sm:text-sm text-gray-600">
+                              Rejection count: {rejectedCount} of {maxResubmissions} allowed
+                            </p>
+                          )}
+                          {!canResubmit && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded p-2 sm:p-3 mb-2">
+                              <p className="text-xs sm:text-sm text-yellow-800 break-words">
+                                <strong>Resubmission limit reached:</strong> This ticket has been rejected {rejectedCount} times. 
+                                Maximum resubmission limit ({maxResubmissions}) has been reached. Please create a new ticket or contact an administrator.
+                              </p>
+                            </div>
+                          )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-green-200 text-green-700 hover:bg-green-50 w-full sm:w-auto"
+                                disabled={!canResubmit}
+                              >
+                                <RotateCcw className="h-4 w-4 mr-1" />
+                                Resubmit for Approval
+                                {rejectedCount > 0 && ` (${rejectedCount}/${maxResubmissions})`}
+                              </Button>
+                            </AlertDialogTrigger>
+                            {canResubmit && (
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Resubmit Ticket for Approval?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will reopen the ticket and resubmit it for approval. The ticket status will be changed from "cancelled" to "open" and a new approval request will be created.
+                                    {rejectedCount > 0 && (
+                                      <span className="block mt-2 text-amber-600">
+                                        <strong>Note:</strong> This is attempt {rejectedCount + 1} of {maxResubmissions + 1} total attempts.
+                                      </span>
+                                    )}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => {
+                                      router.post(route('admin.tickets.resubmit', { ticket: ticket.id }), {}, {
+                                        onSuccess: () => {
+                                          // Success handled by flash message
+                                        },
+                                        onError: (errors) => {
+                                          // Error handled by flash message
+                                        },
+                                      });
+                                    }}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    Resubmit
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            )}
+                          </AlertDialog>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -790,7 +831,7 @@ export default function TicketShow(props: TicketShowProps) {
 
               {/* Add Comment Form */}
               {can('tickets.view') && (
-                <div className="rounded-lg border p-4 bg-muted/30">
+                <div className="rounded-lg border p-3 sm:p-4 bg-muted/30">
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -811,13 +852,13 @@ export default function TicketShow(props: TicketShowProps) {
                         value={commentForm.data.body}
                         onChange={(e) => commentForm.setData('body', e.target.value)}
                         rows={3}
-                        className="resize-none"
+                        className="resize-none text-sm"
                       />
                       {commentForm.errors.body && (
                         <p className="text-xs text-destructive mt-1">{commentForm.errors.body}</p>
                       )}
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex items-center space-x-2">
                         {can('tickets.edit') && (
                           <>
@@ -841,6 +882,7 @@ export default function TicketShow(props: TicketShowProps) {
                         type="submit"
                         size="sm"
                         disabled={commentForm.processing || !commentForm.data.body.trim()}
+                        className="w-full sm:w-auto"
                       >
                         <Send className="h-4 w-4 mr-2" />
                         {commentForm.processing ? 'Posting...' : 'Post Comment'}
@@ -1116,48 +1158,50 @@ export default function TicketShow(props: TicketShowProps) {
                   return (
                     <div
                       key={attachment.id}
-                      className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                      className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
                     >
-                      {isImage && imageUrl && (
-                        <div className="flex-shrink-0">
-                          <button
-                            onClick={() => {
-                              setPreviewImageUrl(imageUrl);
-                              setPreviewImageName(attachment.original_filename);
-                              setImagePreviewOpen(true);
-                            }}
-                            className="relative w-16 h-16 rounded-md overflow-hidden border bg-muted hover:opacity-80 transition-opacity"
-                          >
-                            <img
-                              src={imageUrl}
-                              alt={attachment.original_filename}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                // Hide image if it fails to load
-                                (e.target as HTMLImageElement).style.display = 'none';
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {isImage && imageUrl && (
+                          <div className="flex-shrink-0">
+                            <button
+                              onClick={() => {
+                                setPreviewImageUrl(imageUrl);
+                                setPreviewImageName(attachment.original_filename);
+                                setImagePreviewOpen(true);
                               }}
-                            />
-                          </button>
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{attachment.original_filename}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <p className="text-xs text-muted-foreground">{attachment.mime_type}</p>
-                          <span className="text-xs text-muted-foreground">·</span>
-                          <p className="text-xs text-muted-foreground">
-                            {(attachment.file_size / 1024).toFixed(1)} KB
-                          </p>
-                          {attachment.uploader && (
-                            <>
-                              <span className="text-xs text-muted-foreground">·</span>
-                              <p className="text-xs text-muted-foreground">by {attachment.uploader.name}</p>
-                            </>
-                          )}
+                              className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-md overflow-hidden border bg-muted hover:opacity-80 transition-opacity"
+                            >
+                              <img
+                                src={imageUrl}
+                                alt={attachment.original_filename}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  // Hide image if it fails to load
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            </button>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{attachment.original_filename}</p>
+                          <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
+                            <p className="text-xs text-muted-foreground">{attachment.mime_type}</p>
+                            <span className="text-xs text-muted-foreground hidden sm:inline">·</span>
+                            <p className="text-xs text-muted-foreground">
+                              {(attachment.file_size / 1024).toFixed(1)} KB
+                            </p>
+                            {attachment.uploader && (
+                              <>
+                                <span className="text-xs text-muted-foreground hidden sm:inline">·</span>
+                                <p className="text-xs text-muted-foreground">by {attachment.uploader.name}</p>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" asChild>
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <Button variant="outline" size="sm" asChild className="flex-1 sm:flex-initial">
                           <a
                             href={route('admin.ticket-attachments.download', attachment.id)}
                             download
@@ -1166,16 +1210,17 @@ export default function TicketShow(props: TicketShowProps) {
                           </a>
                         </Button>
                         {can('tickets.edit') && (
-                          <AlertDialog open={deleteDialogOpen === attachment.id} onOpenChange={(open) => {
+                          <AlertDialog open={deleteAttachmentDialogOpen === attachment.id} onOpenChange={(open) => {
                             if (!open) {
-                              setDeleteDialogOpen(null);
+                              setDeleteAttachmentDialogOpen(null);
                             }
                           }}>
                             <AlertDialogTrigger asChild>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setDeleteDialogOpen(attachment.id)}
+                                onClick={() => setDeleteAttachmentDialogOpen(attachment.id)}
+                                className="flex-1 sm:flex-initial"
                               >
                                 Delete
                               </Button>
@@ -1194,7 +1239,7 @@ export default function TicketShow(props: TicketShowProps) {
                                     router.delete(route('admin.ticket-attachments.destroy', attachment.id), {
                                       preserveScroll: true,
                                       onSuccess: () => {
-                                        setDeleteDialogOpen(null);
+                                        setDeleteAttachmentDialogOpen(null);
                                       },
                                     });
                                   }}
@@ -1216,11 +1261,11 @@ export default function TicketShow(props: TicketShowProps) {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">Activity Timeline</CardTitle>
-            <p className="text-sm text-muted-foreground">Status changes, assignments, and SLA tracking.</p>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl">Activity Timeline</CardTitle>
+            <p className="text-xs sm:text-sm text-muted-foreground">Status changes, assignments, and SLA tracking.</p>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4 sm:p-6">
             {(ticket.histories?.length ?? 0) === 0 && (
               <div className="text-center py-8 border rounded-lg bg-muted/20">
                 <p className="text-sm text-muted-foreground">No history recorded.</p>
@@ -1232,22 +1277,22 @@ export default function TicketShow(props: TicketShowProps) {
                   {index < (ticket.histories?.length ?? 0) - 1 && (
                     <div className="absolute left-3 top-8 bottom-0 w-0.5 bg-border" />
                   )}
-                  <div className="flex gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center mt-0.5">
-                      <div className="w-2 h-2 rounded-full bg-primary" />
+                  <div className="flex gap-2 sm:gap-3">
+                    <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center mt-0.5">
+                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-primary" />
                     </div>
-                    <div className="flex-1 min-w-0 rounded-lg border p-3 bg-card">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-semibold text-sm">{history.user?.name ?? 'System'}</span>
+                    <div className="flex-1 min-w-0 rounded-lg border p-2 sm:p-3 bg-card">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-1">
+                        <span className="font-semibold text-xs sm:text-sm">{history.user?.name ?? 'System'}</span>
                         <span className="text-xs text-muted-foreground">
                           {new Date(history.created_at).toLocaleString()}
                         </span>
                       </div>
-                      <p className="font-medium text-sm capitalize mb-1">
+                      <p className="font-medium text-xs sm:text-sm capitalize mb-1 break-words">
                         {history.action.replace('_', ' ')}
                       </p>
                       {history.field_name && (
-                        <div className="text-xs text-muted-foreground space-y-1">
+                        <div className="text-xs text-muted-foreground space-y-1 break-words">
                           <p>
                             <span className="font-medium">{history.field_name}:</span>{' '}
                             <span className="line-through text-red-600">{history.old_value ?? '—'}</span>
@@ -1257,7 +1302,7 @@ export default function TicketShow(props: TicketShowProps) {
                         </div>
                       )}
                       {history.description && (
-                        <p className="text-xs text-muted-foreground mt-2 italic">{history.description}</p>
+                        <p className="text-xs text-muted-foreground mt-2 italic break-words">{history.description}</p>
                       )}
                     </div>
                   </div>
@@ -1272,20 +1317,21 @@ export default function TicketShow(props: TicketShowProps) {
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
         <DialogContent 
           className={cn(
-            "max-w-6xl max-h-[90vh] p-0",
+            "max-w-[95vw] sm:max-w-6xl max-h-[90vh] p-0",
             isFullscreen && "max-w-none max-h-none w-screen h-screen rounded-none"
           )}
         >
           <div ref={dialogContentRef} className="w-full h-full">
-          <DialogHeader className="px-6 pt-6 pb-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle>{previewImageName}</DialogTitle>
-                <DialogDescription>
-                  Scroll to zoom • Drag to pan • {Math.round(imageZoom * 100)}%
+          <DialogHeader className="px-3 sm:px-6 pt-4 sm:pt-6 pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-sm sm:text-base truncate">{previewImageName}</DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm">
+                  <span className="hidden sm:inline">Scroll to zoom • Drag to pan • </span>
+                  {Math.round(imageZoom * 100)}%
                 </DialogDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1327,10 +1373,10 @@ export default function TicketShow(props: TicketShowProps) {
           </DialogHeader>
           <div
             ref={imageContainerRef}
-            className="relative flex items-center justify-center p-4 overflow-hidden bg-muted/30"
+            className="relative flex items-center justify-center p-2 sm:p-4 overflow-hidden bg-muted/30"
             style={{ 
               height: isFullscreen ? 'calc(100vh - 120px)' : 'calc(90vh - 120px)', 
-              minHeight: '400px' 
+              minHeight: '300px' 
             }}
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}

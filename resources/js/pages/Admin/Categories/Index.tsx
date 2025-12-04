@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Trash2, X } from 'lucide-react';
+import { Trash2, X, Sparkles, Pause, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,11 +62,13 @@ interface CategoriesIndexProps extends PageProps {
 
 export default function CategoriesIndex() {
   const { categories, filters, rootCategories, flash } = usePage<CategoriesIndexProps>().props;
+  const { toast: toastFromHook } = useToast(); // Handle flash messages
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
-
+  const [togglingStatus, setTogglingStatus] = useState<number | null>(null);
+ 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
     if (value === '' || value === '__all') {
@@ -106,6 +110,38 @@ export default function CategoriesIndex() {
       return;
     }
 
+    const count = selectedCategories.length;
+    const actionLabels: Record<string, { loading: string; success: string; error: string }> = {
+      delete: {
+        loading: `Deleting ${count} categor${count === 1 ? 'y' : 'ies'}...`,
+        success: `Successfully deleted ${count} categor${count === 1 ? 'y' : 'ies'}`,
+        error: 'Failed to delete categories',
+      },
+      activate: {
+        loading: `Activating ${count} categor${count === 1 ? 'y' : 'ies'}...`,
+        success: `Successfully activated ${count} categor${count === 1 ? 'y' : 'ies'}`,
+        error: 'Failed to activate categories',
+      },
+      deactivate: {
+        loading: `Deactivating ${count} categor${count === 1 ? 'y' : 'ies'}...`,
+        success: `Successfully deactivated ${count} categor${count === 1 ? 'y' : 'ies'}`,
+        error: 'Failed to deactivate categories',
+      },
+    };
+
+    const labels = actionLabels[bulkDialogAction] || {
+      loading: 'Processing...',
+      success: 'Operation completed successfully',
+      error: 'Operation failed',
+    };
+
+    // Show loading toast with beautiful styling
+    const toastId = toast.loading(labels.loading, {
+      description: `Processing ${count} categor${count === 1 ? 'y' : 'ies'}`,
+      duration: Infinity,
+      icon: <Loader2 className="size-5 text-blue-600 animate-spin" />,
+    });
+
     if (bulkDialogAction === 'delete') {
       router.post(
         route('admin.categories.bulk-delete'),
@@ -113,11 +149,37 @@ export default function CategoriesIndex() {
         {
           preserveScroll: true,
           onSuccess: () => {
+            toast.dismiss(toastId);
+            toast.success(labels.success, {
+              description: `${count} categor${count === 1 ? 'y' : 'ies'} removed from the system`,
+              duration: 4000,
+              icon: <CheckCircle2 className="size-5 text-white" />,
+              style: {
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+              },
+            });
             setSelectedCategories([]);
             setBulkDialogOpen(false);
           },
-          onError: () => {
-            // Error handled by flash message
+          onError: (errors) => {
+            toast.dismiss(toastId);
+            const errorMessage = errors?.message || labels.error;
+            toast.error(labels.error, {
+              description: errorMessage,
+              duration: 5000,
+              icon: <XCircle className="size-5 text-white" />,
+              style: {
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+              },
+            });
           },
         }
       );
@@ -131,11 +193,38 @@ export default function CategoriesIndex() {
         {
           preserveScroll: true,
           onSuccess: () => {
+            toast.dismiss(toastId);
+            const icon = bulkDialogAction === 'activate' ? <Sparkles className="size-5 text-white" /> : <Pause className="size-5 text-white" />;
+            toast.success(labels.success, {
+              description: `${count} categor${count === 1 ? 'y' : 'ies'} ${bulkDialogAction === 'activate' ? 'are now active and ready to use' : 'are now inactive'}`,
+              duration: 4000,
+              icon: icon,
+              style: {
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+              },
+            });
             setSelectedCategories([]);
             setBulkDialogOpen(false);
           },
-          onError: () => {
-            // Error handled by flash message
+          onError: (errors) => {
+            toast.dismiss(toastId);
+            const errorMessage = errors?.message || labels.error;
+            toast.error(labels.error, {
+              description: errorMessage,
+              duration: 5000,
+              icon: <XCircle className="size-5 text-white" />,
+              style: {
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+              },
+            });
           },
         }
       );
@@ -404,9 +493,77 @@ export default function CategoriesIndex() {
                         <td className="px-2 sm:px-4 py-3">
                           <Badge
                             variant={category.is_active ? 'default' : 'secondary'}
-                            className={category.is_active ? 'bg-emerald-100 text-emerald-800' : ''}
+                            className={`cursor-pointer hover:opacity-80 transition-opacity ${
+                              category.is_active ? 'bg-emerald-100 text-emerald-800' : ''
+                            } ${togglingStatus === category.id ? 'opacity-50 cursor-wait' : ''}`}
+                            onClick={() => {
+                              if (togglingStatus === category.id) return;
+                              
+                              const newStatus = !category.is_active;
+                              const action = newStatus ? 'activated' : 'deactivated';
+                              
+                              setTogglingStatus(category.id);
+                              
+                              // Show loading toast with beautiful styling
+                              const toastId = toast.loading(
+                                `${newStatus ? 'Activating' : 'Deactivating'} category...`,
+                                {
+                                  description: `Updating "${category.name}" status`,
+                                  duration: Infinity,
+                                  icon: newStatus ? <Sparkles className="size-5 text-blue-600" /> : <Pause className="size-5 text-amber-600" />,
+                                }
+                              );
+                              
+                              router.post(
+                                route('admin.categories.toggle-status', category.id),
+                                {},
+                                {
+                                  preserveScroll: true,
+                                  onSuccess: () => {
+                                    setTogglingStatus(null);
+                                    toast.dismiss(toastId);
+                                    toast.success(
+                                      `Category ${action} successfully!`,
+                                      {
+                                        description: `"${category.name}" is now ${newStatus ? 'active and ready to use' : 'inactive'}`,
+                                        duration: 4000,
+                                        icon: <CheckCircle2 className="size-5 text-white" />,
+                                        style: {
+                                          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: '12px',
+                                          boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+                                        },
+                                      }
+                                    );
+                                  },
+                                  onError: (errors) => {
+                                    setTogglingStatus(null);
+                                    toast.dismiss(toastId);
+                                    const errorMessage = errors?.message || 'Failed to update category status';
+                                    toast.error(
+                                      'Failed to update status',
+                                      {
+                                        description: errorMessage,
+                                        duration: 5000,
+                                        icon: <XCircle className="size-5 text-white" />,
+                                        style: {
+                                          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: '12px',
+                                          boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+                                        },
+                                      }
+                                    );
+                                  },
+                                }
+                              );
+                            }}
+                            title={`Click to ${category.is_active ? 'deactivate' : 'activate'}`}
                           >
-                            {category.is_active ? 'Active' : 'Inactive'}
+                            {togglingStatus === category.id ? '...' : category.is_active ? 'Active' : 'Inactive'}
                           </Badge>
                         </td>
                         <td className="px-2 sm:px-4 py-3 text-right">
@@ -443,13 +600,45 @@ export default function CategoriesIndex() {
                                     {category.children_count === 0 && category.tickets_count === 0 && (
                                       <AlertDialogAction
                                         onClick={() => {
+                                          const toastId = toast.loading('Deleting category...', {
+                                            description: `Removing "${category.name}" from the system`,
+                                            duration: Infinity,
+                                            icon: <Trash2 className="size-5 text-red-600" />,
+                                          });
+                                          
                                           router.delete(route('admin.categories.destroy', category.id), {
                                             preserveScroll: true,
                                             onSuccess: () => {
+                                              toast.dismiss(toastId);
+                                              toast.success('Category deleted successfully!', {
+                                                description: `"${category.name}" has been removed from the system`,
+                                                duration: 4000,
+                                                icon: <CheckCircle2 className="size-5 text-white" />,
+                                                style: {
+                                                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                                  color: 'white',
+                                                  border: 'none',
+                                                  borderRadius: '12px',
+                                                  boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+                                                },
+                                              });
                                               setDeleteDialogOpen(null);
                                             },
-                                            onError: () => {
-                                              // Error handled by flash message
+                                            onError: (errors) => {
+                                              toast.dismiss(toastId);
+                                              const errorMessage = errors?.message || 'Failed to delete category';
+                                              toast.error('Failed to delete category', {
+                                                description: errorMessage,
+                                                duration: 5000,
+                                                icon: <XCircle className="size-5 text-white" />,
+                                                style: {
+                                                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                                  color: 'white',
+                                                  border: 'none',
+                                                  borderRadius: '12px',
+                                                  boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+                                                },
+                                              });
                                             },
                                           });
                                         }}

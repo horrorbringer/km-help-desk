@@ -305,5 +305,21 @@ class CategoryController extends Controller
                 ->with('error', 'No categories could be deleted. ' . implode(' ', $errors));
         }
     }
+
+    /**
+     * Toggle category status (active/inactive)
+     */
+    public function toggleStatus(TicketCategory $category): RedirectResponse
+    {
+        $category->update([
+            'is_active' => !$category->is_active,
+        ]);
+
+        $status = $category->is_active ? 'activated' : 'deactivated';
+
+        return redirect()
+            ->route('admin.categories.index')
+            ->with('success', "Category \"{$category->name}\" has been {$status}.");
+    }
 }
 

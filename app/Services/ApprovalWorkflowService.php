@@ -24,6 +24,18 @@ class ApprovalWorkflowService
      */
     public function initializeWorkflow(Ticket $ticket): void
     {
+        // Check if there are already pending approvals - don't create duplicates
+        $existingPendingApproval = $ticket->approvals()
+            ->where('status', 'pending')
+            ->exists();
+        
+        if ($existingPendingApproval) {
+            Log::warning('Attempted to initialize workflow but pending approval already exists', [
+                'ticket_id' => $ticket->id,
+            ]);
+            return;
+        }
+        
         // Check if ticket requires approval workflow
         // Only create approval if:
         // 1. Category requires approval (can be configured)
@@ -148,10 +160,20 @@ class ApprovalWorkflowService
 
         // Route ticket based on approval level
         if ($approval->approval_level === 'lm') {
-            $this->routeAfterLMApproval($ticket, $routedToTeamId);
             // After LM approval, check if HOD approval is needed
-            $this->checkNextApproval($ticket);
+            $needsHODApproval = $this->requiresHODApproval($ticket);
+            
+            if ($needsHODApproval) {
+                // HOD approval is still needed - don't route yet, just check and create HOD approval
+                $this->checkNextApproval($ticket);
+                // Keep ticket in pending state until HOD approves
+                // Don't route yet - wait for final approval
+            } else {
+                // No HOD approval needed - route immediately after LM approval
+                $this->routeAfterLMApproval($ticket, $routedToTeamId);
+            }
         } elseif ($approval->approval_level === 'hod') {
+            // After HOD approval, this is the final approval - route now
             $this->routeAfterHODApproval($ticket, $routedToTeamId);
             // After HOD approval, no further approvals needed (don't call checkNextApproval)
         }
@@ -221,6 +243,11 @@ class ApprovalWorkflowService
 
     /**
      * Resubmit a rejected ticket for approval
+     * 
+     * Real-world improvements:
+     * - Limit resubmissions to prevent infinite loops (max 3 times)
+     * - Clear any pending approvals before resubmitting
+     * - Require ticket changes before allowing resubmission
      */
     public function resubmit(Ticket $ticket): void
     {
@@ -234,6 +261,35 @@ class ApprovalWorkflowService
             throw new \Exception('Only cancelled tickets can be resubmitted.');
         }
 
+        // Count rejected approvals to determine resubmission count
+        $rejectedCount = $ticket->approvals()
+            ->where('status', 'rejected')
+            ->count();
+        
+        // Limit resubmissions to prevent infinite loops (max 3 resubmissions = 4 total attempts)
+        $maxResubmissions = 3;
+        if ($rejectedCount >= $maxResubmissions) {
+            throw new \Exception("Ticket has been rejected {$rejectedCount} times. Maximum resubmission limit ({$maxResubmissions}) reached. Please create a new ticket or contact an administrator.");
+        }
+
+        // Clear any pending approvals (shouldn't exist, but safety check)
+        $pendingApprovals = $ticket->approvals()
+            ->where('status', 'pending')
+            ->get();
+        
+        foreach ($pendingApprovals as $approval) {
+            $approval->update([
+                'status' => 'rejected',
+                'comments' => ($approval->comments ?? '') . ' [Cancelled due to resubmission]',
+                'rejected_at' => now(),
+            ]);
+            Log::info('Cancelled pending approval due to resubmission', [
+                'ticket_id' => $ticket->id,
+                'approval_id' => $approval->id,
+                'approval_level' => $approval->approval_level,
+            ]);
+        }
+
         // Update ticket status to open
         $ticket->update(['status' => 'open']);
 
@@ -244,7 +300,7 @@ class ApprovalWorkflowService
             'field_name' => 'status',
             'old_value' => 'cancelled',
             'new_value' => 'open',
-            'description' => 'Ticket resubmitted for approval after rejection',
+            'description' => "Ticket resubmitted for approval after rejection (Attempt {$rejectedCount} of {$maxResubmissions})",
             'created_at' => now(),
         ]);
 
@@ -254,6 +310,8 @@ class ApprovalWorkflowService
         Log::info('Ticket resubmitted', [
             'ticket_id' => $ticket->id,
             'resubmitted_by' => Auth::id(),
+            'rejection_count' => $rejectedCount,
+            'max_resubmissions' => $maxResubmissions,
         ]);
     }
 
