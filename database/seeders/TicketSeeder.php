@@ -11,6 +11,7 @@ use App\Models\TicketComment;
 use App\Models\TicketHistory;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Carbon\Carbon;
 
 class TicketSeeder extends Seeder
 {
@@ -48,7 +49,6 @@ class TicketSeeder extends Seeder
 
         $tickets = [
             [
-                'ticket_number' => 'KT-10001',
                 'subject' => 'Laptop won\'t connect to site VPN',
                 'description' => 'Unable to reach VPN gateway while on remote site. Error 809 displayed.',
                 'requester' => 'vannak@kimmix.com', // Field Ops Manager
@@ -78,7 +78,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'ticket_number' => 'KT-10002',
                 'subject' => 'Tower crane hydraulic leak',
                 'description' => 'Oil leak detected on TC-04 at level 18. Need inspection ASAP.',
                 'requester' => 'vannak@kimmix.com', // Field Ops Manager
@@ -102,7 +101,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'ticket_number' => 'KT-10003',
                 'subject' => 'Request for fast-setting concrete mix',
                 'description' => 'Need expedited PO for 200m3 of fast-setting mix for Riverside pour.',
                 'requester' => 'vannak@kimmix.com',
@@ -126,7 +124,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'ticket_number' => 'KT-10004',
                 'subject' => 'Email access not working after password change',
                 'description' => 'Changed my password yesterday and now cannot access email. Getting authentication error.',
                 'requester' => 'requester01@kimmix.com',
@@ -155,7 +152,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'ticket_number' => 'KT-10005',
                 'subject' => 'Near miss incident - falling debris',
                 'description' => 'Small piece of concrete fell from level 12, landed near workers on level 8. No injuries but close call. Area secured.',
                 'requester' => 'sokun@kimmix.com',
@@ -184,7 +180,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'ticket_number' => 'KT-10006',
                 'subject' => 'Printer not printing in color',
                 'description' => 'Office printer on 3rd floor only prints in black and white. Color cartridge was just replaced.',
                 'requester' => 'chanthou@kimmix.com',
@@ -206,7 +201,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'ticket_number' => 'KT-10007',
                 'subject' => 'Request for office supplies',
                 'description' => 'Need to order office supplies: pens, notebooks, staplers, and printer paper for Q1.',
                 'requester' => 'sophea@kimmix.com',
@@ -219,7 +213,6 @@ class TicketSeeder extends Seeder
                 'tags' => ['procurement'],
             ],
             [
-                'ticket_number' => 'KT-10008',
                 'subject' => 'Excavator hydraulic system failure',
                 'description' => 'Excavator EX-05 at Downtown Tower site has hydraulic leak. Machine is down and blocking work area.',
                 'requester' => 'vannak.field@kimmix.com',
@@ -243,7 +236,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'ticket_number' => 'KT-10009',
                 'subject' => 'Payroll query - missing overtime hours',
                 'description' => 'My overtime hours from last week are not showing in this week\'s payroll. I worked 8 hours overtime on Tuesday.',
                 'requester' => 'pov@kimmix.com',
@@ -266,7 +258,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'ticket_number' => 'KT-10010',
                 'subject' => 'Wi-Fi connection issues in conference room',
                 'description' => 'Wi-Fi signal is very weak in Conference Room B. Cannot connect to network during meetings.',
                 'requester' => 'sopheap.manager@kimmix.com',
@@ -280,6 +271,8 @@ class TicketSeeder extends Seeder
             ],
         ];
 
+        // Generate tickets spread over the past month (30 days)
+        $ticketIndex = 0;
         foreach ($tickets as $data) {
             $sla = $slaPolicies[$data['sla']] ?? null;
 
@@ -289,19 +282,64 @@ class TicketSeeder extends Seeder
 
             // Ensure we have valid user IDs
             if (!$requester || !$requester->id) {
-                $this->command->warn("Skipping ticket {$data['ticket_number']}: No requester found.");
+                $this->command->warn("Skipping ticket: No requester found.");
                 continue;
             }
 
             // Get category with fallback
             $category = $categories[$data['category']] ?? null;
             if (!$category) {
-                $this->command->warn("Skipping ticket {$data['ticket_number']}: Category '{$data['category']}' not found.");
+                $this->command->warn("Skipping ticket: Category '{$data['category']}' not found.");
                 continue;
             }
 
+            // Generate random date within the past month (0-30 days ago)
+            // Spread tickets more evenly across the month
+            $daysAgo = rand(0, 30);
+            $hoursAgo = rand(0, 23);
+            $minutesAgo = rand(0, 59);
+            
+            // Create ticket date (random time within the past month)
+            $ticketCreatedAt = Carbon::now()
+                ->subDays($daysAgo)
+                ->subHours($hoursAgo)
+                ->subMinutes($minutesAgo);
+            
+            // Calculate SLA dates relative to ticket creation
+            $firstResponseDueAt = $sla && $ticketCreatedAt 
+                ? $ticketCreatedAt->copy()->addMinutes($sla->response_time) 
+                : null;
+            $resolutionDueAt = $sla && $ticketCreatedAt 
+                ? $ticketCreatedAt->copy()->addMinutes($sla->resolution_time) 
+                : null;
+            
+            // Update ticket updated_at based on status (resolved/closed tickets updated more recently)
+            $ticketUpdatedAt = $ticketCreatedAt->copy();
+            $resolvedAt = null;
+            $closedAt = null;
+            
+            if ($data['status'] === 'resolved') {
+                // Resolved tickets were resolved within 1-7 days after creation
+                $resolvedDays = rand(1, min(7, $daysAgo));
+                $resolvedAt = $ticketCreatedAt->copy()->addDays($resolvedDays);
+                $ticketUpdatedAt = $resolvedAt->copy();
+            } elseif ($data['status'] === 'closed') {
+                // Closed tickets were resolved first, then closed
+                $resolvedDays = rand(1, min(5, $daysAgo));
+                $closedDays = rand($resolvedDays + 1, min(7, $daysAgo));
+                $resolvedAt = $ticketCreatedAt->copy()->addDays($resolvedDays);
+                $closedAt = $ticketCreatedAt->copy()->addDays($closedDays);
+                $ticketUpdatedAt = $closedAt->copy();
+            } else {
+                // Active tickets might have been updated recently
+                $ticketUpdatedAt->addHours(rand(0, min(48, $hoursAgo)));
+            }
+
+            // Generate ticket number if not provided
+            $ticketNumber = $data['ticket_number'] ?? Ticket::generateTicketNumber();
+            
             $ticket = Ticket::updateOrCreate(
-                ['ticket_number' => $data['ticket_number']],
+                ['ticket_number' => $ticketNumber],
                 [
                     'subject' => $data['subject'],
                     'description' => $data['description'],
@@ -314,17 +352,23 @@ class TicketSeeder extends Seeder
                     'status' => $data['status'],
                     'priority' => $data['priority'],
                     'source' => 'web',
-                    'first_response_due_at' => $sla ? now()->addMinutes($sla->response_time) : null,
-                    'resolution_due_at' => $sla ? now()->addMinutes($sla->resolution_time) : null,
+                    'first_response_due_at' => $firstResponseDueAt,
+                    'resolution_due_at' => $resolutionDueAt,
+                    'resolved_at' => $resolvedAt,
+                    'closed_at' => $closedAt,
+                    'created_at' => $ticketCreatedAt,
+                    'updated_at' => $ticketUpdatedAt,
                 ]
             );
 
             if ($ticket->exists) {
                 $this->attachTags($ticket, $data['tags'] ?? [], $tags);
                 $this->attachWatchers($ticket, $data['watchers'] ?? [], $users);
-                $this->syncComments($ticket, $data['comments'] ?? [], $users);
-                $this->syncHistory($ticket, $data['histories'] ?? [], $users);
+                $this->syncComments($ticket, $data['comments'] ?? [], $users, $ticketCreatedAt);
+                $this->syncHistory($ticket, $data['histories'] ?? [], $users, $ticketCreatedAt);
             }
+            
+            $ticketIndex++;
         }
     }
 
@@ -361,18 +405,30 @@ class TicketSeeder extends Seeder
         }
     }
 
-    private function syncComments(Ticket $ticket, array $comments, $users): void
+    private function syncComments(Ticket $ticket, array $comments, $users, Carbon $ticketCreatedAt): void
     {
         // Get default user for fallback
         $defaultUser = User::role('Super Admin')->first() 
             ?? User::where('email', 'makara@kimmix.com')->first()
             ?? User::first();
 
+        $commentIndex = 0;
         foreach ($comments as $comment) {
             $author = $users[$comment['author']] ?? $defaultUser;
             
             if (!$author || !$author->id) {
                 continue; // Skip if no valid user found
+            }
+
+            // Comments are created after ticket creation, spread over time
+            // First comment: 1-6 hours after ticket creation
+            // Subsequent comments: progressively later
+            $commentDelay = ($commentIndex * 2) + rand(1, 6); // Hours
+            $commentCreatedAt = $ticketCreatedAt->copy()->addHours($commentDelay);
+            
+            // Don't create comments in the future
+            if ($commentCreatedAt->isFuture()) {
+                $commentCreatedAt = Carbon::now()->subHours(rand(1, 24));
             }
 
             TicketComment::updateOrCreate(
@@ -384,24 +440,40 @@ class TicketSeeder extends Seeder
                     'user_id' => $author->id,
                     'is_internal' => $comment['is_internal'] ?? false,
                     'type' => $comment['type'] ?? 'comment',
+                    'created_at' => $commentCreatedAt,
+                    'updated_at' => $commentCreatedAt,
                 ]
             );
+            
+            $commentIndex++;
         }
     }
 
-    private function syncHistory(Ticket $ticket, array $histories, $users): void
+    private function syncHistory(Ticket $ticket, array $histories, $users, Carbon $ticketCreatedAt): void
     {
         // Get default user for history entries
         $defaultUser = User::role('Super Admin')->first() 
             ?? User::where('email', 'makara@kimmix.com')->first()
             ?? User::first();
 
+        $historyIndex = 0;
         foreach ($histories as $entry) {
             $userEmail = $entry['user'] ?? 'makara@kimmix.com';
             $historyUser = $users[$userEmail] ?? $defaultUser;
 
             if (!$historyUser || !$historyUser->id) {
                 continue; // Skip if no valid user found
+            }
+
+            // History entries are created progressively after ticket creation
+            // First entry: 0-2 hours after ticket creation
+            // Subsequent entries: progressively later
+            $historyDelay = ($historyIndex * 1) + rand(0, 2); // Hours
+            $historyCreatedAt = $ticketCreatedAt->copy()->addHours($historyDelay);
+            
+            // Don't create history in the future
+            if ($historyCreatedAt->isFuture()) {
+                $historyCreatedAt = Carbon::now()->subHours(rand(1, 12));
             }
 
             TicketHistory::updateOrCreate(
@@ -415,9 +487,11 @@ class TicketSeeder extends Seeder
                     'user_id' => $historyUser->id,
                     'old_value' => $entry['old'] ?? null,
                     'description' => $entry['description'] ?? null,
-                    'created_at' => $entry['created_at'] ?? now(),
+                    'created_at' => $entry['created_at'] ?? $historyCreatedAt,
                 ]
             );
+            
+            $historyIndex++;
         }
     }
 }

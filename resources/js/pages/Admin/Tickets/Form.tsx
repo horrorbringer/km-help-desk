@@ -144,7 +144,7 @@ export default function TicketForm(props: TicketFormProps) {
   const initialCustomFields = useMemo(() => {
     const customFields: Record<number, any> = {};
     if (ticket?.custom_field_values) {
-      ticket.custom_field_values.forEach((cfv) => {
+      ticket.custom_field_values.forEach((cfv: any) => {
         let value = cfv.value;
         // Parse multiselect values
         if (cfv.custom_field.field_type === 'multiselect') {
@@ -164,7 +164,31 @@ export default function TicketForm(props: TicketFormProps) {
     return customFields;
   }, [ticket?.custom_field_values]);
 
-  const { data, setData, post, put, processing, errors: formErrors, transform } = useForm({
+  const { data, setData, post, put, processing, errors: formErrors, transform } = useForm<{
+    ticket_number: string;
+    subject: string;
+    description: string;
+    requester_id: string | number;
+    assigned_team_id: string | number;
+    assigned_agent_id: string | number | null;
+    category_id: string | number;
+    project_id: string | number | null;
+    sla_policy_id: string | number | null;
+    status: string;
+    priority: string;
+    estimated_cost: number | null;
+    source: string;
+    first_response_at: string;
+    first_response_due_at: string;
+    resolution_due_at: string;
+    resolved_at: string;
+    closed_at: string;
+    response_sla_breached: boolean;
+    resolution_sla_breached: boolean;
+    tag_ids: number[];
+    watcher_ids: number[];
+    custom_fields: Record<number, any>;
+  }>({
     ticket_number: ticket?.ticket_number ?? '',
     subject: ticket?.subject ?? '',
     description: ticket?.description ?? '',
@@ -185,8 +209,8 @@ export default function TicketForm(props: TicketFormProps) {
     closed_at: defaultDate(ticket?.closed_at),
     response_sla_breached: ticket?.response_sla_breached ?? false,
     resolution_sla_breached: ticket?.resolution_sla_breached ?? false,
-    tag_ids: ticket?.tags?.map((tag) => tag.id) ?? [],
-    watcher_ids: ticket?.watchers?.map((user) => user.id) ?? [],
+    tag_ids: (ticket?.tags?.map((tag: any) => tag.id) ?? []) as number[],
+    watcher_ids: (ticket?.watchers?.map((user: any) => user.id) ?? []) as number[],
     custom_fields: initialCustomFields,
   });
 
@@ -365,7 +389,7 @@ export default function TicketForm(props: TicketFormProps) {
           },
         });
         // Reload the page to show the new attachments
-        router.reload({ only: ['ticket'], preserveScroll: true });
+        router.reload({ only: ['ticket'] });
       } else {
         let errorMessage = 'Failed to upload files. ';
         
@@ -1006,7 +1030,7 @@ export default function TicketForm(props: TicketFormProps) {
                   min="0"
                   placeholder="0.00"
                   value={data.estimated_cost ?? ''}
-                  onChange={(e) => setData('estimated_cost', e.target.value === '' ? null : e.target.value)}
+                  onChange={(e) => setData('estimated_cost', e.target.value === '' ? null : Number(e.target.value) || null)}
                 />
                 {formErrors.estimated_cost && (
                   <p className="text-xs text-destructive mt-1">{formErrors.estimated_cost}</p>

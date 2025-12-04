@@ -662,6 +662,33 @@ class ApprovalWorkflowService
                 ->first();
             
             if ($hod) {
+                Log::info('HOD found in assigned team', [
+                    'ticket_id' => $ticket->id,
+                    'hod_id' => $hod->id,
+                    'hod_name' => $hod->name,
+                    'department_id' => $ticket->assigned_team_id,
+                ]);
+                return $hod;
+            }
+        }
+        
+        // Priority 1.5: Find HOD in category's default team (if ticket not yet assigned)
+        if ($ticket->category && $ticket->category->default_team_id) {
+            $hod = User::where('department_id', $ticket->category->default_team_id)
+                ->whereHas('roles', function ($query) {
+                    $query->whereIn('name', ['Head of Department', 'HOD']);
+                })
+                ->where('is_active', true)
+                ->first();
+            
+            if ($hod) {
+                Log::info('HOD found in category default team', [
+                    'ticket_id' => $ticket->id,
+                    'hod_id' => $hod->id,
+                    'hod_name' => $hod->name,
+                    'category_id' => $ticket->category_id,
+                    'default_team_id' => $ticket->category->default_team_id,
+                ]);
                 return $hod;
             }
         }
@@ -676,6 +703,12 @@ class ApprovalWorkflowService
                 ->first();
             
             if ($hod) {
+                Log::info('HOD found in requester department', [
+                    'ticket_id' => $ticket->id,
+                    'hod_id' => $hod->id,
+                    'hod_name' => $hod->name,
+                    'requester_department_id' => $ticket->requester->department_id,
+                ]);
                 return $hod;
             }
         }
@@ -688,6 +721,12 @@ class ApprovalWorkflowService
         ->first();
         
         if ($hod) {
+            Log::info('HOD found (any department)', [
+                'ticket_id' => $ticket->id,
+                'hod_id' => $hod->id,
+                'hod_name' => $hod->name,
+                'hod_department_id' => $hod->department_id,
+            ]);
             return $hod;
         }
         
@@ -699,15 +738,31 @@ class ApprovalWorkflowService
         ->first();
         
         if ($director) {
+            Log::warning('HOD not found, using Director as fallback', [
+                'ticket_id' => $ticket->id,
+                'director_id' => $director->id,
+                'director_name' => $director->name,
+            ]);
             return $director;
         }
         
         // Priority 5: Last resort - Super Admin (only if no HOD/Director found)
-        return User::whereHas('roles', function ($query) {
+        $superAdmin = User::whereHas('roles', function ($query) {
             $query->where('name', 'Super Admin');
         })
         ->where('is_active', true)
         ->first();
+        
+        if ($superAdmin) {
+            Log::warning('HOD and Director not found, using Super Admin as last resort', [
+                'ticket_id' => $ticket->id,
+                'super_admin_id' => $superAdmin->id,
+                'super_admin_name' => $superAdmin->name,
+                'note' => 'This should not happen if HOD users are properly configured',
+            ]);
+        }
+        
+        return $superAdmin;
     }
 }
 
