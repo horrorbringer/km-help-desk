@@ -133,7 +133,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start([Ticket Submitted]) --> CreateApproval[Create TicketApproval<br/>approval_level: 'lm'<br/>status: 'pending'<br/>sequence: 1]
+    Start([Ticket Submitted]) --> CreateApproval[Create TicketApproval<br/>approval_level: lm<br/>status: pending<br/>sequence: 1]
     
     CreateApproval --> FindLM{Find Line Manager}
     
@@ -158,20 +158,20 @@ flowchart TD
     GetCategoryTeamManager --> AssignLMApprover
     AssignLMApprover --> UpdateApproval[Update Approval<br/>with approver_id]
     
-    UpdateApproval --> CreateHistory[Create Ticket History<br/>action: 'approval_requested'<br/>description: 'Ticket submitted for<br/>Line Manager approval']
+    UpdateApproval --> CreateHistory[Create Ticket History<br/>action: approval_requested<br/>description: Ticket submitted for<br/>Line Manager approval]
     
     CreateHistory --> SendNotification[Send Email Notification<br/>to Line Manager]
     
-    SendNotification --> StatusPending[Set Ticket Status<br/>to 'pending']
+    SendNotification --> StatusPending[Set Ticket Status<br/>to pending]
     
     StatusPending --> WaitForDecision{Wait for LM<br/>Decision}
     
     WaitForDecision -->|Approve| ProcessApproval[Process Approval]
     WaitForDecision -->|Reject| ProcessRejection[Process Rejection]
     
-    ProcessApproval --> UpdateApprovalStatus[Update Approval<br/>status: 'approved'<br/>approved_at: now]
+    ProcessApproval --> UpdateApprovalStatus[Update Approval<br/>status: approved<br/>approved_at: now]
     
-    UpdateApprovalStatus --> CreateApprovalHistory[Create History<br/>action: 'approved'<br/>description: 'Line Manager<br/>approved the ticket']
+    UpdateApprovalStatus --> CreateApprovalHistory[Create History<br/>action: approved<br/>description: Line Manager<br/>approved the ticket]
     
     CreateApprovalHistory --> SendApprovalNotification[Notify Requester<br/>of Approval]
     
@@ -180,11 +180,11 @@ flowchart TD
     CheckHODNeeded -->|Yes| KeepPending[Keep Status: PENDING<br/>Create HOD Approval]
     CheckHODNeeded -->|No| RouteToTeam[Route to Team<br/>Status: ASSIGNED]
     
-    ProcessRejection --> UpdateRejectionStatus[Update Approval<br/>status: 'rejected'<br/>rejected_at: now]
+    ProcessRejection --> UpdateRejectionStatus[Update Approval<br/>status: rejected<br/>rejected_at: now]
     
-    UpdateRejectionStatus --> CreateRejectionHistory[Create History<br/>action: 'rejected'<br/>description: 'Line Manager<br/>rejected the ticket']
+    UpdateRejectionStatus --> CreateRejectionHistory[Create History<br/>action: rejected<br/>description: Line Manager<br/>rejected the ticket]
     
-    CreateRejectionHistory --> CancelTicket[Set Ticket Status<br/>to 'cancelled']
+    CreateRejectionHistory --> CancelTicket[Set Ticket Status<br/>to cancelled]
     
     CancelTicket --> SendRejectionNotification[Notify Requester<br/>of Rejection]
     
@@ -223,7 +223,7 @@ flowchart TD
     
     CheckExistingHOD -->|Pending Exists| SkipCreate[Skip - Already Exists]
     CheckExistingHOD -->|Approved Exists| SkipCreate
-    CheckExistingHOD -->|None| CreateHODApproval[Create TicketApproval<br/>approval_level: 'hod'<br/>status: 'pending'<br/>sequence: max + 1]
+    CheckExistingHOD -->|None| CreateHODApproval[Create TicketApproval<br/>approval_level: hod<br/>status: pending<br/>sequence: max + 1]
     
     SkipCreate --> WaitForHOD
     
@@ -250,7 +250,7 @@ flowchart TD
     GetDeptHOD --> AssignHODApprover
     AssignHODApprover --> UpdateHODApproval[Update Approval<br/>with approver_id]
     
-    UpdateHODApproval --> CreateHODHistory[Create Ticket History<br/>action: 'approval_requested'<br/>description: 'Ticket submitted for<br/>Head of Department approval']
+    UpdateHODApproval --> CreateHODHistory[Create Ticket History<br/>action: approval_requested<br/>description: Ticket submitted for<br/>Head of Department approval]
     
     CreateHODHistory --> SendHODNotification[Send Email Notification<br/>to HOD]
     
@@ -261,17 +261,17 @@ flowchart TD
     WaitForHOD -->|Approve| ProcessHODApproval[Process HOD Approval]
     WaitForHOD -->|Reject| ProcessHODRejection[Process HOD Rejection]
     
-    ProcessHODApproval --> UpdateHODApprovalStatus[Update Approval<br/>status: 'approved'<br/>approved_at: now]
+    ProcessHODApproval --> UpdateHODApprovalStatus[Update Approval<br/>status: approved<br/>approved_at: now]
     
-    UpdateHODApprovalStatus --> CreateHODApprovalHistory[Create History<br/>action: 'approved'<br/>description: 'HOD approved<br/>the ticket']
+    UpdateHODApprovalStatus --> CreateHODApprovalHistory[Create History<br/>action: approved<br/>description: HOD approved<br/>the ticket]
     
     CreateHODApprovalHistory --> SendHODApprovalNotification[Notify Requester<br/>of HOD Approval]
     
     SendHODApprovalNotification --> RouteAfterHOD[Route to Team<br/>Status: ASSIGNED]
     
-    ProcessHODRejection --> UpdateHODRejectionStatus[Update Approval<br/>status: 'rejected'<br/>rejected_at: now]
+    ProcessHODRejection --> UpdateHODRejectionStatus[Update Approval<br/>status: rejected<br/>rejected_at: now]
     
-    UpdateHODRejectionStatus --> CreateHODRejectionHistory[Create History<br/>action: 'rejected'<br/>description: 'HOD rejected<br/>the ticket']
+    UpdateHODRejectionStatus --> CreateHODRejectionHistory[Create History<br/>action: rejected<br/>description: HOD rejected<br/>the ticket]
     
     CreateHODRejectionHistory --> CancelTicketHOD[Set Ticket Status<br/>to 'cancelled']
     
@@ -305,7 +305,7 @@ flowchart TD
     UseManualRoute --> UpdateTeam[Update Ticket<br/>assigned_team_id]
     UseCategoryDefault --> UpdateTeam
     
-    UpdateTeam --> CreateRoutingHistory[Create Ticket History<br/>action: 'routed'<br/>description: 'Ticket routed to [Team Name]']
+    UpdateTeam --> CreateRoutingHistory[Create Ticket History<br/>action: routed<br/>description: Ticket routed to Team]
     
     CreateRoutingHistory --> SetStatusAssigned[Set Status: ASSIGNED]
     
@@ -314,7 +314,7 @@ flowchart TD
     CheckAgentAssignment -->|Yes| SetAgent[Update<br/>assigned_agent_id]
     CheckAgentAssignment -->|No| WaitForAgent[Wait for Agent<br/>Assignment]
     
-    SetAgent --> CreateAgentHistory[Create Ticket History<br/>action: 'assigned'<br/>description: 'Ticket assigned to [Agent Name]']
+    SetAgent --> CreateAgentHistory[Create Ticket History<br/>action: assigned<br/>description: Ticket assigned to Agent]
     
     CreateAgentHistory --> NotifyAgent[Notify Agent<br/>via Email]
     
@@ -325,7 +325,7 @@ flowchart TD
     
     WaitForAgent --> SetInProgress
     
-    SetInProgress --> CreateProgressHistory[Create Ticket History<br/>action: 'status_changed'<br/>old_value: 'assigned'<br/>new_value: 'in_progress']
+    SetInProgress --> CreateProgressHistory[Create Ticket History<br/>action: status_changed<br/>old_value: assigned<br/>new_value: in_progress]
     
     CreateProgressHistory --> WorkOnTicket([Agent Works on Ticket])
     
@@ -350,7 +350,7 @@ flowchart TD
     ResolveTicket -->|Yes| SetResolved[Set Status: RESOLVED<br/>Set resolved_at: now]
     ResolveTicket -->|No| AgentWorks
     
-    SetResolved --> CreateResolvedHistory[Create Ticket History<br/>action: 'status_changed'<br/>old_value: 'in_progress'<br/>new_value: 'resolved'<br/>description: 'Ticket resolved by [Agent]']
+    SetResolved --> CreateResolvedHistory[Create Ticket History<br/>action: status_changed<br/>old_value: in_progress<br/>new_value: resolved<br/>description: Ticket resolved by Agent]
     
     CreateResolvedHistory --> NotifyRequester[Notify Requester<br/>Ticket Resolved]
     
@@ -360,13 +360,13 @@ flowchart TD
     WaitForVerification -->|Not Satisfied| ReopenTicket[Reopen Ticket]
     
     ReopenTicket --> SetReopenStatus[Set Status: IN_PROGRESS]
-    SetReopenStatus --> CreateReopenHistory[Create Ticket History<br/>action: 'reopened'<br/>description: 'Ticket reopened by requester']
+    SetReopenStatus --> CreateReopenHistory[Create Ticket History<br/>action: reopened<br/>description: Ticket reopened by requester]
     
     CreateReopenHistory --> NotifyAgentReopen[Notify Agent<br/>Ticket Reopened]
     
     NotifyAgentReopen --> AgentWorks
     
-    CloseTicket --> CreateClosedHistory[Create Ticket History<br/>action: 'status_changed'<br/>old_value: 'resolved'<br/>new_value: 'closed'<br/>description: 'Ticket closed']
+    CloseTicket --> CreateClosedHistory[Create Ticket History<br/>action: status_changed<br/>old_value: resolved<br/>new_value: closed<br/>description: Ticket closed]
     
     CreateClosedHistory --> NotifyClosure[Notify All Parties<br/>Ticket Closed]
     
@@ -390,22 +390,22 @@ flowchart TD
     ApprovalDecision -->|Approve| ApprovalFlow[Continue Approval Flow]
     ApprovalDecision -->|Reject| ProcessRejection[Process Rejection]
     
-    ProcessRejection --> UpdateApprovalStatus[Update Approval<br/>status: 'rejected'<br/>rejected_at: now<br/>comments: [Rejection Reason]]
+    ProcessRejection --> UpdateApprovalStatus[Update Approval<br/>status: rejected<br/>rejected_at: now<br/>comments: Rejection Reason]
     
-    UpdateApprovalStatus --> CreateRejectionHistory[Create Ticket History<br/>action: 'rejected'<br/>description: '[Approver Level] rejected<br/>the ticket: [Comments]']
+    UpdateApprovalStatus --> CreateRejectionHistory[Create Ticket History<br/>action: rejected<br/>description: Approver Level rejected<br/>the ticket with comments]
     
-    CreateRejectionHistory --> SetCancelled[Set Ticket Status<br/>to 'cancelled']
+    CreateRejectionHistory --> SetCancelled[Set Ticket Status<br/>to cancelled]
     
     SetCancelled --> NotifyRejection[Notify Requester<br/>Ticket Rejected]
     
     NotifyRejection --> CheckResubmissionCount{Count Rejected<br/>Approvals}
     
-    CheckResubmissionCount --> CountRejections[Count: ticket.approvals()<br/>.where('status', 'rejected')<br/>.count()]
+    CheckResubmissionCount --> CountRejections[Count Rejected Approvals<br/>using ticket.approvals<br/>where status is rejected]
     
-    CountRejections --> CheckMax{Rejection Count<br/>< 3?}
+    CountRejections --> CheckMax{Rejection Count<br/>less than 3?}
     
-    CheckMax -->|Yes, < 3| AllowResubmit[Resubmission Allowed]
-    CheckMax -->|No, >= 3| MaxReached[Max Resubmissions<br/>Reached]
+    CheckMax -->|Yes, less than 3| AllowResubmit[Resubmission Allowed]
+    CheckMax -->|No, 3 or more| MaxReached[Max Resubmissions<br/>Reached]
     
     MaxReached --> EndPermanentlyRejected([Ticket Permanently<br/>Rejected<br/>Cannot Resubmit])
     
@@ -414,11 +414,11 @@ flowchart TD
     RequesterResubmits -->|Yes| ProcessResubmission[Process Resubmission]
     RequesterResubmits -->|No| EndCancelled([Ticket Cancelled<br/>Not Resubmitted])
     
-    ProcessResubmission --> CancelPendingApprovals[Cancel Any Pending<br/>Approvals<br/>Set status: 'rejected'<br/>Add: '[Cancelled due to resubmission]']
+    ProcessResubmission --> CancelPendingApprovals[Cancel Any Pending<br/>Approvals<br/>Set status: rejected<br/>Add note: Cancelled due to resubmission]
     
-    CancelPendingApprovals --> SetOpenStatus[Set Ticket Status<br/>to 'open']
+    CancelPendingApprovals --> SetOpenStatus[Set Ticket Status<br/>to open]
     
-    SetOpenStatus --> CreateResubmitHistory[Create Ticket History<br/>action: 'resubmitted'<br/>description: 'Ticket resubmitted<br/>(Attempt: [count + 1])']
+    SetOpenStatus --> CreateResubmitHistory[Create Ticket History<br/>action: resubmitted<br/>description: Ticket resubmitted<br/>Attempt count incremented]
     
     CreateResubmitHistory --> ReinitializeWorkflow[Reinitialize Approval<br/>Workflow]
     
