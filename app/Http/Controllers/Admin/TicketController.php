@@ -480,6 +480,8 @@ class TicketController extends Controller
 
         $tickets = Ticket::whereIn('id', $ticketIds)->get();
         $updatedCount = 0;
+        $failedCount = 0;
+        $failedMessages = [];
         $notificationService = app(NotificationService::class);
 
         \Log::info('TicketController::bulkUpdate - Starting bulk update', [
@@ -611,9 +613,32 @@ class TicketController extends Controller
                     break;
 
                 case 'assign_agent':
+                    // Check if user has permission to assign tickets
+                    if (!Auth::user()->can('tickets.assign')) {
+                        \Log::warning('TicketController::bulkUpdate - User attempted to assign ticket without permission', [
+                            'ticket_id' => $ticket->id,
+                            'user_id' => Auth::id(),
+                            'action' => 'assign_agent',
+                        ]);
+                        $failedCount++;
+                        $failedMessages[] = "Ticket #{$ticket->ticket_number}: You don't have permission to assign tickets. Only managers and admins can reassign tickets.";
+                        continue 2; // Skip this ticket (continue outer foreach loop)
+                    }
+                    
                     $agent = User::find($value);
                     if ($agent) {
                         $oldAgent = $ticket->assigned_agent_id;
+                        
+                        // Restriction: Agents without tickets.assign can only pick unassigned tickets or reassign their own tickets
+                        // Managers/Admins with tickets.assign can reassign any ticket
+                        // Note: We already checked tickets.assign permission above, so if we reach here, user has permission
+                        // But we can add additional logic for agents who might have edit but not assign permission
+                        // Actually, since we already checked tickets.assign above, all users here have assign permission
+                        // So no additional restriction needed - managers/admins can reassign any ticket
+                        
+                        // If reassigning to a different agent, notify the old agent
+                        $shouldNotifyOldAgent = $oldAgent && $oldAgent != $value && $value;
+                        
                         $ticket->assigned_agent_id = $value;
                         $ticket->assigned_team_id = null; // Clear team assignment when assigning agent
                         $ticket->save();
@@ -641,7 +666,38 @@ class TicketController extends Controller
                                 'old_agent' => $oldAgent,
                                 'new_agent' => $value,
                             ]);
+                            
+                            // Notify new agent
                             $notificationService->notifyTicketAssigned($ticket);
+                            
+                            // Notify old agent if ticket was reassigned
+                            if ($shouldNotifyOldAgent) {
+                                $oldAgentUser = User::find($oldAgent);
+                                if ($oldAgentUser) {
+                                    \Log::info('TicketController::bulkUpdate - Notifying old agent of reassignment', [
+                                        'ticket_id' => $ticket->id,
+                                        'old_agent_id' => $oldAgent,
+                                    ]);
+                                    // Create specific notification for old agent
+                                    try {
+                                        $notificationService->create(
+                                            $oldAgentUser->id,
+                                            'ticket_reassigned',
+                                            'Ticket Reassigned',
+                                            "Ticket #{$ticket->ticket_number} has been reassigned from you to {$agent->name}: {$ticket->subject}",
+                                            $ticket->id
+                                        );
+                                    } catch (\Exception $e) {
+                                        \Log::error('TicketController::bulkUpdate - Failed to notify old agent', [
+                                            'ticket_id' => $ticket->id,
+                                            'old_agent_id' => $oldAgent,
+                                            'error' => $e->getMessage(),
+                                        ]);
+                                    }
+                                }
+                            }
+                            
+                            // Notify requester and other watchers
                             $notificationService->notifyTicketUpdated($ticket, Auth::user(), [
                                 'assigned_agent_id' => [
                                     'old' => $oldAgent,
@@ -658,9 +714,26 @@ class TicketController extends Controller
                     break;
 
                 case 'assign_team':
+                    // Check if user has permission to assign tickets
+                    if (!Auth::user()->can('tickets.assign')) {
+                        \Log::warning('TicketController::bulkUpdate - User attempted to assign ticket without permission', [
+                            'ticket_id' => $ticket->id,
+                            'user_id' => Auth::id(),
+                            'action' => 'assign_team',
+                        ]);
+                        $failedCount++;
+                        $failedMessages[] = "Ticket #{$ticket->ticket_number}: You don't have permission to assign tickets. Only managers and admins can reassign tickets.";
+                        continue 2; // Skip this ticket (continue outer foreach loop)
+                    }
+                    
                     $team = Department::find($value);
                     if ($team) {
                         $oldTeam = $ticket->assigned_team_id;
+                        $oldAgent = $ticket->assigned_agent_id;
+                        
+                        // If ticket was assigned to an agent, notify them of team reassignment
+                        $shouldNotifyOldAgent = $oldAgent && $oldAgent;
+                        
                         $ticket->assigned_team_id = $value;
                         $ticket->assigned_agent_id = null; // Clear agent assignment when assigning team
                         $ticket->save();
@@ -687,8 +760,39 @@ class TicketController extends Controller
                                 'ticket_id' => $ticket->id,
                                 'old_team' => $oldTeam,
                                 'new_team' => $value,
+                                'old_agent' => $oldAgent,
                             ]);
+                            
+                            // Notify old agent if ticket was reassigned from agent to team
+                            if ($shouldNotifyOldAgent && $oldAgent) {
+                                $oldAgentUser = User::find($oldAgent);
+                                if ($oldAgentUser) {
+                                    \Log::info('TicketController::bulkUpdate - Notifying old agent of team reassignment', [
+                                        'ticket_id' => $ticket->id,
+                                        'old_agent_id' => $oldAgent,
+                                    ]);
+                                    try {
+                                        $notificationService->create(
+                                            $oldAgentUser->id,
+                                            'ticket_reassigned',
+                                            'Ticket Reassigned to Team',
+                                            "Ticket #{$ticket->ticket_number} has been reassigned from you to team {$team->name}: {$ticket->subject}",
+                                            $ticket->id
+                                        );
+                                    } catch (\Exception $e) {
+                                        \Log::error('TicketController::bulkUpdate - Failed to notify old agent of team reassignment', [
+                                            'ticket_id' => $ticket->id,
+                                            'old_agent_id' => $oldAgent,
+                                            'error' => $e->getMessage(),
+                                        ]);
+                                    }
+                                }
+                            }
+                            
+                            // Notify new team
                             $notificationService->notifyTicketAssigned($ticket);
+                            
+                            // Notify requester and watchers
                             $notificationService->notifyTicketUpdated($ticket, Auth::user(), [
                                 'assigned_team_id' => [
                                     'old' => $oldTeam,
@@ -756,13 +860,46 @@ class TicketController extends Controller
         // Clear search cache
         app(SearchService::class)->clearCache();
 
-        $message = $updatedCount > 0
-            ? "Successfully updated {$updatedCount} ticket(s)."
-            : "No tickets were updated.";
-
-        return redirect()
-            ->route('admin.tickets.index')
-            ->with('success', $message);
+        // Build response message
+        if ($failedCount > 0 && $updatedCount > 0) {
+            // Some succeeded, some failed
+            $message = "Successfully updated {$updatedCount} ticket(s). {$failedCount} ticket(s) could not be updated.";
+            if (!empty($failedMessages)) {
+                $message .= " " . implode(' ', array_slice($failedMessages, 0, 3)); // Show first 3 error messages
+                if (count($failedMessages) > 3) {
+                    $message .= " (and " . (count($failedMessages) - 3) . " more)";
+                }
+            }
+            return redirect()
+                ->route('admin.tickets.index')
+                ->with('warning', $message)
+                ->with('error_details', $failedMessages);
+        } elseif ($failedCount > 0) {
+            // All failed
+            $message = "Failed to update {$failedCount} ticket(s).";
+            if (!empty($failedMessages)) {
+                $message .= " " . implode(' ', array_slice($failedMessages, 0, 2)); // Show first 2 error messages
+                if (count($failedMessages) > 2) {
+                    $message .= " (and " . (count($failedMessages) - 2) . " more)";
+                }
+            }
+            return redirect()
+                ->route('admin.tickets.index')
+                ->with('error', $message)
+                ->with('error_details', $failedMessages);
+        } elseif ($updatedCount > 0) {
+            // All succeeded
+            $message = "Successfully updated {$updatedCount} ticket(s).";
+            return redirect()
+                ->route('admin.tickets.index')
+                ->with('success', $message);
+        } else {
+            // Nothing changed
+            $message = "No tickets were updated.";
+            return redirect()
+                ->route('admin.tickets.index')
+                ->with('info', $message);
+        }
     }
 
     public function bulkDelete(Request $request): RedirectResponse
@@ -878,15 +1015,36 @@ class TicketController extends Controller
 
     protected function formOptions(): array
     {
+        // Check if user can create tickets on behalf of others
+        $canCreateOnBehalf = Auth::user()->can('tickets.create-on-behalf');
+        
+        // Filter requesters based on permission
+        $requesters = $canCreateOnBehalf
+            ? User::select('id', 'name')->orderBy('name')->get()
+            : collect([Auth::user()]);
+        
+        // Filter agents: Only show users with Agent or Senior Agent roles
+        $agents = User::select('users.id', 'users.name')
+            ->where('users.is_active', true)
+            ->whereHas('roles', function ($roleQuery) {
+                $roleQuery->whereIn('name', [
+                    'Agent',
+                    'Senior Agent',
+                ]);
+            })
+            ->orderBy('users.name')
+            ->get();
+        
         return [
             'statuses' => Ticket::STATUSES,
             'priorities' => Ticket::PRIORITIES,
             'sources' => Ticket::SOURCES,
             'departments' => Department::select('id', 'name')->orderBy('name')->get(),
-            'agents' => User::select('id', 'name')->orderBy('name')->get(),
+            'agents' => $agents,
             'categories' => TicketCategory::active()->select('id', 'name')->orderBy('name')->get(),
             'projects' => Project::select('id', 'name')->orderBy('name')->get(),
-            'requesters' => User::select('id', 'name')->orderBy('name')->get(),
+            'requesters' => $requesters,
+            'can_create_on_behalf' => $canCreateOnBehalf,
             'sla_policies' => SlaPolicy::select('id', 'name')->orderBy('name')->get(),
             'tags' => Tag::select('id', 'name', 'color')->orderBy('name')->get(),
             'customFields' => CustomField::active()->ordered()->get()->map(function ($field) {

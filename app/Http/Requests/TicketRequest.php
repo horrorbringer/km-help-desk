@@ -47,6 +47,16 @@ class TicketRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
+            // Check if user can create tickets on behalf of others
+            if (!$this->user()->can('tickets.create-on-behalf')) {
+                // Regular users can only create tickets for themselves
+                if ($this->input('requester_id') != $this->user()->id) {
+                    $validator->errors()->add(
+                        'requester_id',
+                        'You can only create tickets for yourself. Contact a manager or admin to create tickets on behalf of others.'
+                    );
+                }
+            }
             if ($this->has('custom_fields') && is_array($this->custom_fields)) {
                 $customFields = \App\Models\CustomField::active()->get()->keyBy('id');
                 

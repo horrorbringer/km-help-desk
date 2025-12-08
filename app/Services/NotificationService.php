@@ -114,7 +114,7 @@ class NotificationService
             
             // Notify assigned agent via email
             if ($ticket->assigned_agent_id) {
-                Log::info('NotificationService: Calling EmailService::sendTicketAssigned', [
+                Log::info('NotificationService: Calling EmailService::sendTicketAssigned for agent', [
                     'ticket_id' => $ticket->id,
                     'assigned_agent_id' => $ticket->assigned_agent_id,
                 ]);
@@ -123,6 +123,71 @@ class NotificationService
                     'ticket_id' => $ticket->id,
                     'result' => $result ? 'success' : 'failed',
                 ]);
+            } elseif ($ticket->assigned_team_id) {
+                // Notify all active team members via email
+                $team = $ticket->assignedTeam;
+                if ($team) {
+                    $teamMembers = $team->users()->where('is_active', true)->get();
+                    Log::info('NotificationService: Sending email notifications to team members', [
+                        'ticket_id' => $ticket->id,
+                        'team_id' => $ticket->assigned_team_id,
+                        'team_name' => $team->name,
+                        'team_member_count' => $teamMembers->count(),
+                    ]);
+                    
+                    $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500); // Default 500ms delay
+                    $memberIndex = 0;
+                    
+                    foreach ($teamMembers as $user) {
+                        // Add delay between emails to prevent rate limiting (skip delay for first email)
+                        if ($memberIndex > 0) {
+                            usleep($delayBetweenEmails * 1000); // Convert ms to microseconds
+                        }
+                        
+                        try {
+                            $result = $emailService->sendTicketAssigned($ticket, $user);
+                            if ($result) {
+                                Log::info('NotificationService: Email sent to team member', [
+                                    'ticket_id' => $ticket->id,
+                                    'user_id' => $user->id,
+                                    'user_email' => $user->email,
+                                ]);
+                            } else {
+                                Log::warning('NotificationService: Failed to send email to team member', [
+                                    'ticket_id' => $ticket->id,
+                                    'user_id' => $user->id,
+                                    'user_email' => $user->email,
+                                ]);
+                            }
+                        } catch (\Exception $e) {
+                            $errorMessage = $e->getMessage();
+                            $isRateLimitError = str_contains($errorMessage, 'Too many emails') || 
+                                               str_contains($errorMessage, 'rate limit') ||
+                                               str_contains($errorMessage, '550 5.7.0');
+                            
+                            if ($isRateLimitError) {
+                                // If rate limited, wait longer before continuing
+                                Log::warning('NotificationService: Rate limit detected, waiting before continuing', [
+                                    'ticket_id' => $ticket->id,
+                                    'user_id' => $user->id,
+                                    'user_email' => $user->email,
+                                    'delay_ms' => $delayBetweenEmails * 2,
+                                ]);
+                                usleep($delayBetweenEmails * 2000); // Wait 2x longer on rate limit
+                            }
+                            
+                            Log::error('NotificationService: Exception sending email to team member', [
+                                'ticket_id' => $ticket->id,
+                                'user_id' => $user->id,
+                                'user_email' => $user->email,
+                                'error' => $errorMessage,
+                                'is_rate_limit' => $isRateLimitError,
+                            ]);
+                        }
+                        
+                        $memberIndex++;
+                    }
+                }
             }
         } catch (\Exception $e) {
             Log::error("Failed to send email notification: {$e->getMessage()}", [
@@ -178,6 +243,71 @@ class NotificationService
                     'ticket_id' => $ticket->id,
                     'result' => $result ? 'success' : 'failed',
                 ]);
+            } elseif ($ticket->assigned_team_id) {
+                // Notify all active team members via email
+                $team = $ticket->assignedTeam;
+                if ($team) {
+                    $teamMembers = $team->users()->where('is_active', true)->get();
+                    Log::info('NotificationService: Sending email notifications to team members', [
+                        'ticket_id' => $ticket->id,
+                        'team_id' => $ticket->assigned_team_id,
+                        'team_name' => $team->name,
+                        'team_member_count' => $teamMembers->count(),
+                    ]);
+                    
+                    $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500); // Default 500ms delay
+                    $memberIndex = 0;
+                    
+                    foreach ($teamMembers as $user) {
+                        // Add delay between emails to prevent rate limiting (skip delay for first email)
+                        if ($memberIndex > 0) {
+                            usleep($delayBetweenEmails * 1000); // Convert ms to microseconds
+                        }
+                        
+                        try {
+                            $result = $emailService->sendTicketAssigned($ticket, $user);
+                            if ($result) {
+                                Log::info('NotificationService: Email sent to team member', [
+                                    'ticket_id' => $ticket->id,
+                                    'user_id' => $user->id,
+                                    'user_email' => $user->email,
+                                ]);
+                            } else {
+                                Log::warning('NotificationService: Failed to send email to team member', [
+                                    'ticket_id' => $ticket->id,
+                                    'user_id' => $user->id,
+                                    'user_email' => $user->email,
+                                ]);
+                            }
+                        } catch (\Exception $e) {
+                            $errorMessage = $e->getMessage();
+                            $isRateLimitError = str_contains($errorMessage, 'Too many emails') || 
+                                               str_contains($errorMessage, 'rate limit') ||
+                                               str_contains($errorMessage, '550 5.7.0');
+                            
+                            if ($isRateLimitError) {
+                                // If rate limited, wait longer before continuing
+                                Log::warning('NotificationService: Rate limit detected, waiting before continuing', [
+                                    'ticket_id' => $ticket->id,
+                                    'user_id' => $user->id,
+                                    'user_email' => $user->email,
+                                    'delay_ms' => $delayBetweenEmails * 2,
+                                ]);
+                                usleep($delayBetweenEmails * 2000); // Wait 2x longer on rate limit
+                            }
+                            
+                            Log::error('NotificationService: Exception sending email to team member', [
+                                'ticket_id' => $ticket->id,
+                                'user_id' => $user->id,
+                                'user_email' => $user->email,
+                                'error' => $errorMessage,
+                                'is_rate_limit' => $isRateLimitError,
+                            ]);
+                        }
+                        
+                        $memberIndex++;
+                    }
+                }
             }
         } catch (\Exception $e) {
             Log::error("Failed to send ticket assigned email: {$e->getMessage()}", [

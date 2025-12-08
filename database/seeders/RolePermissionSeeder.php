@@ -33,7 +33,7 @@ class RolePermissionSeeder extends Seeder
     {
         $permissionGroups = [
             // Tickets
-            'tickets' => ['view', 'create', 'edit', 'delete', 'assign', 'resolve', 'close', 'auto-approve'],
+            'tickets' => ['view', 'create', 'edit', 'delete', 'assign', 'resolve', 'close', 'auto-approve', 'create-on-behalf'],
             
             // Users
             'users' => ['view', 'create', 'edit', 'delete'],
@@ -192,6 +192,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.resolve',
             'tickets.close',
             'tickets.auto-approve',
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',
@@ -228,6 +229,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.resolve',
             'tickets.close',
             'tickets.auto-approve',
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',
@@ -261,6 +263,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.resolve',
             'tickets.close',
             'tickets.auto-approve', // Can bypass approval workflow
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',
@@ -293,6 +296,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.create-on-behalf',
             
             // IT Resources Management
             'users.view',
@@ -347,6 +351,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',
@@ -381,6 +386,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.resolve',
             'tickets.close',
             'tickets.auto-approve', // Can approve finance-related requests
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',
@@ -413,6 +419,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.create-on-behalf',
             
             // User Management
             'users.view',
@@ -450,6 +457,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.resolve',
             'tickets.close',
             'tickets.auto-approve', // Can approve procurement requests
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',
@@ -482,6 +490,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',
@@ -517,6 +526,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.resolve',
             'tickets.close',
             'tickets.auto-approve', // Can approve team member requests
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',
@@ -549,6 +559,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.create-on-behalf',
             
             // Resource Viewing
             'users.view',

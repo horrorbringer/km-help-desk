@@ -42,6 +42,19 @@ class EmailService
                 $fromAddress = \App\Models\Setting::get('mail_from_address', config('mail.from.address'));
                 $fromName = \App\Models\Setting::get('mail_from_name', config('mail.from.name'));
 
+                // Validate and fallback to config if setting is empty
+                if (empty($fromAddress) || !filter_var($fromAddress, FILTER_VALIDATE_EMAIL)) {
+                    $fromAddress = config('mail.from.address');
+                    Log::warning("Invalid or empty mail_from_address setting, using config fallback", [
+                        'setting_value' => \App\Models\Setting::get('mail_from_address'),
+                        'fallback_value' => $fromAddress,
+                    ]);
+                }
+                
+                if (empty($fromName)) {
+                    $fromName = config('mail.from.name');
+                }
+
                 $message->to($recipient->email, $recipient->name)
                     ->from($fromAddress, $fromName)
                     ->subject($rendered['subject']);

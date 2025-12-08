@@ -111,7 +111,7 @@ const priorityColorMap: Record<string, string> = {
 
 export default function TicketIndex({ tickets, filters, options }: Props) {
   const { can } = usePermissions();
-  useToast(); // Handle flash messages
+  const { toast } = useToast(); // Handle flash messages
   const [selectedTickets, setSelectedTickets] = useState<number[]>([]);
   const [bulkAction, setBulkAction] = useState<string>('');
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
@@ -184,10 +184,27 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
             : bulkDialogValue,
         },
         {
-          onSuccess: () => {
+          onSuccess: (page) => {
             setSelectedTickets([]);
             setBulkDialogOpen(false);
             setBulkDialogValue('');
+            // Flash messages (success/error/warning) are handled by useToast hook
+            // Error details are automatically displayed in toast notifications
+          },
+          onError: (errors) => {
+            console.error('Bulk update errors:', errors);
+            // Show error toast if validation errors occur
+            if (errors.message) {
+              toast.error('Failed to update tickets', {
+                description: errors.message,
+                duration: 5000,
+              });
+            } else {
+              toast.error('Failed to update tickets', {
+                description: 'An error occurred while updating tickets. Please try again.',
+                duration: 5000,
+              });
+            }
           },
         }
       );

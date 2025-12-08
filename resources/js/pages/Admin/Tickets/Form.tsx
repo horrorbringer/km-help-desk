@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronUp, Upload, X, Check, Search, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Upload, X, Check, Search, Loader2, User, FolderKanban } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -72,6 +72,7 @@ type TicketFormProps = {
     categories: BaseOption[];
     projects: BaseOption[];
     requesters: BaseOption[];
+    can_create_on_behalf?: boolean;
     customFields?: {
       id: number;
       name: string;
@@ -944,7 +945,11 @@ export default function TicketForm(props: TicketFormProps) {
 
               <div>
                 <Label>Requester *</Label>
-                <Select value={data.requester_id?.toString()} onValueChange={(value) => setData('requester_id', Number(value))}>
+                <Select 
+                  value={data.requester_id?.toString()} 
+                  onValueChange={(value) => setData('requester_id', Number(value))}
+                  disabled={!isEdit && !formOptions.can_create_on_behalf && formOptions.requesters.length === 1}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select requester" />
                   </SelectTrigger>
@@ -957,6 +962,21 @@ export default function TicketForm(props: TicketFormProps) {
                   </SelectContent>
                 </Select>
                 {errors.requester_id && <p className="text-xs text-red-500 mt-1">{errors.requester_id}</p>}
+                {!isEdit && formOptions.can_create_on_behalf && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    💡 You can create tickets on behalf of other users. The selected user will receive notifications and their manager will handle approvals.
+                  </p>
+                )}
+                {!isEdit && !formOptions.can_create_on_behalf && formOptions.requesters.length === 1 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ℹ️ You can only create tickets for yourself. Contact a manager or admin to create tickets on behalf of others.
+                  </p>
+                )}
+                {!isEdit && formOptions.can_create_on_behalf && data.requester_id && data.requester_id !== auth?.user?.id && (
+                  <p className="text-xs text-blue-600 mt-1 font-medium">
+                    ⚠️ Creating ticket on behalf of: {formOptions.requesters.find((r) => r.id === data.requester_id)?.name || 'Selected user'}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1172,6 +1192,142 @@ export default function TicketForm(props: TicketFormProps) {
             </CardContent>
           </Card>
 
+          {/* Agent and Project Section - Moved outside Advanced Options */}
+          <Card className="border-primary/20">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <User className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Assignment</CardTitle>
+                  <CardDescription className="text-xs">Assign agent or project to this ticket</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-sm font-medium">Agent</Label>
+                  <span className="text-xs text-muted-foreground">(optional)</span>
+                </div>
+                <Select
+                  value={data.assigned_agent_id ? data.assigned_agent_id.toString() : ''}
+                  onValueChange={(value) =>
+                    setData('assigned_agent_id', value === '__none' ? '' : Number(value))
+                  }
+                >
+                  <SelectTrigger className={cn(
+                    "h-10",
+                    data.assigned_agent_id && "border-primary/50 bg-primary/5"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      {data.assigned_agent_id ? (
+                        <>
+                          <User className="h-4 w-4 text-primary" />
+                          <SelectValue>
+                            {formOptions.agents.find(a => a.id === data.assigned_agent_id)?.name || 'Unassigned'}
+                          </SelectValue>
+                        </>
+                      ) : (
+                        <SelectValue placeholder="Select an agent..." />
+                      )}
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span>Unassigned</span>
+                      </div>
+                    </SelectItem>
+                    {formOptions.agents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id.toString()}>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <span>{agent.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.assigned_agent_id && (
+                  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                    <X className="h-3 w-3" />
+                    {errors.assigned_agent_id}
+                  </p>
+                )}
+                {!errors.assigned_agent_id && (
+                  <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                    <span>💡</span>
+                    <span>Assign a specific agent to handle this ticket. Leave unassigned to let the team handle it.</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <FolderKanban className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-sm font-medium">Project</Label>
+                  <span className="text-xs text-muted-foreground">(optional)</span>
+                </div>
+                <Select
+                  value={data.project_id ? data.project_id.toString() : ''}
+                  onValueChange={(value) =>
+                    setData('project_id', value === '__none' ? '' : Number(value))
+                  }
+                >
+                  <SelectTrigger className={cn(
+                    "h-10",
+                    data.project_id && "border-primary/50 bg-primary/5"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      {data.project_id ? (
+                        <>
+                          <FolderKanban className="h-4 w-4 text-primary" />
+                          <SelectValue>
+                            {formOptions.projects.find(p => p.id === data.project_id)?.name || 'No project'}
+                          </SelectValue>
+                        </>
+                      ) : (
+                        <SelectValue placeholder="Select a project..." />
+                      )}
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">
+                      <div className="flex items-center gap-2">
+                        <FolderKanban className="h-4 w-4 text-muted-foreground" />
+                        <span>No project</span>
+                      </div>
+                    </SelectItem>
+                    {formOptions.projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id.toString()}>
+                        <div className="flex items-center gap-2">
+                          <FolderKanban className="h-4 w-4 text-muted-foreground" />
+                          <span>{project.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.project_id && (
+                  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                    <X className="h-3 w-3" />
+                    {errors.project_id}
+                  </p>
+                )}
+                {!errors.project_id && (
+                  <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                    <span>📁</span>
+                    <span>Link this ticket to a project for better organization and tracking.</span>
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Advanced Options Collapsible */}
           <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
             <Card>
@@ -1188,57 +1344,6 @@ export default function TicketForm(props: TicketFormProps) {
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <CardContent className="space-y-6">
-                  {/* Assignment Section */}
-                  <div className="space-y-4">
-                    <Label className="text-base font-semibold">Additional Assignment</Label>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <Label>Agent (optional)</Label>
-                        <Select
-                          value={data.assigned_agent_id ? data.assigned_agent_id.toString() : ''}
-                          onValueChange={(value) =>
-                            setData('assigned_agent_id', value === '__none' ? '' : Number(value))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Unassigned" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none">Unassigned</SelectItem>
-                            {formOptions.agents.map((agent) => (
-                              <SelectItem key={agent.id} value={agent.id.toString()}>
-                                {agent.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.assigned_agent_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_agent_id}</p>}
-                      </div>
-
-                      <div>
-                        <Label>Project (optional)</Label>
-                        <Select
-                          value={data.project_id ? data.project_id.toString() : ''}
-                          onValueChange={(value) =>
-                            setData('project_id', value === '__none' ? '' : Number(value))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="No project" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none">No project</SelectItem>
-                            {formOptions.projects.map((project) => (
-                              <SelectItem key={project.id} value={project.id.toString()}>
-                                {project.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.project_id && <p className="text-xs text-red-500 mt-1">{errors.project_id}</p>}
-                      </div>
-                    </div>
-                  </div>
 
                   {/* SLA Section */}
                   <Collapsible open={showSLA} onOpenChange={setShowSLA}>
