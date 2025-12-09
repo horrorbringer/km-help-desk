@@ -683,9 +683,6 @@ export default function TicketForm(props: TicketFormProps) {
   
   // Collapsible states for advanced sections
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showSLA, setShowSLA] = useState(false);
-  const [showTags, setShowTags] = useState(false);
-  const [showWatchers, setShowWatchers] = useState(false);
   
   // File upload state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -821,137 +818,195 @@ export default function TicketForm(props: TicketFormProps) {
       )}
 
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-3" noValidate>
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-xl">Ticket Information</CardTitle>
-            <CardDescription>Subject, requester, routing, and SLA data.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="subject">Subject *</Label>
-              <Input
-                ref={subjectInputRef}
-                id="subject"
-                value={data.subject}
-                onChange={(e) => setData('subject', e.target.value)}
-                placeholder="Short summary of the issue"
-                className="text-base"
-              />
-              {errors.subject && <p className="text-xs text-red-500 mt-1">{errors.subject}</p>}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
+        {/* Main Form Section */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Basic Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Basic Information</CardTitle>
+              <CardDescription>Essential details about the ticket</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
               <div>
-                <Label>Category *</Label>
-                <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={categoryOpen}
-                      className="w-full justify-between"
-                    >
-                      {data.category_id
-                        ? formOptions.categories.find((c) => c.id === data.category_id)?.name ||
-                          (isEdit && ticket?.category ? `${ticket.category.name}${!formOptions.categories.find((c) => c.id === ticket.category?.id) ? ' (Inactive)' : ''}` : 'Select category...')
-                        : 'Select category...'}
-                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[320px] p-0" align="start">
-                    <div className="p-2 border-b">
-                      <div className="relative">
-                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search categories..."
-                          value={categorySearch}
-                          onChange={(e) => setCategorySearch(e.target.value)}
-                          className="pl-8"
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-                    <ScrollArea className="h-[280px]">
-                      <div className="p-1.5">
-                        {formOptions.categories
-                          .filter((category) =>
-                            category.name.toLowerCase().includes(categorySearch.toLowerCase())
-                          )
-                          .length === 0 &&
-                          (!isEdit ||
-                            !ticket?.category ||
-                            formOptions.categories.find((c) => c.id === ticket.category?.id) ||
-                            !ticket.category.name.toLowerCase().includes(categorySearch.toLowerCase())) ? (
-                          <div className="py-8 text-center text-sm text-muted-foreground">
-                            <p>No category found.</p>
-                            <p className="text-xs mt-1">Try a different search term</p>
-                          </div>
-                        ) : (
-                          <>
-                            {formOptions.categories
-                              .filter((category) =>
-                                category.name.toLowerCase().includes(categorySearch.toLowerCase())
-                              )
-                              .map((category) => (
-                                <button
-                                  key={category.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setData('category_id', category.id);
-                                    setCategoryOpen(false);
-                                    setCategorySearch('');
-                                  }}
-                                  className={cn(
-                                    'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer',
-                                    data.category_id === category.id && 'bg-accent text-accent-foreground font-medium'
-                                  )}
-                                >
-                                  <Check
-                                    className={cn(
-                                      'h-4 w-4 shrink-0',
-                                      data.category_id === category.id ? 'opacity-100 text-primary' : 'opacity-0'
-                                    )}
-                                  />
-                                  <span className="truncate">{category.name}</span>
-                                </button>
-                              ))}
-                            {/* Show current category if it's inactive (for edit mode) */}
-                            {isEdit &&
-                              ticket?.category &&
-                              !formOptions.categories.find((c) => c.id === ticket.category?.id) &&
-                              (categorySearch === '' ||
-                                ticket.category.name.toLowerCase().includes(categorySearch.toLowerCase())) && (
-                                <button
-                                  type="button"
-                                  disabled
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md opacity-50 cursor-not-allowed"
-                                >
-                                  <Check className="h-4 w-4 shrink-0 opacity-0" />
-                                  <span className="truncate">{ticket.category.name} (Inactive)</span>
-                                </button>
-                              )}
-                          </>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </PopoverContent>
-                </Popover>
-                {errors.category_id && <p className="text-xs text-red-500 mt-1">{errors.category_id}</p>}
-                {isEdit && ticket?.category && !formOptions.categories.find((c) => c.id === ticket.category?.id) && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    ⚠️ This category is currently inactive. Please select an active category.
-                  </p>
-                )}
+                <Label htmlFor="subject" className="text-sm font-medium">
+                  Subject <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  ref={subjectInputRef}
+                  id="subject"
+                  value={data.subject}
+                  onChange={(e) => setData('subject', e.target.value)}
+                  placeholder="Brief summary of the issue or request"
+                  className="text-base mt-1.5"
+                />
+                {errors.subject && <p className="text-xs text-destructive mt-1.5">{errors.subject}</p>}
               </div>
 
               <div>
-                <Label>Requester *</Label>
+                <Label htmlFor="description" className="text-sm font-medium">
+                  Description <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="description"
+                  rows={6}
+                  value={data.description}
+                  onChange={(e) => setData('description', e.target.value)}
+                  placeholder="Provide detailed information about the issue, steps to reproduce, or what you need..."
+                  className="text-base mt-1.5 resize-none"
+                />
+                {errors.description && <p className="text-xs text-destructive mt-1.5">{errors.description}</p>}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Classification & Routing */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Classification & Routing</CardTitle>
+              <CardDescription>Category, team assignment, and classification</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <Label className="text-sm font-medium">
+                    Category <span className="text-destructive">*</span>
+                  </Label>
+                  <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={categoryOpen}
+                        className="w-full justify-between mt-1.5 h-10"
+                      >
+                        <span className="truncate">
+                          {data.category_id
+                            ? formOptions.categories.find((c) => c.id === data.category_id)?.name ||
+                              (isEdit && ticket?.category ? `${ticket.category.name}${!formOptions.categories.find((c) => c.id === ticket.category?.id) ? ' (Inactive)' : ''}` : 'Select category...')
+                            : 'Select category...'}
+                        </span>
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[320px] p-0" align="start">
+                      <div className="p-2 border-b">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search categories..."
+                            value={categorySearch}
+                            onChange={(e) => setCategorySearch(e.target.value)}
+                            className="pl-8"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                      <ScrollArea className="h-[280px]">
+                        <div className="p-1.5">
+                          {formOptions.categories
+                            .filter((category) =>
+                              category.name.toLowerCase().includes(categorySearch.toLowerCase())
+                            )
+                            .length === 0 &&
+                            (!isEdit ||
+                              !ticket?.category ||
+                              formOptions.categories.find((c) => c.id === ticket.category?.id) ||
+                              !ticket.category.name.toLowerCase().includes(categorySearch.toLowerCase())) ? (
+                            <div className="py-8 text-center text-sm text-muted-foreground">
+                              <p>No category found.</p>
+                              <p className="text-xs mt-1">Try a different search term</p>
+                            </div>
+                          ) : (
+                            <>
+                              {formOptions.categories
+                                .filter((category) =>
+                                  category.name.toLowerCase().includes(categorySearch.toLowerCase())
+                                )
+                                .map((category) => (
+                                  <button
+                                    key={category.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setData('category_id', category.id);
+                                      setCategoryOpen(false);
+                                      setCategorySearch('');
+                                    }}
+                                    className={cn(
+                                      'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer',
+                                      data.category_id === category.id && 'bg-accent text-accent-foreground font-medium'
+                                    )}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        'h-4 w-4 shrink-0',
+                                        data.category_id === category.id ? 'opacity-100 text-primary' : 'opacity-0'
+                                      )}
+                                    />
+                                    <span className="truncate">{category.name}</span>
+                                  </button>
+                                ))}
+                              {isEdit &&
+                                ticket?.category &&
+                                !formOptions.categories.find((c) => c.id === ticket.category?.id) &&
+                                (categorySearch === '' ||
+                                  ticket.category.name.toLowerCase().includes(categorySearch.toLowerCase())) && (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md opacity-50 cursor-not-allowed"
+                                  >
+                                    <Check className="h-4 w-4 shrink-0 opacity-0" />
+                                    <span className="truncate">{ticket.category.name} (Inactive)</span>
+                                  </button>
+                                )}
+                            </>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </PopoverContent>
+                  </Popover>
+                  {errors.category_id && <p className="text-xs text-destructive mt-1.5">{errors.category_id}</p>}
+                  {isEdit && ticket?.category && !formOptions.categories.find((c) => c.id === ticket.category?.id) && (
+                    <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                      <span>⚠️</span>
+                      <span>This category is inactive. Please select an active category.</span>
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">
+                    Team Department <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
+                    <SelectTrigger className="mt-1.5 h-10">
+                      <SelectValue placeholder="Select team" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formOptions.departments.map((team) => (
+                        <SelectItem key={team.id} value={team.id.toString()}>
+                          {team.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.assigned_team_id && <p className="text-xs text-destructive mt-1.5">{errors.assigned_team_id}</p>}
+                  {defaultTeamId && !isEdit && (
+                    <p className="text-xs text-muted-foreground mt-1.5">Auto-filled from your department</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">
+                  Requester <span className="text-destructive">*</span>
+                </Label>
                 <Select 
                   value={data.requester_id?.toString()} 
                   onValueChange={(value) => setData('requester_id', Number(value))}
                   disabled={!isEdit && !formOptions.can_create_on_behalf && formOptions.requesters.length === 1}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="mt-1.5 h-10">
                     <SelectValue placeholder="Select requester" />
                   </SelectTrigger>
                   <SelectContent>
@@ -962,87 +1017,83 @@ export default function TicketForm(props: TicketFormProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.requester_id && <p className="text-xs text-red-500 mt-1">{errors.requester_id}</p>}
-                {!isEdit && formOptions.can_create_on_behalf && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    💡 You can create tickets on behalf of other users. The selected user will receive notifications and their manager will handle approvals.
+                {errors.requester_id && <p className="text-xs text-destructive mt-1.5">{errors.requester_id}</p>}
+                {!isEdit && formOptions.can_create_on_behalf && data.requester_id && data.requester_id !== auth?.user?.id && (
+                  <p className="text-xs text-blue-600 mt-1.5 font-medium flex items-center gap-1">
+                    <span>ℹ️</span>
+                    <span>Creating on behalf of: {formOptions.requesters.find((r) => r.id === data.requester_id)?.name || 'Selected user'}</span>
                   </p>
                 )}
                 {!isEdit && !formOptions.can_create_on_behalf && formOptions.requesters.length === 1 && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    ℹ️ You can only create tickets for yourself. Contact a manager or admin to create tickets on behalf of others.
-                  </p>
-                )}
-                {!isEdit && formOptions.can_create_on_behalf && data.requester_id && data.requester_id !== auth?.user?.id && (
-                  <p className="text-xs text-blue-600 mt-1 font-medium">
-                    ⚠️ Creating ticket on behalf of: {formOptions.requesters.find((r) => r.id === data.requester_id)?.name || 'Selected user'}
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1.5">You can only create tickets for yourself</p>
                 )}
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <div>
-              <Label>Team Department *</Label>
-              <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select team" />
-                </SelectTrigger>
-                <SelectContent>
-                  {formOptions.departments.map((team) => (
-                    <SelectItem key={team.id} value={team.id.toString()}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.assigned_team_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_team_id}</p>}
-              {defaultTeamId && !isEdit && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Auto-filled from your department
-                </p>
-              )}
-            </div>
+          {/* Status & Priority */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Status & Priority</CardTitle>
+              <CardDescription>Set ticket status, priority level, and source</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-3">
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <Select value={data.status} onValueChange={(value) => setData('status', value)}>
+                    <SelectTrigger className="mt-1.5 h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formOptions.statuses.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status.replace('_', ' ')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-                <Label>Status</Label>
-                <Select value={data.status} onValueChange={(value) => setData('status', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.statuses.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status.replace('_', ' ')}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div>
+                  <Label className="text-sm font-medium">Priority</Label>
+                  <Select value={data.priority} onValueChange={(value) => setData('priority', value)}>
+                    <SelectTrigger className="mt-1.5 h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formOptions.priorities.map((priority) => (
+                        <SelectItem key={priority} value={priority}>
+                          <div className="flex items-center gap-2">
+                            <span>{priority}</span>
+                            <Badge className={cn('text-xs', priorityColorMap[priority] ?? '')}>{priority}</Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">Source</Label>
+                  <Select value={data.source} onValueChange={(value) => setData('source', value)}>
+                    <SelectTrigger className="mt-1.5 h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formOptions.sources.map((source) => (
+                        <SelectItem key={source} value={source}>
+                          {source}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div>
-                <Label>Priority</Label>
-                <Select value={data.priority} onValueChange={(value) => setData('priority', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.priorities.map((priority) => (
-                      <SelectItem key={priority} value={priority}>
-                        {priority}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Badge className={cn('mt-2', priorityColorMap[priority] ?? '')}>{priority}</Badge>
-              </div>
-
-              <div>
-                <Label htmlFor="estimated_cost">
-                  Estimated Cost ($)
-                  <span className="text-muted-foreground text-xs font-normal ml-1">
-                    (For purchase/expense tickets)
-                  </span>
+                <Label htmlFor="estimated_cost" className="text-sm font-medium">
+                  Estimated Cost
                 </Label>
                 <Input
                   id="estimated_cost"
@@ -1052,66 +1103,135 @@ export default function TicketForm(props: TicketFormProps) {
                   placeholder="0.00"
                   value={data.estimated_cost ?? ''}
                   onChange={(e) => setData('estimated_cost', e.target.value === '' ? null : Number(e.target.value) || null)}
+                  className="mt-1.5"
                 />
                 {formErrors.estimated_cost && (
-                  <p className="text-xs text-destructive mt-1">{formErrors.estimated_cost}</p>
+                  <p className="text-xs text-destructive mt-1.5">{formErrors.estimated_cost}</p>
                 )}
-                <p className="text-xs text-muted-foreground mt-1">
-                  HOD approval required if cost exceeds category threshold (e.g., Hardware: $1,000, Procurement: $500)
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  For purchase/expense tickets. HOD approval required if cost exceeds category threshold.
                 </p>
               </div>
+            </CardContent>
+          </Card>
+        </div>
 
+        <div className="space-y-6">
+          {/* Assignment Section */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <User className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Assignment</CardTitle>
+                  <CardDescription className="text-xs">Assign agent or project (optional)</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div>
-                <Label>Source</Label>
-                <Select value={data.source} onValueChange={(value) => setData('source', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
+                <Label className="text-sm font-medium">Agent</Label>
+                <Select
+                  value={data.assigned_agent_id ? data.assigned_agent_id.toString() : ''}
+                  onValueChange={(value) =>
+                    setData('assigned_agent_id', value === '__none' ? '' : Number(value))
+                  }
+                >
+                  <SelectTrigger className={cn(
+                    "h-10 mt-1.5",
+                    data.assigned_agent_id && "border-primary/50 bg-primary/5"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      {data.assigned_agent_id ? (
+                        <>
+                          <User className="h-4 w-4 text-primary" />
+                          <SelectValue>
+                            {formOptions.agents.find(a => a.id === data.assigned_agent_id)?.name || 'Unassigned'}
+                          </SelectValue>
+                        </>
+                      ) : (
+                        <SelectValue placeholder="Select an agent..." />
+                      )}
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
-                    {formOptions.sources.map((source) => (
-                      <SelectItem key={source} value={source}>
-                        {source}
+                    <SelectItem value="__none">Unassigned</SelectItem>
+                    {formOptions.agents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id.toString()}>
+                        {agent.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.assigned_agent_id && <p className="text-xs text-destructive mt-1.5">{errors.assigned_agent_id}</p>}
               </div>
-            </div>
 
-            <div>
-              <Label htmlFor="description">Description *</Label>
-              <Textarea
-                id="description"
-                rows={6}
-                value={data.description}
-                onChange={(e) => setData('description', e.target.value)}
-                placeholder="Describe what is happening... (be as detailed as possible)"
-                className="text-base"
-              />
-              {errors.description && <p className="text-xs text-red-500 mt-1">{errors.description}</p>}
-            </div>
-          </CardContent>
-        </Card>
+              <div>
+                <Label className="text-sm font-medium">Project</Label>
+                <Select
+                  value={data.project_id ? data.project_id.toString() : ''}
+                  onValueChange={(value) =>
+                    setData('project_id', value === '__none' ? '' : Number(value))
+                  }
+                >
+                  <SelectTrigger className={cn(
+                    "h-10 mt-1.5",
+                    data.project_id && "border-primary/50 bg-primary/5"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      {data.project_id ? (
+                        <>
+                          <FolderKanban className="h-4 w-4 text-primary" />
+                          <SelectValue>
+                            {formOptions.projects.find(p => p.id === data.project_id)?.name || 'No project'}
+                          </SelectValue>
+                        </>
+                      ) : (
+                        <SelectValue placeholder="Select a project..." />
+                      )}
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No project</SelectItem>
+                    {formOptions.projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id.toString()}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.project_id && <p className="text-xs text-destructive mt-1.5">{errors.project_id}</p>}
+              </div>
+            </CardContent>
+          </Card>
 
-        <div className="space-y-6">
-          {/* Attachments Section - Moved outside Advanced Options */}
+          {/* Attachments Section */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Attachments</CardTitle>
-              <CardDescription>
-                {isEdit 
-                  ? 'Upload files related to this ticket'
-                  : 'Select files to attach after ticket is created'}
-              </CardDescription>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <Upload className="h-4 w-4 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Attachments</CardTitle>
+                  <CardDescription className="text-xs">
+                    {isEdit 
+                      ? 'Upload files related to this ticket'
+                      : 'Files will be attached after ticket creation'}
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div 
-                className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer bg-muted/30"
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                 <div className="cursor-pointer">
                   <span className="text-sm font-medium text-primary hover:underline">
                     Click to upload
@@ -1129,12 +1249,12 @@ export default function TicketForm(props: TicketFormProps) {
                   disabled={uploadingFiles}
                 />
                 <p className="text-xs text-muted-foreground mt-2">
-                  PDF, Office documents, images, archives (Max 10MB per file)
+                  PDF, Office docs, images, archives (Max 10MB per file)
                 </p>
               </div>
 
               {selectedFiles.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label className="text-sm font-medium">
                       Selected Files ({selectedFiles.length})
@@ -1162,7 +1282,7 @@ export default function TicketForm(props: TicketFormProps) {
                     )}
                     {!isEdit && (
                       <span className="text-xs text-muted-foreground">
-                        Will upload after ticket creation
+                        Will upload after creation
                       </span>
                     )}
                   </div>
@@ -1170,11 +1290,11 @@ export default function TicketForm(props: TicketFormProps) {
                     {selectedFiles.map((file, index) => (
                       <div 
                         key={index} 
-                        className="flex items-center gap-3 p-2 rounded-md bg-background border hover:bg-accent/50 transition-colors"
+                        className="flex items-center gap-3 p-2.5 rounded-md bg-background border hover:bg-accent/50 transition-colors"
                       >
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{file.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{formatFileSize(file.size)}</p>
                         </div>
                         <Button
                           type="button"
@@ -1182,7 +1302,7 @@ export default function TicketForm(props: TicketFormProps) {
                           size="sm"
                           onClick={() => handleFileRemove(index)}
                           disabled={uploadingFiles}
-                          className="h-8 w-8 p-0 shrink-0"
+                          className="h-8 w-8 p-0 shrink-0 hover:bg-destructive/10 hover:text-destructive"
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -1191,142 +1311,6 @@ export default function TicketForm(props: TicketFormProps) {
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Agent and Project Section - Moved outside Advanced Options */}
-          <Card className="border-primary/20">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <User className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">Assignment</CardTitle>
-                  <CardDescription className="text-xs">Assign agent or project to this ticket</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-sm font-medium">Agent</Label>
-                  <span className="text-xs text-muted-foreground">(optional)</span>
-                </div>
-                <Select
-                  value={data.assigned_agent_id ? data.assigned_agent_id.toString() : ''}
-                  onValueChange={(value) =>
-                    setData('assigned_agent_id', value === '__none' ? '' : Number(value))
-                  }
-                >
-                  <SelectTrigger className={cn(
-                    "h-10",
-                    data.assigned_agent_id && "border-primary/50 bg-primary/5"
-                  )}>
-                    <div className="flex items-center gap-2">
-                      {data.assigned_agent_id ? (
-                        <>
-                          <User className="h-4 w-4 text-primary" />
-                          <SelectValue>
-                            {formOptions.agents.find(a => a.id === data.assigned_agent_id)?.name || 'Unassigned'}
-                          </SelectValue>
-                        </>
-                      ) : (
-                        <SelectValue placeholder="Select an agent..." />
-                      )}
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span>Unassigned</span>
-                      </div>
-                    </SelectItem>
-                    {formOptions.agents.map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id.toString()}>
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <span>{agent.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.assigned_agent_id && (
-                  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                    <X className="h-3 w-3" />
-                    {errors.assigned_agent_id}
-                  </p>
-                )}
-                {!errors.assigned_agent_id && (
-                  <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-                    <span>💡</span>
-                    <span>Assign a specific agent to handle this ticket. Leave unassigned to let the team handle it.</span>
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <FolderKanban className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-sm font-medium">Project</Label>
-                  <span className="text-xs text-muted-foreground">(optional)</span>
-                </div>
-                <Select
-                  value={data.project_id ? data.project_id.toString() : ''}
-                  onValueChange={(value) =>
-                    setData('project_id', value === '__none' ? '' : Number(value))
-                  }
-                >
-                  <SelectTrigger className={cn(
-                    "h-10",
-                    data.project_id && "border-primary/50 bg-primary/5"
-                  )}>
-                    <div className="flex items-center gap-2">
-                      {data.project_id ? (
-                        <>
-                          <FolderKanban className="h-4 w-4 text-primary" />
-                          <SelectValue>
-                            {formOptions.projects.find(p => p.id === data.project_id)?.name || 'No project'}
-                          </SelectValue>
-                        </>
-                      ) : (
-                        <SelectValue placeholder="Select a project..." />
-                      )}
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">
-                      <div className="flex items-center gap-2">
-                        <FolderKanban className="h-4 w-4 text-muted-foreground" />
-                        <span>No project</span>
-                      </div>
-                    </SelectItem>
-                    {formOptions.projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id.toString()}>
-                        <div className="flex items-center gap-2">
-                          <FolderKanban className="h-4 w-4 text-muted-foreground" />
-                          <span>{project.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.project_id && (
-                  <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                    <X className="h-3 w-3" />
-                    {errors.project_id}
-                  </p>
-                )}
-                {!errors.project_id && (
-                  <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-                    <span>📁</span>
-                    <span>Link this ticket to a project for better organization and tracking.</span>
-                  </p>
-                )}
-              </div>
             </CardContent>
           </Card>
 
@@ -1346,113 +1330,111 @@ export default function TicketForm(props: TicketFormProps) {
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <CardContent className="space-y-6">
-
-                  {/* SLA Section */}
-                  <Collapsible open={showSLA} onOpenChange={setShowSLA}>
+                  {/* SLA & Timelines Section */}
+                  <div className="space-y-4">
                     <div>
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between cursor-pointer mb-2">
-                          <Label className="text-base font-semibold cursor-pointer">SLA & Timelines</Label>
-                          {showSLA ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="space-y-4 pt-2">
-              <div>
-                <Label>SLA Policy</Label>
-                <Select
-                  value={data.sla_policy_id ? data.sla_policy_id.toString() : ''}
-                  onValueChange={(value) =>
-                    setData('sla_policy_id', value === '__none' ? '' : Number(value))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="No SLA" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">No SLA</SelectItem>
-                    {formOptions.sla_policies.map((sla) => (
-                      <SelectItem key={sla.id} value={sla.id.toString()}>
-                        {sla.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.sla_policy_id && <p className="text-xs text-red-500 mt-1">{errors.sla_policy_id}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>First Response</Label>
-                <div className="grid gap-2">
-                  <Input
-                    type="datetime-local"
-                    value={data.first_response_at}
-                    onChange={(e) => setData('first_response_at', e.target.value)}
-                    placeholder="First response time"
-                  />
-                  <Input
-                    type="datetime-local"
-                    value={data.first_response_due_at}
-                    onChange={(e) => setData('first_response_due_at', e.target.value)}
-                    placeholder="Response due"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Resolution</Label>
-                <div className="grid gap-2">
-                  <Input
-                    type="datetime-local"
-                    value={data.resolution_due_at}
-                    onChange={(e) => setData('resolution_due_at', e.target.value)}
-                    placeholder="Resolution due"
-                  />
-                  <Input
-                    type="datetime-local"
-                    value={data.resolved_at}
-                    onChange={(e) => setData('resolved_at', e.target.value)}
-                    placeholder="Resolved at"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Closure</Label>
-                <Input
-                  type="datetime-local"
-                  value={data.closed_at}
-                  onChange={(e) => setData('closed_at', e.target.value)}
-                  placeholder="Closed at"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="response_sla_breached"
-                    checked={data.response_sla_breached}
-                    onCheckedChange={(checked) => setData('response_sla_breached', Boolean(checked))}
-                  />
-                  <Label htmlFor="response_sla_breached">Response SLA breached</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="resolution_sla_breached"
-                    checked={data.resolution_sla_breached}
-                    onCheckedChange={(checked) => setData('resolution_sla_breached', Boolean(checked))}
-                  />
-                  <Label htmlFor="resolution_sla_breached">Resolution SLA breached</Label>
-                </div>
-              </div>
-                      </CollapsibleContent>
+                      <Label className="text-base font-semibold">SLA & Timelines</Label>
+                      <CardDescription className="text-xs mt-1">Service level agreements and timeline tracking</CardDescription>
                     </div>
-                  </Collapsible>
+                    
+                    <div>
+                      <Label>SLA Policy</Label>
+                      <Select
+                        value={data.sla_policy_id ? data.sla_policy_id.toString() : ''}
+                        onValueChange={(value) =>
+                          setData('sla_policy_id', value === '__none' ? '' : Number(value))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="No SLA" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">No SLA</SelectItem>
+                          {formOptions.sla_policies.map((sla) => (
+                            <SelectItem key={sla.id} value={sla.id.toString()}>
+                              {sla.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.sla_policy_id && <p className="text-xs text-red-500 mt-1">{errors.sla_policy_id}</p>}
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-sm">First Response</Label>
+                        <Input
+                          type="datetime-local"
+                          value={data.first_response_at}
+                          onChange={(e) => setData('first_response_at', e.target.value)}
+                          placeholder="First response time"
+                        />
+                        <Input
+                          type="datetime-local"
+                          value={data.first_response_due_at}
+                          onChange={(e) => setData('first_response_due_at', e.target.value)}
+                          placeholder="Response due"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm">Resolution</Label>
+                        <Input
+                          type="datetime-local"
+                          value={data.resolution_due_at}
+                          onChange={(e) => setData('resolution_due_at', e.target.value)}
+                          placeholder="Resolution due"
+                        />
+                        <Input
+                          type="datetime-local"
+                          value={data.resolved_at}
+                          onChange={(e) => setData('resolved_at', e.target.value)}
+                          placeholder="Resolved at"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm">Closure</Label>
+                      <Input
+                        type="datetime-local"
+                        value={data.closed_at}
+                        onChange={(e) => setData('closed_at', e.target.value)}
+                        placeholder="Closed at"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-4">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="response_sla_breached"
+                          checked={data.response_sla_breached}
+                          onCheckedChange={(checked) => setData('response_sla_breached', Boolean(checked))}
+                        />
+                        <Label htmlFor="response_sla_breached" className="text-sm font-normal cursor-pointer">
+                          Response SLA breached
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="resolution_sla_breached"
+                          checked={data.resolution_sla_breached}
+                          onCheckedChange={(checked) => setData('resolution_sla_breached', Boolean(checked))}
+                        />
+                        <Label htmlFor="resolution_sla_breached" className="text-sm font-normal cursor-pointer">
+                          Resolution SLA breached
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Custom Fields */}
                   {formOptions.customFields && formOptions.customFields.length > 0 && (
-                    <div>
-                      <Label className="text-base font-semibold mb-2 block">Custom Fields</Label>
-                      <CardDescription className="mb-3">Additional information specific to your organization.</CardDescription>
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-base font-semibold">Custom Fields</Label>
+                        <CardDescription className="text-xs mt-1">Additional information specific to your organization</CardDescription>
+                      </div>
                       <CustomFieldsForm
                         fields={formOptions.customFields}
                         values={data.custom_fields}
@@ -1463,63 +1445,57 @@ export default function TicketForm(props: TicketFormProps) {
                   )}
 
                   {/* Tags Section */}
-                  <Collapsible open={showTags} onOpenChange={setShowTags}>
+                  <div className="space-y-3">
                     <div>
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between cursor-pointer mb-2">
-                          <div>
-                            <Label className="text-base font-semibold cursor-pointer">Tags</Label>
-                            <CardDescription className="text-xs">Helps classify tickets and trigger automations.</CardDescription>
-                          </div>
-                          {showTags ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-2">
-                        <div className="flex flex-wrap gap-2">
-                          {formOptions.tags.map((tag) => (
-                            <button
-                              type="button"
-                              key={tag.id}
-                              onClick={() => toggleArrayValue('tag_ids', tag.id)}
-                              className={cn(
-                                'px-3 py-1 rounded-full text-sm font-medium transition',
-                                data.tag_ids.includes(tag.id) ? 'ring-2 ring-offset-2' : 'opacity-70'
-                              )}
-                              style={{ backgroundColor: tag.color, color: '#fff' }}
-                            >
-                              {tag.name}
-                            </button>
-                          ))}
-                        </div>
-                      </CollapsibleContent>
+                      <Label className="text-base font-semibold">Tags</Label>
+                      <CardDescription className="text-xs mt-1">Helps classify tickets and trigger automations</CardDescription>
                     </div>
-                  </Collapsible>
+                    <div className="flex flex-wrap gap-2">
+                      {formOptions.tags.length > 0 ? (
+                        formOptions.tags.map((tag) => (
+                          <button
+                            type="button"
+                            key={tag.id}
+                            onClick={() => toggleArrayValue('tag_ids', tag.id)}
+                            className={cn(
+                              'px-3 py-1.5 rounded-full text-sm font-medium transition-all',
+                              data.tag_ids.includes(tag.id) 
+                                ? 'ring-2 ring-offset-2 ring-primary shadow-sm scale-105' 
+                                : 'opacity-70 hover:opacity-100'
+                            )}
+                            style={{ backgroundColor: tag.color, color: '#fff' }}
+                          >
+                            {tag.name}
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No tags available</p>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Watchers Section */}
-                  <Collapsible open={showWatchers} onOpenChange={setShowWatchers}>
+                  <div className="space-y-3">
                     <div>
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between cursor-pointer mb-2">
-                          <div>
-                            <Label className="text-base font-semibold cursor-pointer">Watchers</Label>
-                            <CardDescription className="text-xs">Users who should receive updates.</CardDescription>
-                          </div>
-                          {showWatchers ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-2">
-                        <div className="space-y-2">
-                          {formOptions.requesters.map((user) => (
-                            <label key={user.id} className="flex items-center gap-2 text-sm">
-                              <Checkbox checked={data.watcher_ids.includes(user.id)} onCheckedChange={() => toggleArrayValue('watcher_ids', user.id)} />
-                              {user.name}
-                            </label>
-                          ))}
-                        </div>
-                      </CollapsibleContent>
+                      <Label className="text-base font-semibold">Watchers</Label>
+                      <CardDescription className="text-xs mt-1">Users who should receive updates about this ticket</CardDescription>
                     </div>
-                  </Collapsible>
-
+                    <div className="max-h-48 overflow-y-auto border rounded-lg p-3 space-y-2">
+                      {formOptions.requesters.length > 0 ? (
+                        formOptions.requesters.map((user) => (
+                          <label key={user.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-2 rounded transition">
+                            <Checkbox 
+                              checked={data.watcher_ids.includes(user.id)} 
+                              onCheckedChange={() => toggleArrayValue('watcher_ids', user.id)} 
+                            />
+                            <span>{user.name}</span>
+                          </label>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No users available</p>
+                      )}
+                    </div>
+                  </div>
                 </CardContent>
               </CollapsibleContent>
             </Card>
