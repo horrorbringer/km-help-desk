@@ -285,19 +285,27 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
                 <span className="text-sm text-muted-foreground">
                   {selectedTickets.length} selected
                 </span>
-                {can('tickets.edit') && (
+                {(can('tickets.edit') || can('tickets.assign')) && (
                   <div className="flex items-center gap-2">
                     <Select value={bulkAction} onValueChange={handleBulkAction}>
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Bulk Actions" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="status">Change Status</SelectItem>
-                        <SelectItem value="priority">Change Priority</SelectItem>
-                        <SelectItem value="assign_agent">Assign Agent</SelectItem>
-                        <SelectItem value="assign_team">Assign Team</SelectItem>
-                        <SelectItem value="add_tags">Add Tags</SelectItem>
-                        <SelectItem value="remove_tags">Remove Tags</SelectItem>
+                        {can('tickets.edit') && (
+                          <>
+                            <SelectItem value="status">Change Status</SelectItem>
+                            <SelectItem value="priority">Change Priority</SelectItem>
+                            <SelectItem value="add_tags">Add Tags</SelectItem>
+                            <SelectItem value="remove_tags">Remove Tags</SelectItem>
+                          </>
+                        )}
+                        {can('tickets.assign') && (
+                          <>
+                            <SelectItem value="assign_agent">Assign Agent</SelectItem>
+                            <SelectItem value="assign_team">Assign Team</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

@@ -62,7 +62,7 @@ class NotificationController extends Controller
     public function markAsRead(HelpDeskNotification $notification): JsonResponse
     {
         if ($notification->user_id !== Auth::id()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+            return response()->json(['error' => 'You do not have permission to mark this notification as read. You can only manage your own notifications.'], 403);
         }
 
         $notification->markAsRead();

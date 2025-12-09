@@ -63,7 +63,7 @@ class SavedSearchController extends Controller
     {
         // Only allow users to delete their own searches (unless admin)
         if ($savedSearch->user_id !== Auth::id() && !Auth::user()->hasRole('Super Admin')) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+            return response()->json(['error' => 'You do not have permission to delete this saved search. You can only delete your own searches.'], 403);
         }
 
         $savedSearch->delete();
@@ -79,7 +79,7 @@ class SavedSearchController extends Controller
     {
         // Only allow users to use their own searches or shared ones
         if ($savedSearch->user_id !== Auth::id() && !$savedSearch->is_shared) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+            return response()->json(['error' => 'You do not have permission to use this saved search. You can only use your own searches or shared searches.'], 403);
         }
 
         $savedSearch->incrementUsage();

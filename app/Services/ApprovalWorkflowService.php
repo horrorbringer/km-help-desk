@@ -481,21 +481,45 @@ class ApprovalWorkflowService
     /**
      * Determine if ticket requires approval workflow
      * Real-world: Only require approval when necessary
+     * 
+     * IMPORTANT: Even if a category doesn't require approval, we should still
+     * require approval if the cost exceeds a threshold. This prevents users
+     * from bypassing approval by selecting a non-approval category but entering
+     * a high cost.
      */
     protected function requiresApproval(Ticket $ticket): bool
     {
-        // Don't require approval for:
-        // 1. Categories marked as "no approval required"
-        if ($ticket->category && !$ticket->category->requires_approval) {
-            return false;
+        // 1. Check if cost exceeds threshold (takes precedence over category setting)
+        // This ensures high-cost tickets always require approval, even if category doesn't
+        if ($ticket->category && $ticket->category->hod_approval_threshold) {
+            $ticketCost = $ticket->estimated_cost ?? 0;
+            if ($ticketCost >= $ticket->category->hod_approval_threshold) {
+                Log::info('Approval required due to cost threshold (even though category may not require approval)', [
+                    'ticket_id' => $ticket->id,
+                    'cost' => $ticketCost,
+                    'threshold' => $ticket->category->hod_approval_threshold,
+                    'category' => $ticket->category->name,
+                    'category_requires_approval' => $ticket->category->requires_approval,
+                ]);
+                return true; // Cost exceeds threshold - require approval
+            }
         }
         
-        // 2. Tickets from users with auto-approval permission
+        // 2. Check if category requires approval
+        if ($ticket->category && $ticket->category->requires_approval) {
+            return true;
+        }
+        
+        // 3. Tickets from users with auto-approval permission (skip approval)
         if ($ticket->requester) {
             // Check if user has auto-approve permission
             // Using Gate::forUser to check permission for the requester
             try {
                 if (Gate::forUser($ticket->requester)->allows('tickets.auto-approve')) {
+                    Log::info('Auto-approval granted for user', [
+                        'ticket_id' => $ticket->id,
+                        'user_id' => $ticket->requester->id,
+                    ]);
                     return false;
                 }
             } catch (\Exception $e) {
@@ -507,10 +531,17 @@ class ApprovalWorkflowService
             }
         }
         
-        // 3. Low priority routine tickets (if category allows)
-        // This can be made more sophisticated with category settings
+        // 4. If category doesn't require approval and cost is below threshold, no approval needed
+        if ($ticket->category && !$ticket->category->requires_approval) {
+            Log::info('No approval required - category does not require approval and cost is below threshold', [
+                'ticket_id' => $ticket->id,
+                'category' => $ticket->category->name,
+                'cost' => $ticket->estimated_cost ?? 0,
+            ]);
+            return false;
+        }
         
-        // Default: Require approval if category doesn't specify otherwise
+        // 5. Default: Require approval if category doesn't specify otherwise
         return $ticket->category ? $ticket->category->requires_approval : true;
     }
 

@@ -29,7 +29,7 @@ class TicketController extends Controller
 {
     public function index(Request $request): Response
     {
-        abort_unless(Auth::user()->can('tickets.view'), 403);
+        abort_unless(Auth::user()->can('tickets.view'), 403, 'You do not have permission to view tickets.');
 
         $filters = $request->only([
             'q',
@@ -64,7 +64,7 @@ class TicketController extends Controller
 
     public function create(): Response
     {
-        abort_unless(Auth::user()->can('tickets.create'), 403);
+        abort_unless(Auth::user()->can('tickets.create'), 403, 'You do not have permission to create tickets.');
 
         return Inertia::render('Admin/Tickets/Form', [
             'ticket' => null,
@@ -74,7 +74,7 @@ class TicketController extends Controller
 
     public function store(TicketRequest $request): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.create'), 403);
+        abort_unless(Auth::user()->can('tickets.create'), 403, 'You do not have permission to create tickets.');
 
         try {
             $data = $this->preparePayload($request->validated());
@@ -161,7 +161,7 @@ class TicketController extends Controller
 
     public function show(Ticket $ticket): Response
     {
-        abort_unless(Auth::user()->can('tickets.view'), 403);
+        abort_unless(Auth::user()->can('tickets.view'), 403, 'You do not have permission to view tickets.');
 
         $user = Auth::user();
         
@@ -199,7 +199,7 @@ class TicketController extends Controller
 
     public function edit(Ticket $ticket): Response
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403);
+        abort_unless(Auth::user()->can('tickets.edit'), 403, 'You do not have permission to edit tickets.');
 
         $ticket->load([
             'requester:id,name',
@@ -221,10 +221,20 @@ class TicketController extends Controller
 
     public function update(TicketRequest $request, Ticket $ticket): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403);
+        abort_unless(Auth::user()->can('tickets.edit'), 403, 'You do not have permission to edit tickets.');
 
         $originalData = $ticket->getOriginal();
         $data = $this->preparePayload($request->validated(), $ticket);
+        
+        // Check if user is trying to change status and has permission
+        if (isset($data['status']) && $data['status'] !== $originalData['status']) {
+            if (!$this->canUserChangeStatus(Auth::user(), $ticket)) {
+                return redirect()
+                    ->back()
+                    ->withInput()
+                    ->with('error', 'You can only change the status of tickets assigned to you or your team. Managers and admins can change any ticket status.');
+            }
+        }
 
         // Track changes - normalize values for comparison
         // Skip array values (they're handled by syncRelations)
@@ -454,7 +464,7 @@ class TicketController extends Controller
 
     public function destroy(Ticket $ticket): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.delete'), 403);
+        abort_unless(Auth::user()->can('tickets.delete'), 403, 'You do not have permission to delete tickets.');
 
         $ticket->delete();
 
@@ -465,7 +475,7 @@ class TicketController extends Controller
 
     public function bulkUpdate(Request $request): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403);
+        abort_unless(Auth::user()->can('tickets.edit'), 403, 'You do not have permission to edit tickets.');
 
         $request->validate([
             'ticket_ids' => ['required', 'array', 'min:1'],
@@ -499,6 +509,20 @@ class TicketController extends Controller
 
             switch ($action) {
                 case 'status':
+                    // Check if user can change status for this ticket
+                    if (!$this->canUserChangeStatus(Auth::user(), $ticket)) {
+                        \Log::warning('TicketController::bulkUpdate - User attempted to change status without permission', [
+                            'ticket_id' => $ticket->id,
+                            'ticket_number' => $ticket->ticket_number,
+                            'user_id' => Auth::id(),
+                            'assigned_agent_id' => $ticket->assigned_agent_id,
+                            'assigned_team_id' => $ticket->assigned_team_id,
+                        ]);
+                        $failedCount++;
+                        $failedMessages[] = "Ticket #{$ticket->ticket_number}: You can only change the status of tickets assigned to you or your team. Managers and admins can change any ticket status.";
+                        continue 2; // Skip this ticket (continue outer foreach loop)
+                    }
+                    
                     if (in_array($value, Ticket::STATUSES)) {
                         $oldStatus = $ticket->status;
                         $ticket->status = $value;
@@ -904,7 +928,7 @@ class TicketController extends Controller
 
     public function bulkDelete(Request $request): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.delete'), 403);
+        abort_unless(Auth::user()->can('tickets.delete'), 403, 'You do not have permission to delete tickets.');
 
         $request->validate([
             'ticket_ids' => ['required', 'array', 'min:1'],
@@ -997,6 +1021,43 @@ class TicketController extends Controller
                 );
             }
         }
+    }
+
+    /**
+     * Check if user can change the status of a ticket
+     * 
+     * Rules:
+     * 1. If ticket is assigned to an agent: only that agent OR managers/admins can change status
+     * 2. If ticket is assigned to a team: any agent in that team OR managers/admins can change status
+     * 3. If unassigned: anyone with tickets.edit can change status
+     * 4. Managers/admins with tickets.assign permission can always change status
+     */
+    protected function canUserChangeStatus(User $user, Ticket $ticket): bool
+    {
+        // Managers/admins with assign permission can always change status
+        if ($user->can('tickets.assign')) {
+            return true;
+        }
+        
+        // If ticket is assigned to an agent
+        if ($ticket->assigned_agent_id) {
+            // Only the assigned agent can change status
+            return $ticket->assigned_agent_id === $user->id;
+        }
+        
+        // If ticket is assigned to a team
+        if ($ticket->assigned_team_id) {
+            // Check if user is in the assigned team
+            if ($user->department_id === $ticket->assigned_team_id) {
+                // Check if user is an agent (has Agent or Senior Agent role)
+                return $user->hasAnyRole(['Agent', 'Senior Agent']);
+            }
+            return false;
+        }
+        
+        // If ticket is unassigned, anyone with tickets.edit can change status
+        // (This check is already done at the controller level, so return true)
+        return true;
     }
 
     protected function filterOptions(): array
@@ -1105,7 +1166,7 @@ class TicketController extends Controller
      */
     public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        abort_unless(Auth::user()->can('tickets.view'), 403);
+        abort_unless(Auth::user()->can('tickets.view'), 403, 'You do not have permission to view tickets.');
 
         $filters = $request->only([
             'q',
@@ -1280,7 +1341,7 @@ class TicketController extends Controller
      */
     public function rejected(Request $request): Response
     {
-        abort_unless(Auth::user()->can('tickets.view'), 403);
+        abort_unless(Auth::user()->can('tickets.view'), 403, 'You do not have permission to view tickets.');
 
         $user = Auth::user();
         
@@ -1333,7 +1394,7 @@ class TicketController extends Controller
      */
     public function resubmit(Ticket $ticket): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403);
+        abort_unless(Auth::user()->can('tickets.edit'), 403, 'You do not have permission to edit tickets.');
 
         try {
             $approvalService = app(\App\Services\ApprovalWorkflowService::class);

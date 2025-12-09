@@ -119,6 +119,7 @@ export default function TicketForm(props: TicketFormProps) {
   const isEdit = Boolean(ticket?.id);
   const auth = pageProps.auth;
   const subjectInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast: toastFromHook } = useToast(); // Handle flash messages
   
   // Auto-select current user as requester if creating new ticket
@@ -981,7 +982,7 @@ export default function TicketForm(props: TicketFormProps) {
             </div>
 
             <div>
-              <Label>Team *</Label>
+              <Label>Team Department *</Label>
               <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select team" />
@@ -1108,16 +1109,17 @@ export default function TicketForm(props: TicketFormProps) {
                 className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
-                onClick={() => document.getElementById('file-upload')?.click()}
+                onClick={() => fileInputRef.current?.click()}
               >
                 <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-                <Label htmlFor="file-upload" className="cursor-pointer">
+                <div className="cursor-pointer">
                   <span className="text-sm font-medium text-primary hover:underline">
                     Click to upload
                   </span>
                   <span className="text-sm text-muted-foreground"> or drag and drop</span>
-                </Label>
+                </div>
                 <Input
+                  ref={fileInputRef}
                   id="file-upload"
                   type="file"
                   multiple
