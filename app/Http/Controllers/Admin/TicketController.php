@@ -1076,13 +1076,36 @@ class TicketController extends Controller
 
     protected function formOptions(): array
     {
-        // Check if user can create tickets on behalf of others
-        $canCreateOnBehalf = Auth::user()->can('tickets.create-on-behalf');
+        $user = Auth::user();
         
-        // Filter requesters based on permission
-        $requesters = $canCreateOnBehalf
-            ? User::select('id', 'name')->orderBy('name')->get()
-            : collect([Auth::user()]);
+        // Check if user can create tickets on behalf of others
+        // IMPORTANT: Check department-limited roles FIRST to override permission
+        // These roles manage their department/team, not cross-functional teams
+        $isHOD = $user->hasRole('Head of Department');
+        $isLineManager = $user->hasRole('Line Manager');
+        $hasCreateOnBehalfPermission = $user->can('tickets.create-on-behalf');
+        
+        // Filter requesters based on permission and role
+        if (($isHOD || $isLineManager) && $user->department_id) {
+            // HODs and Line Managers can only select users from their own department
+            // This is a business rule: They manage their department/team, not cross-functional teams
+            // - HOD: Manages entire department (multiple teams)
+            // - Line Manager: Manages small team (5-20 people) within department
+            $requesters = User::select('id', 'name')
+                ->where('department_id', $user->department_id)
+                ->orderBy('name')
+                ->get();
+            $canCreateOnBehalf = true; // Can create on behalf, but limited to their department
+        } elseif ($hasCreateOnBehalfPermission) {
+            // Other Managers (IT Manager, Finance Manager, etc.), Admins, CEO, Director can select ALL users
+            // These roles often need to create tickets for cross-functional teams, vendors, contractors
+            $requesters = User::select('id', 'name')->orderBy('name')->get();
+            $canCreateOnBehalf = true;
+        } else {
+            // Regular users (Requesters, Agents) can only select themselves
+            $requesters = collect([$user]);
+            $canCreateOnBehalf = false;
+        }
         
         // Filter agents: Only show users with Agent or Senior Agent roles
         $agents = User::select('users.id', 'users.name')
@@ -1106,6 +1129,7 @@ class TicketController extends Controller
             'projects' => Project::select('id', 'name')->orderBy('name')->get(),
             'requesters' => $requesters,
             'can_create_on_behalf' => $canCreateOnBehalf,
+            'is_hod' => $isHOD,
             'sla_policies' => SlaPolicy::select('id', 'name')->orderBy('name')->get(),
             'tags' => Tag::select('id', 'name', 'color')->orderBy('name')->get(),
             'customFields' => CustomField::active()->ordered()->get()->map(function ($field) {
@@ -1442,8 +1466,13 @@ class TicketController extends Controller
         }
         
         // Check if ticket is assigned to user's team/department
+        // Only Agents and Managers can see tickets assigned to their team
+        // Requesters can only see tickets they created or are watching
         if ($ticket->assigned_team_id && $user->department_id === $ticket->assigned_team_id) {
-            return true;
+            // Allow if user is an Agent, Senior Agent, or Manager
+            if ($user->hasAnyRole(['Agent', 'Senior Agent', 'Manager'])) {
+                return true;
+            }
         }
         
         // Check if user is watching the ticket

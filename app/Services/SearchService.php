@@ -211,7 +211,9 @@ class SearchService
             $q->orWhere('assigned_agent_id', $user->id);
             
             // 3. Tickets assigned to user's team/department
-            if ($user->department_id) {
+            // Only Agents and Managers can see tickets assigned to their team
+            // Requesters can only see tickets they created or are watching
+            if ($user->department_id && $user->hasAnyRole(['Agent', 'Senior Agent', 'Manager'])) {
                 $q->orWhere('assigned_team_id', $user->department_id);
             }
             

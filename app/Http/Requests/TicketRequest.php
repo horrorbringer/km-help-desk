@@ -47,16 +47,44 @@ class TicketRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            // Check if user can create tickets on behalf of others
-            if (!$this->user()->can('tickets.create-on-behalf')) {
-                // Regular users can only create tickets for themselves
-                if ($this->input('requester_id') != $this->user()->id) {
-                    $validator->errors()->add(
-                        'requester_id',
-                        'You can only create tickets for yourself. Contact a manager or admin to create tickets on behalf of others.'
-                    );
-                }
+            $user = $this->user();
+            $requesterId = $this->input('requester_id');
+            
+            // If user is creating ticket for themselves, always allow
+            if ($requesterId == $user->id) {
+                return;
             }
+            
+            // IMPORTANT: Check department-limited roles FIRST to override permission
+            // These roles manage their department/team, not cross-functional teams
+            $isHOD = $user->hasRole('Head of Department');
+            $isLineManager = $user->hasRole('Line Manager');
+            $hasCreateOnBehalfPermission = $user->can('tickets.create-on-behalf');
+            
+            // HODs and Line Managers can only create tickets for users in their department
+            if (($isHOD || $isLineManager) && $user->department_id) {
+                $requester = \App\Models\User::find($requesterId);
+                if ($requester && $requester->department_id === $user->department_id) {
+                    return; // Allowed: requester is in their department
+                }
+                $roleName = $isHOD ? 'Head of Department' : 'Line Manager';
+                $validator->errors()->add(
+                    'requester_id',
+                    "As {$roleName}, you can only create tickets for users in your department."
+                );
+                return;
+            }
+            
+            // Users with permission (Managers, Admins) can create tickets for anyone
+            if ($hasCreateOnBehalfPermission) {
+                return;
+            }
+            
+            // Regular users can only create tickets for themselves
+            $validator->errors()->add(
+                'requester_id',
+                'You can only create tickets for yourself. Contact a manager or admin to create tickets on behalf of others.'
+            );
             if ($this->has('custom_fields') && is_array($this->custom_fields)) {
                 $customFields = \App\Models\CustomField::active()->get()->keyBy('id');
                 
