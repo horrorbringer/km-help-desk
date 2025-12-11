@@ -3,8 +3,6 @@ import { send } from '@/routes/verification';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Transition } from '@headlessui/react';
 import { Form, Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { useState, useRef } from 'react';
-import { Camera, X } from 'lucide-react';
 
 import DeleteUser from '@/components/delete-user';
 import HeadingSmall from '@/components/heading-small';
@@ -12,11 +10,10 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import { edit } from '@/routes/profile';
-import { useInitials } from '@/hooks/use-initials';
+import { AvatarUpload } from '@/components/avatar-upload';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -39,13 +36,9 @@ export default function Profile({
     };
 }) {
     const { auth } = usePage<SharedData>().props;
-    const getInitials = useInitials();
-    const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
     
     // Use user prop if available, otherwise fall back to auth.user
     const currentUser = user || auth.user;
-    const avatarUrl = avatarPreview || currentUser.avatar || null;
 
     const form = useForm({
         name: currentUser.name || '',
@@ -56,26 +49,18 @@ export default function Profile({
     
     const { data, setData, processing, recentlySuccessful, errors, reset } = form;
 
-    const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setData('avatar', file);
-            // Create preview
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setAvatarPreview(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+    const handleAvatarChange = (file: File | null) => {
+        setData('avatar', file);
+        if (!file) {
+            setData('remove_avatar', true);
+        } else {
+            setData('remove_avatar', false);
         }
     };
 
     const handleRemoveAvatar = () => {
         setData('avatar', null);
         setData('remove_avatar', true);
-        setAvatarPreview(null);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
     };
 
     return (
@@ -104,7 +89,7 @@ export default function Profile({
                                     forceFormData: true,
                                     onSuccess: () => {
                                         reset('avatar');
-                                        setAvatarPreview(null);
+                                        reset('remove_avatar');
                                     },
                                 }
                             );
@@ -119,56 +104,18 @@ export default function Profile({
                             return (
                                 <>
                                     {/* Avatar Upload Section */}
-                                    <div className="flex items-center gap-6">
-                                        <div className="flex flex-col items-center gap-4">
-                                            <Avatar className="h-24 w-24">
-                                                <AvatarImage src={avatarUrl || undefined} alt={currentUser.name} />
-                                                <AvatarFallback className="text-lg">
-                                                    {getInitials(currentUser.name)}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => fileInputRef.current?.click()}
-                                                >
-                                                    <Camera className="h-4 w-4 mr-2" />
-                                                    {avatarUrl ? 'Change' : 'Upload'} Photo
-                                                </Button>
-                                                
-                                                {avatarUrl && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={handleRemoveAvatar}
-                                                    >
-                                                        <X className="h-4 w-4 mr-2" />
-                                                        Remove
-                                                    </Button>
-                                                )}
-                                            </div>
-                                            
-                                            <input
-                                                ref={fileInputRef}
-                                                type="file"
-                                                accept="image/jpeg,image/jpg,image/png,image/gif"
-                                                onChange={handleAvatarChange}
-                                                className="hidden"
-                                            />
-                                            
-                                            <p className="text-xs text-muted-foreground text-center max-w-xs">
-                                                JPG, PNG or GIF. Max size 2MB
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {allErrors.avatar && (
-                                        <InputError message={allErrors.avatar} />
-                                    )}
+                                    <AvatarUpload
+                                        currentAvatar={currentUser.avatar || null}
+                                        userName={currentUser.name}
+                                        value={data.avatar}
+                                        onChange={handleAvatarChange}
+                                        onRemove={handleRemoveAvatar}
+                                        error={allErrors.avatar}
+                                        disabled={processing}
+                                        maxSizeMB={2}
+                                        maxWidth={2000}
+                                        maxHeight={2000}
+                                    />
 
                                     <div className="grid gap-2">
                                         <Label htmlFor="name">Name</Label>

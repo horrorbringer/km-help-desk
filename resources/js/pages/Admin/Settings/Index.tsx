@@ -1,5 +1,5 @@
 import React, { FormEvent } from 'react';
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, useForm, usePage, router } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -45,6 +45,11 @@ interface Settings {
     auto_close_resolved_days: number;
     require_category: boolean;
     require_project: boolean;
+    enable_advanced_options: boolean;
+    enable_sla_options: boolean;
+    enable_custom_fields: boolean;
+    enable_tags: boolean;
+    enable_watchers: boolean;
   };
   notification: {
     notify_on_ticket_created: boolean;
@@ -101,6 +106,12 @@ export default function SettingsIndex() {
     setting_auto_close_resolved_days: settings?.ticket?.auto_close_resolved_days ?? 7,
     setting_require_category: settings?.ticket?.require_category ?? true,
     setting_require_project: settings?.ticket?.require_project ?? false,
+    // Advanced Options
+    setting_enable_advanced_options: settings?.ticket?.enable_advanced_options ?? true,
+    setting_enable_sla_options: settings?.ticket?.enable_sla_options ?? true,
+    setting_enable_custom_fields: settings?.ticket?.enable_custom_fields ?? true,
+    setting_enable_tags: settings?.ticket?.enable_tags ?? true,
+    setting_enable_watchers: settings?.ticket?.enable_watchers ?? true,
     // Notification
     setting_notify_on_ticket_created: settings?.notification?.notify_on_ticket_created ?? true,
     setting_notify_on_ticket_assigned: settings?.notification?.notify_on_ticket_assigned ?? true,
@@ -122,7 +133,14 @@ export default function SettingsIndex() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    put(route('admin.settings.update'));
+    put(route('admin.settings.update'), {
+      preserveScroll: true,
+      onSuccess: () => {
+        // Reload to refresh shared props (like settings in sidebar)
+        // This is SPA-friendly - uses Inertia's AJAX, not a full page refresh
+        router.reload({ only: [] });
+      },
+    });
   };
 
   return (
@@ -434,6 +452,66 @@ export default function SettingsIndex() {
                         onCheckedChange={(checked) => setData('setting_require_project', Boolean(checked))}
                       />
                       <Label htmlFor="setting_require_project">Require project when creating tickets</Label>
+                    </div>
+                  </div>
+
+                  {/* Advanced Options Settings */}
+                  <div className="border-t pt-4 mt-4">
+                    <h3 className="text-lg font-semibold mb-3">Advanced Options</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Control which advanced options are available in the ticket creation form
+                    </p>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="setting_enable_advanced_options"
+                          checked={data.setting_enable_advanced_options}
+                          onCheckedChange={(checked) => setData('setting_enable_advanced_options', Boolean(checked))}
+                        />
+                        <Label htmlFor="setting_enable_advanced_options" className="font-medium">
+                          Enable Advanced Options Section
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-6">
+                        When disabled, the entire Advanced Options section will be hidden from the ticket form
+                      </p>
+                      
+                      {data.setting_enable_advanced_options && (
+                        <div className="ml-6 space-y-3 mt-4 border-l-2 pl-4">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="setting_enable_sla_options"
+                              checked={data.setting_enable_sla_options}
+                              onCheckedChange={(checked) => setData('setting_enable_sla_options', Boolean(checked))}
+                            />
+                            <Label htmlFor="setting_enable_sla_options">Enable SLA & Timelines</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="setting_enable_custom_fields"
+                              checked={data.setting_enable_custom_fields}
+                              onCheckedChange={(checked) => setData('setting_enable_custom_fields', Boolean(checked))}
+                            />
+                            <Label htmlFor="setting_enable_custom_fields">Enable Custom Fields</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="setting_enable_tags"
+                              checked={data.setting_enable_tags}
+                              onCheckedChange={(checked) => setData('setting_enable_tags', Boolean(checked))}
+                            />
+                            <Label htmlFor="setting_enable_tags">Enable Tags</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="setting_enable_watchers"
+                              checked={data.setting_enable_watchers}
+                              onCheckedChange={(checked) => setData('setting_enable_watchers', Boolean(checked))}
+                            />
+                            <Label htmlFor="setting_enable_watchers">Enable Watchers</Label>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>

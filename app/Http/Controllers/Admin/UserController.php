@@ -19,9 +19,10 @@ class UserController extends Controller
 {
     public function index(Request $request): Response
     {
+        $user = $request->user();
         $filters = $request->only(['q', 'department', 'is_active']);
 
-        $users = User::query()
+        $query = User::query()
             ->with(['department:id,name'])
             ->when($filters['q'] ?? null, function ($query, $q) {
                 $query->where(function ($qry) use ($q) {
@@ -35,14 +36,29 @@ class UserController extends Controller
             })
             ->when(isset($filters['is_active']), function ($query) use ($filters) {
                 $query->where('is_active', $filters['is_active'] === '1');
-            })
-            ->latest()
+            });
+
+        // Apply department-based visibility
+        // Admins, CEO, Director, Super Admin can see all users
+        // HODs, Line Managers, and Department Managers see only their department
+        if (!$user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
+            // Check if user has a department
+            if ($user->department_id) {
+                $query->where('department_id', $user->department_id);
+            } else {
+                // Users without department can only see themselves
+                $query->where('id', $user->id);
+            }
+        }
+
+        $users = $query->latest()
             ->paginate(15)
             ->withQueryString()
             ->through(fn ($user) => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'avatar' => $user->avatar,
                 'phone' => $user->phone,
                 'employee_id' => $user->employee_id,
                 'department' => $user->department ? [
@@ -57,14 +73,31 @@ class UserController extends Controller
                 'created_at' => $user->created_at->toDateTimeString(),
             ]);
 
-        $departments = Department::select('id', 'name')->orderBy('name')->get();
+        // Get departments based on visibility
+        // Admins see all departments, others see only their department
+        if ($user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
+            $departments = Department::select('id', 'name')->orderBy('name')->get();
+        } else {
+            $departments = $user->department_id 
+                ? Department::where('id', $user->department_id)->select('id', 'name')->orderBy('name')->get()
+                : collect([]);
+        }
 
-        // Get user statistics
+        // Get user statistics (respecting visibility)
+        $statsQuery = User::query();
+        if (!$user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
+            if ($user->department_id) {
+                $statsQuery->where('department_id', $user->department_id);
+            } else {
+                $statsQuery->where('id', $user->id);
+            }
+        }
+        
         $stats = [
-            'total' => User::count(),
-            'active' => User::where('is_active', true)->count(),
-            'inactive' => User::where('is_active', false)->count(),
-            'with_department' => User::whereNotNull('department_id')->count(),
+            'total' => (clone $statsQuery)->count(),
+            'active' => (clone $statsQuery)->where('is_active', true)->count(),
+            'inactive' => (clone $statsQuery)->where('is_active', false)->count(),
+            'with_department' => (clone $statsQuery)->whereNotNull('department_id')->count(),
         ];
 
         return Inertia::render('Admin/Users/Index', [
@@ -119,6 +152,7 @@ class UserController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'avatar' => $user->avatar,
                 'phone' => $user->phone,
                 'employee_id' => $user->employee_id,
                 'department' => $user->department ? [
@@ -306,9 +340,10 @@ class UserController extends Controller
 
     public function export(Request $request): StreamedResponse
     {
+        $user = $request->user();
         $filters = $request->only(['q', 'department', 'is_active']);
 
-        $users = User::query()
+        $query = User::query()
             ->with(['department:id,name', 'roles:id,name'])
             ->when($filters['q'] ?? null, function ($query, $q) {
                 $query->where(function ($qry) use ($q) {
@@ -322,9 +357,18 @@ class UserController extends Controller
             })
             ->when(isset($filters['is_active']), function ($query) use ($filters) {
                 $query->where('is_active', $filters['is_active'] === '1');
-            })
-            ->latest()
-            ->get();
+            });
+
+        // Apply department-based visibility (same as index)
+        if (!$user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
+            if ($user->department_id) {
+                $query->where('department_id', $user->department_id);
+            } else {
+                $query->where('id', $user->id);
+            }
+        }
+
+        $users = $query->latest()->get();
 
         $filename = 'users_' . now()->format('Y-m-d_His') . '.csv';
 

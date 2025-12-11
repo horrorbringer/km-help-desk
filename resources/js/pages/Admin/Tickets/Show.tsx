@@ -1,9 +1,10 @@
 import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
 import { useState, useEffect, useRef } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, Send, Edit, Trash2, X, Check, Reply, Maximize, Minimize, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Send, Edit, Trash2, X, Check, Reply, Maximize, Minimize, CheckCircle2, XCircle, Clock, User, Users, Mail, Calendar, ArrowRight, Shield, UserPlus } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,8 +33,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { UserAvatar } from '@/components/user-avatar';
 
-type BaseOption = { id: number; name: string };
+type BaseOption = { id: number; name: string; email?: string; avatar?: string | null };
 
 type TicketShowProps = {
   ticket?: {
@@ -174,8 +176,9 @@ export default function TicketShow(props: TicketShowProps) {
   
   const [replyingToCommentId, setReplyingToCommentId] = useState<number | null>(null);
 
-  // Get current user ID
+  // Get current user ID and department
   const currentUserId = pageProps.auth?.user?.id;
+  const currentUserDepartmentId = pageProps.auth?.user?.department_id;
 
   // Comment edit form
   const editCommentForm = useForm({
@@ -347,6 +350,13 @@ export default function TicketShow(props: TicketShowProps) {
     );
   }
 
+  // Check if current user can pick this ticket
+  // Agents can pick tickets assigned to their team (tickets always have a team assigned)
+  const canPickTicket = !can('tickets.assign') && // Agent without assign permission
+    !ticket.assigned_agent && // No agent assigned
+    ticket.assigned_team && // Ticket has a team assigned (always true)
+    ticket.assigned_team.id === currentUserDepartmentId; // Assigned to their team
+
   return (
     <AppLayout>
       <Head title={`Ticket ${ticket.ticket_number}`} />
@@ -373,6 +383,31 @@ export default function TicketShow(props: TicketShowProps) {
           <Button asChild variant="outline" className="w-full sm:w-auto">
             <Link href={route('admin.tickets.index')}>← Back to list</Link>
           </Button>
+          {canPickTicket && (
+            <Button
+              onClick={() => {
+                router.put(route('admin.tickets.update', { ticket: ticket.id }), {
+                  assigned_agent_id: currentUserId,
+                }, {
+                  preserveScroll: true,
+                  onSuccess: () => {
+                    toast.success('Ticket picked successfully!');
+                  },
+                  onError: (errors) => {
+                    const errorMessage = errors.assigned_agent_id 
+                      || errors.message 
+                      || Object.values(errors).flat().join(', ') 
+                      || 'Failed to pick ticket.';
+                    toast.error(errorMessage);
+                  },
+                });
+              }}
+              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              Pick Ticket
+            </Button>
+          )}
           {can('tickets.edit') && (
             <Button asChild className="w-full sm:w-auto">
               <Link href={route('admin.tickets.edit', { ticket: ticket.id })}>Edit Ticket</Link>
@@ -447,18 +482,66 @@ export default function TicketShow(props: TicketShowProps) {
             <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
               <div className="p-3 bg-muted/30 rounded-lg border">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Requester</h3>
-                <p className="text-sm font-semibold">{ticket.requester?.name ?? '—'}</p>
-                {ticket.requester?.email && (
-                  <p className="text-xs text-muted-foreground mt-1">{ticket.requester.email}</p>
-                )}
+                <div className="flex items-center gap-2.5">
+                  {ticket.requester && (
+                    <UserAvatar user={ticket.requester} size="sm" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{ticket.requester?.name ?? '—'}</p>
+                    {ticket.requester?.email && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{ticket.requester.email}</p>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="p-3 bg-muted/30 rounded-lg border">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Assignment</h3>
-                <p className="text-sm font-semibold">
-                  {ticket.assigned_agent?.name ?? ticket.assigned_team?.name ?? (
-                    <span className="text-muted-foreground italic">Unassigned</span>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assignment</h3>
+                  {canPickTicket && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        router.put(route('admin.tickets.update', { ticket: ticket.id }), {
+                          assigned_agent_id: currentUserId,
+                        }, {
+                          preserveScroll: true,
+                          onSuccess: () => {
+                            toast.success('Ticket picked successfully!');
+                          },
+                          onError: (errors) => {
+                            toast.error(errors.assigned_agent_id || 'Failed to pick ticket.');
+                          },
+                        });
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      <UserPlus className="h-3 w-3 mr-1" />
+                      Pick
+                    </Button>
                   )}
-                </p>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {ticket.assigned_agent ? (
+                    <UserAvatar user={ticket.assigned_agent} size="sm" />
+                  ) : ticket.assigned_team ? (
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <Users className="h-4 w-4 text-primary" />
+                    </div>
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">
+                      {ticket.assigned_agent?.name ?? ticket.assigned_team?.name ?? (
+                        <span className="text-muted-foreground italic">Unassigned</span>
+                      )}
+                    </p>
+                    {ticket.assigned_team && !ticket.assigned_agent && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Available for team members to pick
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="p-3 bg-muted/30 rounded-lg border">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Category</h3>
@@ -546,239 +629,352 @@ export default function TicketShow(props: TicketShowProps) {
 
             <Separator />
 
-            {/* Approval Section */}
-            {(ticket.approvals && ticket.approvals.length > 0) && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-base font-semibold">Approvals</h3>
-                </div>
+            {/* Approval Section - Show only completed approvals (not current pending) */}
+            {ticket.approvals && ticket.approvals.length > 0 && (() => {
+              // Filter out the current pending approval to avoid duplication
+              const completedApprovals = ticket.approvals.filter(approval => {
+                if (ticket.current_approval && approval.id === ticket.current_approval.id) {
+                  return false; // Skip current pending approval
+                }
+                return approval.status !== 'pending' || approval.id !== ticket.current_approval?.id;
+              });
 
-                <div className="space-y-3">
-                  {ticket.approvals.map((approval) => {
-                    const isPending = approval.status === 'pending';
-                    const isApproved = approval.status === 'approved';
-                    const isRejected = approval.status === 'rejected';
-                    const canApprove = can('tickets.edit') && 
-                      isPending && 
-                      (!approval.approver || approval.approver.id === currentUserId);
+              return completedApprovals.length > 0 ? (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-5 w-5 text-primary" />
+                      <CardTitle className="text-lg">Approval History</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {completedApprovals.map((approval) => {
+                        const isPending = approval.status === 'pending';
+                        const isApproved = approval.status === 'approved';
+                        const isRejected = approval.status === 'rejected';
+                        const canApprove = can('tickets.edit') && 
+                          isPending && 
+                          (!approval.approver || approval.approver.id === currentUserId);
 
-                    return (
-                      <div
-                        key={approval.id}
-                        className={cn(
-                          "rounded-lg border p-4",
-                          isPending && "bg-amber-50 border-amber-200",
-                          isApproved && "bg-emerald-50 border-emerald-200",
-                          isRejected && "bg-red-50 border-red-200"
-                        )}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-2">
-                              <Badge
-                                variant={isPending ? 'default' : isApproved ? 'default' : 'destructive'}
-                                className={cn(
-                                  'text-xs',
-                                  isPending && 'bg-amber-100 text-amber-800',
-                                  isApproved && 'bg-emerald-100 text-emerald-800',
-                                  isRejected && 'bg-red-100 text-red-800'
-                                )}
-                              >
-                                {approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
-                              </Badge>
-                              {isPending && <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                                <Clock className="h-3 w-3" />
-                                Pending
-                              </Badge>}
-                              {isApproved && <Badge variant="outline" className="flex items-center gap-1 bg-emerald-100 text-emerald-800 text-xs">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Approved
-                              </Badge>}
-                              {isRejected && <Badge variant="outline" className="flex items-center gap-1 bg-red-100 text-red-800 text-xs">
-                                <XCircle className="h-3 w-3" />
-                                Rejected
-                              </Badge>}
-                            </div>
+                        return (
+                          <div
+                            key={approval.id}
+                            className={cn(
+                              "rounded-lg border p-4 transition-all hover:shadow-sm",
+                              isPending && "bg-amber-50 border-amber-200",
+                              isApproved && "bg-emerald-50 border-emerald-200",
+                              isRejected && "bg-red-50 border-red-200"
+                            )}
+                          >
+                            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                              <div className="flex-1 min-w-0 space-y-3">
+                                {/* Header with badges */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge
+                                    className={cn(
+                                      'text-xs font-semibold px-2.5 py-1',
+                                      isPending && 'bg-amber-100 text-amber-900 border-amber-300',
+                                      isApproved && 'bg-emerald-100 text-emerald-900 border-emerald-300',
+                                      isRejected && 'bg-red-100 text-red-900 border-red-300'
+                                    )}
+                                  >
+                                    {approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
+                                  </Badge>
+                                  {isPending && (
+                                    <Badge variant="outline" className="flex items-center gap-1.5 text-xs border-amber-300 bg-amber-50 text-amber-900">
+                                      <Clock className="h-3 w-3" />
+                                      Pending
+                                    </Badge>
+                                  )}
+                                  {isApproved && (
+                                    <Badge variant="outline" className="flex items-center gap-1.5 text-xs border-emerald-300 bg-emerald-50 text-emerald-900">
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      Approved
+                                    </Badge>
+                                  )}
+                                  {isRejected && (
+                                    <Badge variant="outline" className="flex items-center gap-1.5 text-xs border-red-300 bg-red-50 text-red-900">
+                                      <XCircle className="h-3 w-3" />
+                                      Rejected
+                                    </Badge>
+                                  )}
+                                </div>
 
-                            <div className="space-y-1 text-sm">
-                              {approval.approver && (
-                                <p className="text-muted-foreground">
-                                  <span className="font-medium">Approver:</span> {approval.approver.name}
-                                  {approval.approver.email && ` (${approval.approver.email})`}
-                                </p>
-                              )}
-                              {approval.approved_at && (
-                                <p className="text-muted-foreground">
-                                  <span className="font-medium">Approved:</span>{' '}
-                                  {new Date(approval.approved_at).toLocaleString()}
-                                </p>
-                              )}
-                              {approval.rejected_at && (
-                                <p className="text-muted-foreground">
-                                  <span className="font-medium">Rejected:</span>{' '}
-                                  {new Date(approval.rejected_at).toLocaleString()}
-                                </p>
-                              )}
-                              {approval.comments && (
-                                <p className="text-muted-foreground mt-2">
-                                  <span className="font-medium">Comments:</span> {approval.comments}
-                                </p>
-                              )}
-                              {approval.routed_to_team && (
-                                <p className="text-muted-foreground">
-                                  <span className="font-medium">Routed to:</span> {approval.routed_to_team.name}
-                                </p>
+                                {/* Approval Details */}
+                                <div className="space-y-2.5">
+                                  {approval.approver && (
+                                    <div className="flex items-start gap-2.5 text-sm">
+                                      <UserAvatar user={approval.approver} size="sm" className="shrink-0 mt-0.5" />
+                                      <div className="min-w-0">
+                                        <span className="font-medium text-foreground">Approver:</span>{' '}
+                                        <span className="text-foreground">{approval.approver.name}</span>
+                                        {approval.approver.email && (
+                                          <span className="text-muted-foreground ml-1">
+                                            ({approval.approver.email})
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {approval.approved_at && (
+                                    <div className="flex items-start gap-2 text-sm">
+                                      <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                                      <div>
+                                        <span className="font-medium text-foreground">Approved:</span>{' '}
+                                        <span className="text-muted-foreground">
+                                          {new Date(approval.approved_at).toLocaleString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {approval.rejected_at && (
+                                    <div className="flex items-start gap-2 text-sm">
+                                      <XCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                                      <div>
+                                        <span className="font-medium text-foreground">Rejected:</span>{' '}
+                                        <span className="text-muted-foreground">
+                                          {new Date(approval.rejected_at).toLocaleString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {approval.comments && (
+                                    <div className="mt-3 p-3 rounded-md bg-muted/30 border border-border">
+                                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                                        Comments
+                                      </p>
+                                      <p className="text-sm text-foreground leading-relaxed">{approval.comments}</p>
+                                    </div>
+                                  )}
+                                  {approval.routed_to_team && (
+                                    <div className="flex items-start gap-2 text-sm">
+                                      <ArrowRight className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                                      <div>
+                                        <span className="font-medium text-foreground">Routed to:</span>{' '}
+                                        <span className="text-muted-foreground">{approval.routed_to_team.name}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              {canApprove && (
+                                <div className="flex flex-col gap-2 lg:ml-4 lg:min-w-[140px]">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedApprovalId(approval.id);
+                                      setApprovalDialogOpen(true);
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                                  >
+                                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => {
+                                      setSelectedApprovalId(approval.id);
+                                      setRejectDialogOpen(true);
+                                    }}
+                                    className="shadow-sm"
+                                  >
+                                    <XCircle className="h-4 w-4 mr-2" />
+                                    Reject
+                                  </Button>
+                                </div>
                               )}
                             </div>
                           </div>
-
-                          {canApprove && (
-                            <div className="flex flex-col sm:flex-row gap-2 sm:ml-4 w-full sm:w-auto">
-                              <Button
-                                size="sm"
-                                variant="default"
-                                onClick={() => {
-                                  setSelectedApprovalId(approval.id);
-                                  setApprovalDialogOpen(true);
-                                }}
-                                className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto"
-                              >
-                                <CheckCircle2 className="h-4 w-4 mr-1" />
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => {
-                                  setSelectedApprovalId(approval.id);
-                                  setRejectDialogOpen(true);
-                                }}
-                                className="w-full sm:w-auto"
-                              >
-                                <XCircle className="h-4 w-4 mr-1" />
-                                Reject
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null;
+            })()}
 
             {/* Current Pending Approval - Prominent Display */}
             {/* Only show pending approval banner if ticket is not resolved/closed/cancelled */}
             {ticket.current_approval && 
              ticket.current_approval.status === 'pending' && 
              !['resolved', 'closed', 'cancelled'].includes(ticket.status) && (
-              <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-3 sm:p-4 mb-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 flex-shrink-0" />
-                      <h3 className="text-base sm:text-lg font-semibold text-amber-900 break-words">
-                        {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'} Approval Required
-                      </h3>
+              <Card className="border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-amber-50/80 to-amber-100/60 shadow-lg">
+                <CardContent className="p-5">
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2.5 rounded-lg bg-amber-200/60 border border-amber-400 shadow-sm">
+                          <Clock className="h-5 w-5 text-amber-900" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-3">
+                            <Badge className="bg-amber-200 text-amber-900 border-amber-400 text-xs font-semibold px-3 py-1">
+                              {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
+                            </Badge>
+                            <Badge variant="outline" className="border-amber-400 bg-amber-100/80 text-amber-900 text-xs font-medium">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Pending Approval
+                            </Badge>
+                          </div>
+                          <h3 className="text-lg font-bold text-amber-900 mb-2">
+                            Approval Required
+                          </h3>
+                          <p className="text-sm text-amber-800 mb-3 leading-relaxed">
+                            This ticket is waiting for {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'} approval.
+                          </p>
+                          {ticket.current_approval.approver && (
+                            <div className="flex items-start gap-2.5 text-sm mt-3">
+                              <UserAvatar user={ticket.current_approval.approver} size="sm" className="shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-semibold text-amber-900">Assigned to:</span>{' '}
+                                <span className="font-semibold text-amber-900">{ticket.current_approval.approver.name}</span>
+                                {ticket.current_approval.approver.email && (
+                                  <span className="text-amber-700 ml-1">({ticket.current_approval.approver.email})</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs sm:text-sm text-amber-800 mb-3 break-words">
-                      This ticket is waiting for {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'} approval.
-                      {ticket.current_approval.approver && (
-                        <> Assigned to: <strong>{ticket.current_approval.approver.name}</strong></>
-                      )}
-                    </p>
                     {can('tickets.edit') && (!ticket.current_approval.approver || ticket.current_approval.approver.id === currentUserId) && (
-                      <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2 lg:min-w-[200px] lg:shrink-0">
                         <Button
-                          size="sm"
+                          size="default"
                           onClick={() => {
                             setSelectedApprovalId(ticket.current_approval!.id);
                             setApprovalDialogOpen(true);
                           }}
-                          className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all"
                         >
-                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
                           Approve Ticket
                         </Button>
                         <Button
-                          size="sm"
+                          size="default"
                           variant="destructive"
                           onClick={() => {
                             setSelectedApprovalId(ticket.current_approval!.id);
                             setRejectDialogOpen(true);
                           }}
-                          className="w-full sm:w-auto"
+                          className="shadow-md hover:shadow-lg transition-all"
                         >
-                          <XCircle className="h-4 w-4 mr-1" />
+                          <XCircle className="h-4 w-4 mr-2" />
                           Reject Ticket
                         </Button>
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             )}
 
             {/* Rejected Ticket - Prominent Display */}
             {ticket.rejected_approval && ticket.status === 'cancelled' && (
-              <div className="rounded-lg border-2 border-red-300 bg-red-50 p-3 sm:p-4 mb-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 flex-shrink-0" />
-                      <h3 className="text-base sm:text-lg font-semibold text-red-900">
+              <Card className="border-2 border-red-300 bg-gradient-to-br from-red-50 to-red-100/50 shadow-md">
+                <CardContent className="p-5">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="p-2 rounded-lg bg-red-200/50 border border-red-300">
+                      <XCircle className="h-5 w-5 text-red-700" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <Badge className="bg-red-200 text-red-900 border-red-300 text-xs font-semibold px-2.5 py-1">
+                          {ticket.rejected_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
+                        </Badge>
+                        <Badge variant="outline" className="border-red-400 bg-red-100 text-red-900 text-xs">
+                          Rejected
+                        </Badge>
+                      </div>
+                      <h3 className="text-lg font-bold text-red-900 mb-2">
                         Ticket Rejected
                       </h3>
-                    </div>
-                    <p className="text-xs sm:text-sm text-red-800 mb-2 break-words">
-                      This ticket was rejected by {ticket.rejected_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
-                      {ticket.rejected_approval.approver && (
-                        <>: <strong>{ticket.rejected_approval.approver.name}</strong></>
-                      )}
-                      {ticket.rejected_approval.rejected_at && (
-                        <> on {new Date(ticket.rejected_approval.rejected_at).toLocaleString()}</>
-                      )}
-                    </p>
-                    {ticket.rejected_approval.comments && (
-                      <div className="bg-red-100 border border-red-200 rounded p-2 sm:p-3 mb-3">
-                        <p className="text-xs sm:text-sm font-medium text-red-900 mb-1">Rejection Reason:</p>
-                        <p className="text-xs sm:text-sm text-red-800 break-words">{ticket.rejected_approval.comments}</p>
+                      <div className="space-y-2 text-sm text-red-800">
+                        <p>
+                          This ticket was rejected by {ticket.rejected_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
+                          {ticket.rejected_approval.approver && (
+                            <>: <strong className="text-red-900">{ticket.rejected_approval.approver.name}</strong></>
+                          )}
+                        </p>
+                        {ticket.rejected_approval.rejected_at && (
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-red-700" />
+                            <span>
+                              {new Date(ticket.rejected_approval.rejected_at).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {can('tickets.edit') && (() => {
-                      const rejectedCount = ticket.rejected_approval_count || 0;
-                      const maxResubmissions = 3;
-                      const canResubmit = rejectedCount < maxResubmissions;
-                      
-                      return (
-                        <div className="space-y-2">
-                          {rejectedCount > 0 && (
-                            <p className="text-xs sm:text-sm text-gray-600">
-                              Rejection count: {rejectedCount} of {maxResubmissions} allowed
+                    </div>
+                  </div>
+                  {ticket.rejected_approval.comments && (
+                    <div className="mt-4 p-4 rounded-lg bg-red-100/70 border border-red-300">
+                      <p className="text-xs font-semibold text-red-900 uppercase tracking-wider mb-2">Rejection Reason</p>
+                      <p className="text-sm text-red-900 break-words leading-relaxed">{ticket.rejected_approval.comments}</p>
+                    </div>
+                  )}
+                  {can('tickets.edit') && (() => {
+                    const rejectedCount = ticket.rejected_approval_count || 0;
+                    const maxResubmissions = 3;
+                    const canResubmit = rejectedCount < maxResubmissions;
+                    
+                    return (
+                      <div className="mt-4 space-y-3">
+                        {rejectedCount > 0 && (
+                          <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50/50 px-3 py-2 rounded-md border border-red-200">
+                            <span className="font-medium">Rejection count:</span>
+                            <Badge variant="outline" className="border-red-300 text-red-800">
+                              {rejectedCount} of {maxResubmissions}
+                            </Badge>
+                          </div>
+                        )}
+                        {!canResubmit && (
+                          <div className="p-3 rounded-lg bg-yellow-50/80 border border-yellow-300">
+                            <p className="text-sm text-yellow-900 break-words">
+                              <strong className="font-semibold">Resubmission limit reached:</strong> This ticket has been rejected {rejectedCount} times. 
+                              Maximum resubmission limit ({maxResubmissions}) has been reached. Please create a new ticket or contact an administrator.
                             </p>
-                          )}
-                          {!canResubmit && (
-                            <div className="bg-yellow-50 border border-yellow-200 rounded p-2 sm:p-3 mb-2">
-                              <p className="text-xs sm:text-sm text-yellow-800 break-words">
-                                <strong>Resubmission limit reached:</strong> This ticket has been rejected {rejectedCount} times. 
-                                Maximum resubmission limit ({maxResubmissions}) has been reached. Please create a new ticket or contact an administrator.
-                              </p>
-                            </div>
-                          )}
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-green-200 text-green-700 hover:bg-green-50 w-full sm:w-auto"
-                                disabled={!canResubmit}
-                              >
-                                <RotateCcw className="h-4 w-4 mr-1" />
-                                Resubmit for Approval
-                                {rejectedCount > 0 && ` (${rejectedCount}/${maxResubmissions})`}
-                              </Button>
-                            </AlertDialogTrigger>
+                          </div>
+                        )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              size="default"
+                              variant="outline"
+                              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400 shadow-sm"
+                              disabled={!canResubmit}
+                            >
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Resubmit for Approval
+                              {rejectedCount > 0 && (
+                                <Badge variant="outline" className="ml-2 border-emerald-300 text-emerald-700">
+                                  {rejectedCount}/{maxResubmissions}
+                                </Badge>
+                              )}
+                            </Button>
+                          </AlertDialogTrigger>
                             {canResubmit && (
                               <AlertDialogContent>
                                 <AlertDialogHeader>
@@ -816,9 +1012,8 @@ export default function TicketShow(props: TicketShowProps) {
                         </div>
                       );
                     })()}
-                  </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             )}
 
             {(ticket.approvals && ticket.approvals.length > 0) && <Separator />}
@@ -907,14 +1102,19 @@ export default function TicketShow(props: TicketShowProps) {
                     )}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm">{comment.user?.name ?? 'System'}</span>
+                      <div className="flex items-center gap-2.5">
+                        {comment.user && (
+                          <UserAvatar user={comment.user} size="sm" />
+                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">{comment.user?.name ?? 'System'}</span>
                         {comment.is_internal && (
                           <Badge variant="secondary" className="text-xs">Internal</Badge>
                         )}
                         {comment.type && (
                           <Badge variant="outline" className="text-xs capitalize">{comment.type}</Badge>
                         )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">
@@ -1066,6 +1266,9 @@ export default function TicketShow(props: TicketShowProps) {
                               >
                                 <div className="flex items-center justify-between mb-1">
                                   <div className="flex items-center gap-2">
+                                    {reply.user && (
+                                      <UserAvatar user={reply.user} size="xs" />
+                                    )}
                                     <span className="font-semibold text-xs">{reply.user?.name ?? 'System'}</span>
                                     {reply.is_internal && (
                                       <Badge variant="secondary" className="text-xs">Internal</Badge>

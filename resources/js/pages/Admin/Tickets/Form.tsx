@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronUp, Upload, X, Check, Search, Loader2, User, FolderKanban } from 'lucide-react';
+import { ChevronDown, ChevronUp, Upload, X, Check, Search, Loader2, User, FolderKanban, Plus, Save, Sparkles } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -86,6 +86,11 @@ type TicketFormProps = {
     }[];
     sla_policies: BaseOption[];
     tags: { id: number; name: string; color: string }[];
+    enable_advanced_options?: boolean;
+    enable_sla_options?: boolean;
+    enable_custom_fields?: boolean;
+    enable_tags?: boolean;
+    enable_watchers?: boolean;
   };
 };
 
@@ -341,6 +346,31 @@ export default function TicketForm(props: TicketFormProps) {
     }
   };
 
+  // Helper function to get CSRF token from multiple sources
+  const getCsrfToken = (): string => {
+    // Try multiple methods to get CSRF token
+    // 1. From Inertia page props (most reliable, always fresh)
+    const pageProps = page.props as any;
+    if (pageProps?.csrf_token) {
+      return pageProps.csrf_token;
+    }
+    
+    // 2. From meta tag (fallback)
+    let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (token) return token;
+    
+    // 3. Try to get from cookies (Laravel stores it as XSRF-TOKEN)
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split('=');
+      if (name === 'XSRF-TOKEN') {
+        return decodeURIComponent(value);
+      }
+    }
+    
+    throw new Error('CSRF token not found. Please refresh the page and try again.');
+  };
+
   const uploadFilesAfterCreate = async (ticketId: number) => {
     if (selectedFiles.length === 0) return;
 
@@ -351,18 +381,21 @@ export default function TicketForm(props: TicketFormProps) {
     });
 
     try {
-      // Get CSRF token from meta tag, or try to get it from the page
-      let csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+      // Wait a bit after redirect to ensure page is fully loaded
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // If token not found, wait a bit for the page to fully load after redirect
-      if (!csrfToken) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+      // Get fresh CSRF token
+      let csrfToken: string;
+      try {
+        csrfToken = getCsrfToken();
+      } catch (error) {
+        // If still not found, wait a bit more and try again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        csrfToken = getCsrfToken();
       }
-      
-      if (!csrfToken) {
-        throw new Error('CSRF token not found');
-      }
+
+      // Add CSRF token to form data
+      formData.append('_token', csrfToken);
 
       const response = await fetch(route('admin.ticket-attachments.store', ticketId), {
         method: 'POST',
@@ -370,6 +403,7 @@ export default function TicketForm(props: TicketFormProps) {
           'X-CSRF-TOKEN': csrfToken,
           'X-Requested-With': 'XMLHttpRequest',
           'Accept': 'application/json',
+          // Don't set Content-Type - browser will set it automatically with boundary for FormData
         },
         credentials: 'same-origin', // Include cookies for CSRF
         body: formData,
@@ -393,23 +427,51 @@ export default function TicketForm(props: TicketFormProps) {
         // Reload the page to show the new attachments
         router.reload({ only: ['ticket'] });
       } else {
-        let errorMessage = 'Failed to upload files. ';
+        let errorMessage = 'Failed to upload files.';
+        let errorDetails: string[] = [];
         
-        if (response.status === 413) {
-          errorMessage += 'File size is too large. Maximum allowed: 10MB per file. Please contact your administrator if you need to upload larger files.';
+        if (response.status === 419) {
+          errorMessage = 'Session expired. Please refresh the page and try again.';
+          errorDetails.push('Your session may have expired. Refreshing the page will generate a new CSRF token.');
+        } else if (response.status === 413) {
+          errorMessage = 'File size is too large.';
+          errorDetails.push('Maximum allowed: 10MB per file.');
+          errorDetails.push('Please contact your administrator if you need to upload larger files.');
+        } else if (response.status === 422) {
+          errorMessage = 'Validation error.';
+          try {
+            const data = await response.json();
+            if (data.errors) {
+              Object.values(data.errors).forEach((err: any) => {
+                if (Array.isArray(err)) {
+                  errorDetails.push(...err);
+                } else {
+                  errorDetails.push(err);
+                }
+              });
+            } else if (data.message) {
+              errorDetails.push(data.message);
+            }
+          } catch {
+            errorDetails.push('Please check your files and try again.');
+          }
         } else {
           try {
             const data = await response.json();
-            errorMessage += data.message || 'Unknown error';
+            if (data.message) {
+              errorDetails.push(data.message);
+            } else {
+              errorDetails.push(`Server error (${response.status}). Please try again or contact support.`);
+            }
           } catch {
-            errorMessage += `Server error (${response.status}). Please try again or contact support.`;
+            errorDetails.push(`Server error (${response.status}). Please try again or contact support.`);
           }
         }
         
-        console.error('Upload error:', response.status, errorMessage);
+        console.error('Upload error:', response.status, errorMessage, errorDetails);
         toast.error('Upload failed', {
-          description: errorMessage,
-          duration: 5000,
+          description: errorDetails.length > 0 ? errorDetails.join(' ') : errorMessage,
+          duration: 6000,
           icon: <X className="size-5 text-white" />,
           style: {
             background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
@@ -417,14 +479,20 @@ export default function TicketForm(props: TicketFormProps) {
             border: 'none',
             borderRadius: '12px',
             boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+            padding: '16px',
           },
+          action: response.status === 419 ? {
+            label: 'Refresh Page',
+            onClick: () => window.location.reload(),
+          } : undefined,
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error);
+      const errorMessage = error.message || 'Failed to upload files. Please try again.';
       toast.error('Upload failed', {
-        description: 'Failed to upload files. Please try again.',
-        duration: 5000,
+        description: errorMessage,
+        duration: 6000,
         icon: <X className="size-5 text-white" />,
         style: {
           background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
@@ -432,7 +500,12 @@ export default function TicketForm(props: TicketFormProps) {
           border: 'none',
           borderRadius: '12px',
           boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          padding: '16px',
         },
+        action: errorMessage.includes('CSRF') || errorMessage.includes('refresh') ? {
+          label: 'Refresh Page',
+          onClick: () => window.location.reload(),
+        } : undefined,
       });
     } finally {
       setUploadingFiles(false);
@@ -602,13 +675,21 @@ export default function TicketForm(props: TicketFormProps) {
     });
 
     try {
-      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      // Get CSRF token using the helper function
+      const csrfToken = getCsrfToken();
+
+      // Add CSRF token to form data
+      formData.append('_token', csrfToken);
+
       const response = await fetch(route('admin.ticket-attachments.store', ticket.id), {
         method: 'POST',
         headers: {
           'X-CSRF-TOKEN': csrfToken,
           'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+          // Don't set Content-Type - browser will set it automatically with boundary for FormData
         },
+        credentials: 'same-origin', // Include cookies for CSRF
         body: formData,
       });
 
@@ -629,23 +710,51 @@ export default function TicketForm(props: TicketFormProps) {
         });
         router.reload({ only: ['ticket'] });
       } else {
-        let errorMessage = 'Failed to upload files. ';
+        let errorMessage = 'Failed to upload files.';
+        let errorDetails: string[] = [];
         
-        if (response.status === 413) {
-          errorMessage += 'File size is too large. Maximum allowed: 10MB per file. Please contact your administrator if you need to upload larger files.';
+        if (response.status === 419) {
+          errorMessage = 'Session expired. Please refresh the page and try again.';
+          errorDetails.push('Your session may have expired. Refreshing the page will generate a new CSRF token.');
+        } else if (response.status === 413) {
+          errorMessage = 'File size is too large.';
+          errorDetails.push('Maximum allowed: 10MB per file.');
+          errorDetails.push('Please contact your administrator if you need to upload larger files.');
+        } else if (response.status === 422) {
+          errorMessage = 'Validation error.';
+          try {
+            const data = await response.json();
+            if (data.errors) {
+              Object.values(data.errors).forEach((err: any) => {
+                if (Array.isArray(err)) {
+                  errorDetails.push(...err);
+                } else {
+                  errorDetails.push(err);
+                }
+              });
+            } else if (data.message) {
+              errorDetails.push(data.message);
+            }
+          } catch {
+            errorDetails.push('Please check your files and try again.');
+          }
         } else {
           try {
             const data = await response.json();
-            errorMessage += data.message || 'Unknown error';
+            if (data.message) {
+              errorDetails.push(data.message);
+            } else {
+              errorDetails.push(`Server error (${response.status}). Please try again or contact support.`);
+            }
           } catch {
-            errorMessage += `Server error (${response.status}). Please try again or contact support.`;
+            errorDetails.push(`Server error (${response.status}). Please try again or contact support.`);
           }
         }
         
-        console.error('Upload error:', response.status, errorMessage);
+        console.error('Upload error:', response.status, errorMessage, errorDetails);
         toast.error('Upload failed', {
-          description: errorMessage,
-          duration: 5000,
+          description: errorDetails.length > 0 ? errorDetails.join(' ') : errorMessage,
+          duration: 6000,
           icon: <X className="size-5 text-white" />,
           style: {
             background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
@@ -653,14 +762,20 @@ export default function TicketForm(props: TicketFormProps) {
             border: 'none',
             borderRadius: '12px',
             boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+            padding: '16px',
           },
+          action: response.status === 419 ? {
+            label: 'Refresh Page',
+            onClick: () => window.location.reload(),
+          } : undefined,
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error);
+      const errorMessage = error.message || 'Failed to upload files. Please try again.';
       toast.error('Upload failed', {
-        description: 'Failed to upload files. Please try again.',
-        duration: 5000,
+        description: errorMessage,
+        duration: 6000,
         icon: <X className="size-5 text-white" />,
         style: {
           background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
@@ -668,7 +783,12 @@ export default function TicketForm(props: TicketFormProps) {
           border: 'none',
           borderRadius: '12px',
           boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          padding: '16px',
         },
+        action: errorMessage.includes('CSRF') || errorMessage.includes('refresh') ? {
+          label: 'Refresh Page',
+          onClick: () => window.location.reload(),
+        } : undefined,
       });
     } finally {
       setUploadingFiles(false);
@@ -1315,23 +1435,25 @@ export default function TicketForm(props: TicketFormProps) {
           </Card>
 
           {/* Advanced Options Collapsible */}
-          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-            <Card>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer hover:bg-muted/50 transition">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Advanced Options</CardTitle>
-                      <CardDescription>SLA, Tags, Watchers, and more</CardDescription>
+          {formOptions.enable_advanced_options !== false && (
+            <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer hover:bg-muted/50 transition">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Advanced Options</CardTitle>
+                        <CardDescription>SLA, Tags, Watchers, and more</CardDescription>
+                      </div>
+                      {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </div>
-                    {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </div>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="space-y-6">
-                  {/* SLA & Timelines Section */}
-                  <div className="space-y-4">
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="space-y-6">
+                    {/* SLA & Timelines Section */}
+                    {formOptions.enable_sla_options !== false && (
+                      <div className="space-y-4">
                     <div>
                       <Label className="text-base font-semibold">SLA & Timelines</Label>
                       <CardDescription className="text-xs mt-1">Service level agreements and timeline tracking</CardDescription>
@@ -1426,10 +1548,11 @@ export default function TicketForm(props: TicketFormProps) {
                         </Label>
                       </div>
                     </div>
-                  </div>
+                    </div>
+                    )}
 
-                  {/* Custom Fields */}
-                  {formOptions.customFields && formOptions.customFields.length > 0 && (
+                    {/* Custom Fields */}
+                    {formOptions.enable_custom_fields !== false && formOptions.customFields && formOptions.customFields.length > 0 && (
                     <div className="space-y-3">
                       <div>
                         <Label className="text-base font-semibold">Custom Fields</Label>
@@ -1444,8 +1567,9 @@ export default function TicketForm(props: TicketFormProps) {
                     </div>
                   )}
 
-                  {/* Tags Section */}
-                  <div className="space-y-3">
+                    {/* Tags Section */}
+                    {formOptions.enable_tags !== false && (
+                      <div className="space-y-3">
                     <div>
                       <Label className="text-base font-semibold">Tags</Label>
                       <CardDescription className="text-xs mt-1">Helps classify tickets and trigger automations</CardDescription>
@@ -1472,10 +1596,12 @@ export default function TicketForm(props: TicketFormProps) {
                         <p className="text-sm text-muted-foreground">No tags available</p>
                       )}
                     </div>
-                  </div>
+                    </div>
+                    )}
 
-                  {/* Watchers Section */}
-                  <div className="space-y-3">
+                    {/* Watchers Section */}
+                    {formOptions.enable_watchers !== false && (
+                      <div className="space-y-3">
                     <div>
                       <Label className="text-base font-semibold">Watchers</Label>
                       <CardDescription className="text-xs mt-1">Users who should receive updates about this ticket</CardDescription>
@@ -1495,42 +1621,77 @@ export default function TicketForm(props: TicketFormProps) {
                         <p className="text-sm text-muted-foreground">No users available</p>
                       )}
                     </div>
-                  </div>
-                </CardContent>
-              </CollapsibleContent>
-            </Card>
-          </Collapsible>
+                    </div>
+                    )}
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          )}
 
-          {/* Submit Button Card */}
-          <Card>
-            <CardFooter className="flex justify-between items-center">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                {showAdvanced ? 'Hide' : 'Show'} Advanced Options
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={processing} 
-                size="lg" 
-                className="min-w-[140px]"
-              >
-                {processing ? (
-                  <>
-                    <span className="mr-2">⏳</span>
-                    {isEdit ? 'Updating...' : 'Creating...'}
-                  </>
-                ) : (
-                  <>
-                    <span className="mr-2">✨</span>
-                    {isEdit ? 'Update Ticket' : 'Create Ticket'}
-                  </>
+          {/* Submit Button Card - Sticky Footer */}
+          <div className="sticky bottom-0 z-10 bg-background pt-4 pb-2 -mx-6 px-6 border-t border-border shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] dark:shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)]">
+            <Card className="border-0 shadow-none">
+              <CardFooter className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 p-4">
+                {formOptions.enable_advanced_options !== false && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="w-full sm:w-auto"
+                  >
+                    <ChevronDown className={cn("h-4 w-4 mr-2 transition-transform", showAdvanced && "rotate-180")} />
+                    {showAdvanced ? 'Hide' : 'Show'} Advanced Options
+                  </Button>
                 )}
-              </Button>
-            </CardFooter>
-          </Card>
+                {formOptions.enable_advanced_options === false && <div className="hidden sm:block" />}
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto sm:ml-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    asChild
+                    className="w-full sm:w-auto"
+                  >
+                    <Link href={route('admin.tickets.index')}>
+                      Cancel
+                    </Link>
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    disabled={processing || uploadingFiles} 
+                    size="lg" 
+                    className={cn(
+                      "w-full sm:w-auto min-w-[160px] font-semibold shadow-lg hover:shadow-xl transition-all duration-200",
+                      isEdit 
+                        ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                        : "bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-white"
+                    )}
+                  >
+                    {processing || uploadingFiles ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        {uploadingFiles ? 'Uploading files...' : isEdit ? 'Updating Ticket...' : 'Creating Ticket...'}
+                      </>
+                    ) : (
+                      <>
+                        {isEdit ? (
+                          <>
+                            <Save className="h-4 w-4 mr-2" />
+                            Update Ticket
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Ticket
+                          </>
+                        )}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardFooter>
+            </Card>
+          </div>
         </div>
       </form>
     </AppLayout>

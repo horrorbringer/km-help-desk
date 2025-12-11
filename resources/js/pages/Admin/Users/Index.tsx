@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
-import { ChevronDown, ChevronUp, Download, Upload } from 'lucide-react';
+import { ChevronDown, ChevronUp, Download, Upload, Users, UserCheck, UserX, Building2 } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,12 +25,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { usePermissions } from '@/hooks/use-permissions';
 import { useToast } from '@/hooks/use-toast';
 import { toast } from 'sonner';
+import { UserAvatar } from '@/components/user-avatar';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface User {
   id: number;
   name: string;
   email: string;
+  avatar?: string | null;
   phone?: string | null;
   employee_id?: string | null;
   department?: { id: number; name: string } | null;
@@ -219,28 +222,56 @@ export default function UsersIndex() {
 
         {/* Statistics Cards */}
         <div className="grid gap-4 md:grid-cols-4">
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{stats.total}</div>
-              <p className="text-xs text-muted-foreground">Total Users</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold">{stats.total}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Total Users</p>
+                </div>
+                <div className="p-3 rounded-full bg-primary/10">
+                  <Users className="h-5 w-5 text-primary" />
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-emerald-600">{stats.active}</div>
-              <p className="text-xs text-muted-foreground">Active Users</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-emerald-600">{stats.active}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Active Users</p>
+                </div>
+                <div className="p-3 rounded-full bg-emerald-100">
+                  <UserCheck className="h-5 w-5 text-emerald-600" />
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-orange-600">{stats.inactive}</div>
-              <p className="text-xs text-muted-foreground">Inactive Users</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-orange-600">{stats.inactive}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Inactive Users</p>
+                </div>
+                <div className="p-3 rounded-full bg-orange-100">
+                  <UserX className="h-5 w-5 text-orange-600" />
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-blue-600">{stats.with_department}</div>
-              <p className="text-xs text-muted-foreground">With Department</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-blue-600">{stats.with_department}</div>
+                  <p className="text-xs text-muted-foreground mt-1">With Department</p>
+                </div>
+                <div className="p-3 rounded-full bg-blue-100">
+                  <Building2 className="h-5 w-5 text-blue-600" />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -359,7 +390,7 @@ export default function UsersIndex() {
                           }}
                         />
                       </th>
-                      <th className="px-4 py-3 text-left">Name</th>
+                      <th className="px-4 py-3 text-left">User</th>
                       <th className="px-4 py-3 text-left">Email</th>
                       <th className="px-4 py-3 text-left">Employee ID</th>
                       <th className="px-4 py-3 text-left">Department</th>
@@ -371,14 +402,21 @@ export default function UsersIndex() {
                   </thead>
                   <tbody>
                     {users.data.map((user) => (
-                      <tr key={user.id} className="border-t hover:bg-muted/50 transition">
+                      <tr key={user.id} className="border-t hover:bg-muted/50 transition-colors">
                         <td className="px-4 py-3">
                           <Checkbox
                             checked={selectedUsers.includes(user.id)}
                             onCheckedChange={(checked) => handleSelectUser(user.id, checked as boolean)}
                           />
                         </td>
-                        <td className="px-4 py-3 font-medium">{user.name}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <UserAvatar user={user} size="sm" />
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">{user.name}</div>
+                            </div>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {user.employee_id ?? '—'}

@@ -37,9 +37,11 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::resource('projects', \App\Http\Controllers\Admin\ProjectController::class)
         ->names('admin.projects');
 
-    // Ticket export route must be defined BEFORE resource route
+    // Ticket routes must be defined BEFORE resource route to avoid conflicts
     Route::get('tickets/export', [TicketController::class, 'export'])
         ->name('admin.tickets.export');
+    Route::get('tickets/rejected', [TicketController::class, 'rejected'])
+        ->name('admin.tickets.rejected');
     
     Route::resource('tickets', TicketController::class)
         ->names('admin.tickets');
@@ -59,9 +61,7 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::get('ticket-approvals/pending', [\App\Http\Controllers\Admin\TicketApprovalController::class, 'pending'])
         ->name('admin.ticket-approvals.pending');
     
-    // Rejected Tickets
-    Route::get('tickets/rejected', [TicketController::class, 'rejected'])
-        ->name('admin.tickets.rejected');
+    // Resubmit rejected ticket
     Route::post('tickets/{ticket}/resubmit', [TicketController::class, 'resubmit'])
         ->name('admin.tickets.resubmit');
 

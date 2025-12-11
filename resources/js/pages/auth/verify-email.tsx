@@ -5,9 +5,18 @@ import { Spinner } from '@/components/ui/spinner';
 import AuthLayout from '@/layouts/auth-layout';
 import { logout } from '@/routes';
 import { send } from '@/routes/verification';
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, router } from '@inertiajs/react';
 
 export default function VerifyEmail({ status }: { status?: string }) {
+    const handleLogout = (e: React.MouseEvent) => {
+        e.preventDefault();
+        router.post(logout(), {}, {
+            onFinish: () => {
+                router.flushAll();
+            },
+        });
+    };
+
     return (
         <AuthLayout
             title="Verify email"
@@ -30,12 +39,13 @@ export default function VerifyEmail({ status }: { status?: string }) {
                             Resend verification email
                         </Button>
 
-                        <TextLink
-                            href={logout()}
-                            className="mx-auto block text-sm"
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            className="mx-auto block text-sm text-primary hover:underline"
                         >
                             Log out
-                        </TextLink>
+                        </button>
                     </>
                 )}
             </Form>

@@ -13,6 +13,10 @@ class SettingsController extends Controller
 {
     public function index(): Response
     {
+        // Settings should be accessible to admins and managers
+        // For now, we'll allow any authenticated user, but you can add permission check:
+        // abort_unless(auth()->user()->can('settings.view'), 403);
+        
         $groups = [
             'general' => $this->getGeneralSettings(),
             'email' => $this->getEmailSettings(),
@@ -36,14 +40,21 @@ class SettingsController extends Controller
                 $setting = Setting::where('key', $settingKey)->first();
 
                 if ($setting) {
-                    $setting->value = $value ?? '';
+                    // Preserve the type, but normalize the value based on type
+                    $normalizedValue = $this->normalizeValue($value, $setting->type);
+                    $setting->value = $normalizedValue;
+                    // Ensure type is preserved (in case it was changed)
+                    if (!$setting->type) {
+                        $setting->type = $this->detectType($value);
+                    }
                     $setting->save();
                 } else {
                     // Create new setting if it doesn't exist
+                    $detectedType = $this->detectType($value);
                     Setting::create([
                         'key' => $settingKey,
-                        'value' => $value ?? '',
-                        'type' => $this->detectType($value),
+                        'value' => $this->normalizeValue($value, $detectedType),
+                        'type' => $detectedType,
                         'group' => $this->detectGroup($settingKey),
                     ]);
                 }
@@ -53,6 +64,39 @@ class SettingsController extends Controller
         return redirect()
             ->route('admin.settings.index')
             ->with('success', 'Settings updated successfully.');
+    }
+
+    protected function normalizeValue($value, string $type): string
+    {
+        if ($type === 'boolean') {
+            // Normalize boolean values to '1' or '0'
+            if (is_bool($value)) {
+                return $value ? '1' : '0';
+            }
+            if (is_string($value)) {
+                $lowerValue = strtolower(trim($value));
+                if (in_array($lowerValue, ['1', 'true', 'yes', 'on'])) {
+                    return '1';
+                }
+                if (in_array($lowerValue, ['0', 'false', 'no', 'off', ''])) {
+                    return '0';
+                }
+            }
+            if (is_numeric($value)) {
+                return $value != 0 ? '1' : '0';
+            }
+            return '0'; // Default to false
+        }
+        
+        if ($type === 'integer') {
+            return (string) (int) $value;
+        }
+        
+        if ($type === 'json') {
+            return is_string($value) ? $value : json_encode($value);
+        }
+        
+        return (string) ($value ?? '');
     }
 
     protected function getGeneralSettings(): array
@@ -92,6 +136,12 @@ class SettingsController extends Controller
             'auto_close_resolved_days' => Setting::get('auto_close_resolved_days', 7),
             'require_category' => Setting::get('require_category', true),
             'require_project' => Setting::get('require_project', false),
+            // Advanced Options settings
+            'enable_advanced_options' => Setting::get('enable_advanced_options', true),
+            'enable_sla_options' => Setting::get('enable_sla_options', true),
+            'enable_custom_fields' => Setting::get('enable_custom_fields', true),
+            'enable_tags' => Setting::get('enable_tags', true),
+            'enable_watchers' => Setting::get('enable_watchers', true),
         ];
     }
 

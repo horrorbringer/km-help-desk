@@ -23,9 +23,23 @@ class TicketResource extends JsonResource
             'priority' => $this->priority,
             'estimated_cost' => $this->estimated_cost,
             'source' => $this->source,
-            'requester' => $this->whenLoaded('requester'),
+            'requester' => $this->whenLoaded('requester', function () {
+                return $this->requester ? [
+                    'id' => $this->requester->id,
+                    'name' => $this->requester->name,
+                    'email' => $this->requester->email,
+                    'avatar' => $this->requester->avatar,
+                ] : null;
+            }),
             'assigned_team' => $this->whenLoaded('assignedTeam'),
-            'assigned_agent' => $this->whenLoaded('assignedAgent'),
+            'assigned_agent' => $this->whenLoaded('assignedAgent', function () {
+                return $this->assignedAgent ? [
+                    'id' => $this->assignedAgent->id,
+                    'name' => $this->assignedAgent->name,
+                    'email' => $this->assignedAgent->email,
+                    'avatar' => $this->assignedAgent->avatar,
+                ] : null;
+            }),
             'category' => $this->whenLoaded('category'),
             'project' => $this->whenLoaded('project'),
             'sla_policy' => $this->whenLoaded('slaPolicy'),
@@ -64,7 +78,38 @@ class TicketResource extends JsonResource
                     ];
                 });
             }),
-            'comments' => $this->whenLoaded('comments'),
+            'comments' => $this->whenLoaded('comments', function () {
+                return $this->comments->map(function ($comment) {
+                    return [
+                        'id' => $comment->id,
+                        'body' => $comment->body,
+                        'is_internal' => $comment->is_internal,
+                        'type' => $comment->type,
+                        'parent_id' => $comment->parent_id,
+                        'created_at' => $comment->created_at,
+                        'user' => $comment->user ? [
+                            'id' => $comment->user->id,
+                            'name' => $comment->user->name,
+                            'email' => $comment->user->email,
+                            'avatar' => $comment->user->avatar,
+                        ] : null,
+                        'replies' => $comment->replies ? $comment->replies->map(function ($reply) {
+                            return [
+                                'id' => $reply->id,
+                                'body' => $reply->body,
+                                'is_internal' => $reply->is_internal,
+                                'created_at' => $reply->created_at,
+                                'user' => $reply->user ? [
+                                    'id' => $reply->user->id,
+                                    'name' => $reply->user->name,
+                                    'email' => $reply->user->email,
+                                    'avatar' => $reply->user->avatar,
+                                ] : null,
+                            ];
+                        }) : [],
+                    ];
+                });
+            }),
             'attachments' => $this->whenLoaded('attachments'),
             'histories' => $this->whenLoaded('histories'),
             'approvals' => $this->whenLoaded('approvals', function () {
@@ -81,6 +126,7 @@ class TicketResource extends JsonResource
                             'id' => $approval->approver->id,
                             'name' => $approval->approver->name,
                             'email' => $approval->approver->email,
+                            'avatar' => $approval->approver->avatar,
                         ] : null,
                         'routed_to_team' => $approval->routedToTeam ? [
                             'id' => $approval->routedToTeam->id,

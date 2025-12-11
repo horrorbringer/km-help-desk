@@ -24,6 +24,7 @@ import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import { usePermissions } from "@/hooks/use-permissions"
+import { usePage } from "@inertiajs/react"
 import {
   Sidebar,
   SidebarContent,
@@ -43,167 +44,186 @@ type NavItem = {
   permissions?: string[]
 }
 
-const getNavMain = (can: (permission: string) => boolean) => [
-  {
-    title: "Dashboard",
-    url: route("dashboard"),
-    icon: IconDashboard,
-  },
-  {
-    title: "Tickets",
-    url: route("admin.tickets.index"),
-    icon: IconTicket,
-    permission: "tickets.view",
-  },
-  {
-    title: "Ticket Templates",
-    url: route("admin.ticket-templates.index"),
-    icon: IconFileWord,
-    permission: "ticket-templates.view",
-  },
-  {
-    title: "Management",
-    icon: IconUsers,
-    items: [
-      {
-        title: "Users",
-        url: route("admin.users.index"),
-        icon: IconUsers,
-        permission: "users.view",
-      },
-      {
-        title: "Roles & Permissions",
-        url: route("admin.roles.index"),
-        icon: IconUsers,
-        permission: "roles.view",
-      },
-      {
-        title: "Departments",
-        url: route("admin.departments.index"),
-        icon: IconFolder,
-        permission: "departments.view",
-      },
-      {
-        title: "Projects",
-        url: route("admin.projects.index"),
-        icon: IconFolder,
-        permission: "projects.view",
-      },
-    ],
-  },
-  {
+const getNavMain = (can: (permission: string) => boolean, enableAdvancedOptions: boolean = true, userDepartmentId: number | null = null, userRoles: string[] = []): NavItem[] => {
+  const navItems: NavItem[] = [
+    {
+      title: "Dashboard",
+      url: route("dashboard"),
+      icon: IconDashboard,
+    },
+    {
+      title: "Tickets",
+      url: route("admin.tickets.index"),
+      icon: IconTicket,
+      permission: "tickets.view",
+    },
+    {
+      title: "Ticket Templates",
+      url: route("admin.ticket-templates.index"),
+      icon: IconFileWord,
+      permission: "ticket-templates.view",
+    },
+    {
+      title: "Management",
+      icon: IconUsers,
+      items: [
+        {
+          title: "Users",
+          url: route("admin.users.index"),
+          icon: IconUsers,
+          permission: "users.view",
+        },
+        {
+          title: "Roles & Permissions",
+          url: route("admin.roles.index"),
+          icon: IconUsers,
+          permission: "roles.view",
+        },
+        // Show Departments if user has LM role OR has a department assigned
+        // LM (Line Manager) should see all departments
+        ...((userDepartmentId || userRoles.includes('LM')) ? [{
+          title: "Departments",
+          url: route("admin.departments.index"),
+          icon: IconFolder,
+          permission: "departments.view",
+        }] : []),
+        {
+          title: "Projects",
+          url: route("admin.projects.index"),
+          icon: IconFolder,
+          permission: "projects.view",
+        },
+      ],
+    },
+  ];
+
+  // Configuration menu - always visible, but filter advanced items based on setting
+  const configurationItems: NavItem[] = [
+    {
+      title: "Categories",
+      url: route("admin.categories.index"),
+      icon: IconFileDescription,
+      permission: "categories.view",
+    },
+    {
+      title: "Canned Responses",
+      url: route("admin.canned-responses.index"),
+      icon: IconMail,
+      permission: "canned-responses.view",
+    },
+    {
+      title: "Email Templates",
+      url: route("admin.email-templates.index"),
+      icon: IconMail,
+      permission: "email-templates.view",
+    },
+    // {
+    //   title: "Automation Rules",
+    //   url: route("admin.automation-rules.index"),
+    //   icon: IconSettings,
+    //   permission: "automation-rules.view",
+    // },
+    // {
+    //   title: "Escalation Rules",
+    //   url: route("admin.escalation-rules.index"),
+    //   icon: IconReport,
+    //   permission: "escalation-rules.view",
+    // },
+  ];
+
+  // Only add advanced items if advanced options are enabled
+  // if (enableAdvancedOptions) {
+  //   configurationItems.push(
+  //     {
+  //       title: "Tags",
+  //       url: route("admin.tags.index"),
+  //       icon: IconSearch,
+  //       permission: "tags.view",
+  //     },
+  //     {
+  //       title: "SLA Policies",
+  //       url: route("admin.sla-policies.index"),
+  //       icon: IconReport,
+  //       permission: "sla-policies.view",
+  //     },
+  //     {
+  //       title: "Custom Fields",
+  //       url: route("admin.custom-fields.index"),
+  //       icon: IconFileDescription,
+  //       permission: "custom-fields.view",
+  //     }
+  //   );
+  // }
+
+  navItems.push({
     title: "Configuration",
     icon: IconSettings,
-    items: [
-      {
-        title: "Categories",
-        url: route("admin.categories.index"),
-        icon: IconFileDescription,
-        permission: "categories.view",
-      },
-      {
-        title: "Tags",
-        url: route("admin.tags.index"),
-        icon: IconSearch,
-        permission: "tags.view",
-      },
-      {
-        title: "SLA Policies",
-        url: route("admin.sla-policies.index"),
-        icon: IconReport,
-        permission: "sla-policies.view",
-      },
-      {
-        title: "Canned Responses",
-        url: route("admin.canned-responses.index"),
-        icon: IconMail,
-        permission: "canned-responses.view",
-      },
-      {
-        title: "Email Templates",
-        url: route("admin.email-templates.index"),
-        icon: IconMail,
-        permission: "email-templates.view",
-      },
-      {
-        title: "Automation Rules",
-        url: route("admin.automation-rules.index"),
-        icon: IconSettings,
-        permission: "automation-rules.view",
-      },
-      {
-        title: "Escalation Rules",
-        url: route("admin.escalation-rules.index"),
-        icon: IconReport,
-        permission: "escalation-rules.view",
-      },
-      {
-        title: "Custom Fields",
-        url: route("admin.custom-fields.index"),
-        icon: IconFileDescription,
-        permission: "custom-fields.view",
-      },
-    ],
-  },
-  {
-    title: "Content",
-    icon: IconHelp,
-    items: [
-      {
-        title: "Knowledge Base",
-        url: route("admin.knowledge-base.index"),
-        icon: IconHelp,
-        permission: "knowledge-base.view",
-      },
-    ],
-  },
-  {
-    title: "Analytics",
-    icon: IconChartBar,
-    items: [
-      {
-        title: "Reports",
-        url: route("admin.reports.index"),
-        icon: IconReport,
-        permission: "reports.view",
-      },
-      {
-        title: "Time Entries",
-        url: route("admin.time-entries.index"),
-        icon: IconChartBar,
-        permission: "time-entries.view",
-      },
-      {
-        title: "Notifications",
-        url: route("admin.notifications.index"),
-        icon: IconBell,
-        // Notifications are accessible to all authenticated users
-      },
-    ],
-  },
-].filter((item) => {
-  // Filter items based on permissions
-  if (item.permission && !can(item.permission)) {
-    return false;
-  }
-  
-  // Filter nested items
-  if (item.items) {
-    item.items = item.items.filter((subItem) => {
-      if (subItem.permission && !can(subItem.permission)) {
-        return false;
-      }
-      return true;
-    });
-    
-    // Hide parent if no children remain
-    if (item.items.length === 0) {
+    items: configurationItems,
+  });
+
+  navItems.push(
+    {
+      title: "Content",
+      icon: IconHelp,
+      items: [
+        {
+          title: "Knowledge Base",
+          url: route("admin.knowledge-base.index"),
+          icon: IconHelp,
+          permission: "knowledge-base.view",
+        },
+      ],
+    },
+    {
+      title: "Analytics",
+      icon: IconChartBar,
+      items: [
+        {
+          title: "Reports",
+          url: route("admin.reports.index"),
+          icon: IconReport,
+          permission: "reports.view",
+        },
+        {
+          title: "Time Entries",
+          url: route("admin.time-entries.index"),
+          icon: IconChartBar,
+          permission: "time-entries.view",
+        },
+        {
+          title: "Notifications",
+          url: route("admin.notifications.index"),
+          icon: IconBell,
+          // Notifications are accessible to all authenticated users
+        },
+      ],
+    }
+  );
+
+  return navItems.filter((item) => {
+    // Filter items based on permissions
+    if (item.permission && !can(item.permission)) {
       return false;
     }
-  }
-  
-  return true;
-}) as NavItem[];
+    
+    // Filter nested items
+    if (item.items) {
+      item.items = item.items.filter((subItem) => {
+        if (subItem.permission && !can(subItem.permission)) {
+          return false;
+        }
+        return true;
+      });
+      
+      // Hide parent if no children remain
+      if (item.items.length === 0) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
+};
 
 const data = {
   user: {
@@ -260,11 +280,7 @@ const data = {
     },
   ],
   navSecondary: [
-    {
-      title: "Settings",
-      url: route("admin.settings.index"),
-      icon: IconSettings,
-    },
+    // Settings moved to user menu dropdown
     // {
     //   title: "Get Help",
     //   url: "#",
@@ -297,6 +313,40 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { can } = usePermissions();
+  const page = usePage();
+  const pageProps = page.props as any;
+  // Get user's department ID and roles
+  const userDepartmentId = pageProps.auth?.user?.department_id ?? null;
+  const userRoles = pageProps.auth?.user?.roles ?? [];
+  // Get enable_advanced_options setting, default to true if not set
+  // Convert to boolean to handle string values like "0" or "false"
+  const enableAdvancedOptions = (() => {
+    const value = pageProps.settings?.enable_advanced_options;
+    
+    if (value === undefined || value === null) {
+      return true; // Default to true if not set
+    }
+    // Handle boolean
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    // Handle string values
+    if (typeof value === 'string') {
+      const lowerValue = value.toLowerCase().trim();
+      if (['1', 'true', 'yes', 'on'].includes(lowerValue)) {
+        return true;
+      }
+      if (['0', 'false', 'no', 'off', ''].includes(lowerValue)) {
+        return false;
+      }
+    }
+    // Handle numeric values
+    if (typeof value === 'number') {
+      return value !== 0;
+    }
+    // Default to true for any other value
+    return true;
+  })();
   
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -316,9 +366,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={getNavMain(can)} />
+        <NavMain items={getNavMain(can, enableAdvancedOptions, userDepartmentId, userRoles)} />
         {/* <NavDocuments items={data.documents} /> */}
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        {data.navSecondary.length > 0 && (
+          <NavSecondary items={data.navSecondary} className="mt-auto" />
+        )}
       </SidebarContent>
       <SidebarFooter>
         <NavUser />
