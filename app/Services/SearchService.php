@@ -213,7 +213,7 @@ class SearchService
             // 3. Tickets assigned to user's team/department
             // Only Agents and Managers can see tickets assigned to their team
             // Requesters can only see tickets they created or are watching
-            if ($user->department_id && $user->hasAnyRole(['Agent', 'Senior Agent', 'Manager'])) {
+            if ($user->department_id && $user->hasAnyRole(array_merge(\App\Constants\RoleConstants::getAgentRoles(), [\App\Constants\RoleConstants::MANAGER]))) {
                 $q->orWhere('assigned_team_id', $user->department_id);
             }
             
@@ -224,7 +224,7 @@ class SearchService
             
             // 5. For managers: tickets in their department (even if not assigned)
             // Check if user has Manager role using Spatie's HasRoles trait
-            if ($user->hasRole('Manager')) {
+            if ($user->hasRole(\App\Constants\RoleConstants::MANAGER)) {
                 if ($user->department_id) {
                     $q->orWhereHas('assignedTeam', function ($teamQuery) use ($user) {
                         $teamQuery->where('id', $user->department_id);

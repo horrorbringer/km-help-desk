@@ -137,11 +137,11 @@ class SettingsController extends Controller
             'require_category' => Setting::get('require_category', true),
             'require_project' => Setting::get('require_project', false),
             // Advanced Options settings
-            'enable_advanced_options' => Setting::get('enable_advanced_options', true),
-            'enable_sla_options' => Setting::get('enable_sla_options', true),
-            'enable_custom_fields' => Setting::get('enable_custom_fields', true),
-            'enable_tags' => Setting::get('enable_tags', true),
-            'enable_watchers' => Setting::get('enable_watchers', true),
+            'enable_advanced_options' => Setting::get('enable_advanced_options', false),
+            'enable_sla_options' => Setting::get('enable_sla_options', false),
+            'enable_custom_fields' => Setting::get('enable_custom_fields', false),
+            'enable_tags' => Setting::get('enable_tags', false),
+            'enable_watchers' => Setting::get('enable_watchers', false),
         ];
     }
 

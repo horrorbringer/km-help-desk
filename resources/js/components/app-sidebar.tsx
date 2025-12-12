@@ -18,6 +18,7 @@ import {
   IconTicket,
   IconUsers,
 } from "@tabler/icons-react"
+import { LINE_MANAGER } from "@/constants/roles"
 
 import { NavDocuments } from "@/components/nav-documents"
 import { NavMain } from "@/components/nav-main"
@@ -79,9 +80,9 @@ const getNavMain = (can: (permission: string) => boolean, enableAdvancedOptions:
           icon: IconUsers,
           permission: "roles.view",
         },
-        // Show Departments if user has LM role OR has a department assigned
-        // LM (Line Manager) should see all departments
-        ...((userDepartmentId || userRoles.includes('LM')) ? [{
+        // Show Departments if user has Line Manager role OR has a department assigned
+        // Line Manager should see all departments
+        ...((userDepartmentId || userRoles.includes(LINE_MANAGER)) ? [{
           title: "Departments",
           url: route("admin.departments.index"),
           icon: IconFolder,

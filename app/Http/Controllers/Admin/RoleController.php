@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Constants\RoleConstants;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -111,6 +112,14 @@ class RoleController extends Controller
             'permissions.*' => ['exists:permissions,id'],
         ]);
 
+        // Prevent renaming of critical system roles
+        if (RoleConstants::isProtected($role->name) && $validated['name'] !== $role->name) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', "Cannot rename '{$role->name}' role. This role name is hardcoded in the system and changing it will break functionality.");
+        }
+
         $role->update(['name' => $validated['name']]);
 
         if (isset($validated['permissions'])) {
@@ -127,11 +136,19 @@ class RoleController extends Controller
     {
         abort_unless(auth()->user()->can('roles.delete'), 403);
 
-        // Prevent deletion of Super Admin role
-        if ($role->name === 'Super Admin') {
+        // Prevent deletion of critical system roles
+        if (RoleConstants::isProtected($role->name)) {
             return redirect()
                 ->route('admin.roles.index')
-                ->with('error', 'Cannot delete Super Admin role.');
+                ->with('error', "Cannot delete '{$role->name}' role. This role is critical for system functionality.");
+        }
+
+        // Check if any users are assigned to this role
+        $usersCount = $role->users()->count();
+        if ($usersCount > 0) {
+            return redirect()
+                ->route('admin.roles.index')
+                ->with('error', "Cannot delete role '{$role->name}'. {$usersCount} user(s) are currently assigned to this role. Please reassign users to another role first.");
         }
 
         $role->delete();

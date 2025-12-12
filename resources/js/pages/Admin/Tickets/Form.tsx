@@ -819,6 +819,29 @@ export default function TicketForm(props: TicketFormProps) {
     }
   }, [isEdit]);
 
+  // Auto-detect source based on user agent and device
+  const detectSource = (): string => {
+    if (typeof window === 'undefined') return 'web';
+    
+    const userAgent = navigator.userAgent.toLowerCase();
+    
+    // Check for mobile app identifiers (custom headers or user agent patterns)
+    // This would typically be set by a mobile app making API calls
+    if (userAgent.includes('kimmix') || 
+        userAgent.includes('mobile-app') ||
+        (userAgent.includes('android') && userAgent.includes('wv')) ||
+        (userAgent.includes('ios') && !userAgent.includes('safari'))) {
+      return 'mobile_app';
+    }
+    
+    // Check if it's a mobile device (but accessed via browser, so still web)
+    const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    
+    // For now, mobile browsers are still considered 'web'
+    // Mobile app detection would typically come from custom headers set by the app
+    return 'web';
+  };
+
   useEffect(() => {
     if (!isEdit) {
       // Fetch active templates
@@ -844,8 +867,17 @@ export default function TicketForm(props: TicketFormProps) {
         if (templateData.sla_policy_id) setData('sla_policy_id', templateData.sla_policy_id);
         if (templateData.tag_ids) setData('tag_ids', templateData.tag_ids);
         if (templateData.custom_fields) setData('custom_fields', templateData.custom_fields);
+      } else {
+        // Auto-detect source only if no template data and source is default
+        const defaultSource = formOptions.sources[0] ?? 'web';
+        const detectedSource = detectSource();
+        // Only set if detected source is available in form options and different from default
+        if (formOptions.sources.includes(detectedSource) && detectedSource !== defaultSource) {
+          setData('source', detectedSource);
+        }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit]);
 
   const applyTemplate = async (templateId: number) => {
@@ -1194,21 +1226,23 @@ export default function TicketForm(props: TicketFormProps) {
                   </Select>
                 </div>
 
-                <div>
-                  <Label className="text-sm font-medium">Source</Label>
-                  <Select value={data.source} onValueChange={(value) => setData('source', value)}>
-                    <SelectTrigger className="mt-1.5 h-10">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {formOptions.sources.map((source) => (
-                        <SelectItem key={source} value={source}>
-                          {source}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {isEdit && (
+                  <div>
+                    <Label className="text-sm font-medium">Source</Label>
+                    <Select value={data.source} onValueChange={(value) => setData('source', value)}>
+                      <SelectTrigger className="mt-1.5 h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formOptions.sources.map((source) => (
+                          <SelectItem key={source} value={source}>
+                            {source}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <div>

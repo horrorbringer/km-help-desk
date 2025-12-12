@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import { useMemo } from 'react';
+import { SUPER_ADMIN } from '@/constants/roles';
 
 interface AuthUser {
   id: number;
@@ -35,7 +36,7 @@ export function usePermissions() {
 
     return (permission: string): boolean => {
       // Super Admin has all permissions
-      if (roles.has('Super Admin')) {
+      if (roles.has(SUPER_ADMIN)) {
         return true;
       }
 
@@ -54,7 +55,7 @@ export function usePermissions() {
 
     return (permissionList: string[]): boolean => {
       // Super Admin has all permissions
-      if (roles.has('Super Admin')) {
+      if (roles.has(SUPER_ADMIN)) {
         return true;
       }
 
@@ -73,7 +74,7 @@ export function usePermissions() {
 
     return (permissionList: string[]): boolean => {
       // Super Admin has all permissions
-      if (roles.has('Super Admin')) {
+      if (roles.has(SUPER_ADMIN)) {
         return true;
       }
 

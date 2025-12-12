@@ -124,9 +124,9 @@ export default function RoleForm({ role, permissions }: RoleFormProps) {
                     onChange={(e) => setData('name', e.target.value)}
                     placeholder="e.g. Support Agent"
                     required
-                    disabled={role?.name === 'Super Admin'}
+                    disabled={role?.name === 'Super Admin'} // TODO: Use role constants
                   />
-                  {role?.name === 'Super Admin' && (
+                  {role?.name === 'Super Admin' && ( // TODO: Use role constants
                     <p className="text-xs text-muted-foreground">
                       Super Admin role name cannot be changed
                     </p>

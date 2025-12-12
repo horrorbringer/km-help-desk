@@ -62,7 +62,7 @@ class SavedSearchController extends Controller
     public function destroy(Request $request, SavedSearch $savedSearch): RedirectResponse|JsonResponse
     {
         // Only allow users to delete their own searches (unless admin)
-        if ($savedSearch->user_id !== Auth::id() && !Auth::user()->hasRole('Super Admin')) {
+        if ($savedSearch->user_id !== Auth::id() && !Auth::user()->hasRole(\App\Constants\RoleConstants::SUPER_ADMIN)) {
             return response()->json(['error' => 'You do not have permission to delete this saved search. You can only delete your own searches.'], 403);
         }
 

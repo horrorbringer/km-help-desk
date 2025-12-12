@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Constants\RoleConstants;
 use Illuminate\Foundation\Http\FormRequest;
 
 class TicketRequest extends FormRequest
@@ -89,22 +90,18 @@ class TicketRequest extends FormRequest
             
             // IMPORTANT: Check department-limited roles FIRST to override permission
             // Most managers manage their department/team, not cross-functional teams
-            $isHOD = $user->hasRole('Head of Department');
-            $isLineManager = $user->hasRole('Line Manager');
+            $isHOD = $user->hasRole(RoleConstants::HEAD_OF_DEPARTMENT);
+            $isLineManager = $user->hasRole(RoleConstants::LINE_MANAGER);
             $isDepartmentManager = $user->hasAnyRole([
-                'IT Manager',
-                'Operations Manager',
-                'Finance Manager',
-                'HR Manager',
-                'Procurement Manager',
-                'Safety Manager',
+                RoleConstants::IT_MANAGER,
+                RoleConstants::OPERATIONS_MANAGER,
+                RoleConstants::FINANCE_MANAGER,
+                RoleConstants::HR_MANAGER,
+                RoleConstants::PROCUREMENT_MANAGER,
+                RoleConstants::SAFETY_MANAGER,
             ]);
-            $isExecutiveOrAdmin = $user->hasAnyRole([
-                'CEO',
-                'Director',
-                'Super Admin',
-            ]);
-            $isProjectManager = $user->hasRole('Project Manager');
+            $isExecutiveOrAdmin = $user->hasAnyRole(RoleConstants::getExecutiveRoles());
+            $isProjectManager = $user->hasRole(RoleConstants::PROJECT_MANAGER);
             $hasCreateOnBehalfPermission = $user->can('tickets.create-on-behalf');
             
             // Department managers can only create tickets for users in their department

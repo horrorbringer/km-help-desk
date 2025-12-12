@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Constants\RoleConstants;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\TicketRequest;
 use App\Http\Resources\TicketResource;
@@ -1033,6 +1034,11 @@ class TicketController extends Controller
             $data['ticket_number'] = $ticket?->ticket_number ?? Ticket::generateTicketNumber();
         }
 
+        // Auto-detect source if not provided or empty
+        if (empty($data['source']) || !in_array($data['source'], Ticket::SOURCES)) {
+            $data['source'] = $this->detectSource(request());
+        }
+
         if (!empty($data['sla_policy_id'])) {
             $sla = SlaPolicy::find($data['sla_policy_id']);
 
@@ -1045,6 +1051,45 @@ class TicketController extends Controller
         }
 
         return Arr::except($data, ['tag_ids', 'watcher_ids', 'custom_fields']);
+    }
+
+    /**
+     * Auto-detect ticket source based on request headers and user agent
+     */
+    protected function detectSource(Request $request): string
+    {
+        $userAgent = $request->userAgent() ?? '';
+        $userAgentLower = strtolower($userAgent);
+
+        // Check for mobile app identifier in headers or user agent
+        // Common patterns: "KimmixApp", "MobileApp", custom headers
+        if ($request->hasHeader('X-Client-Type') || 
+            $request->hasHeader('X-App-Version') ||
+            strpos($userAgentLower, 'kimmix') !== false ||
+            strpos($userAgentLower, 'mobile-app') !== false ||
+            strpos($userAgentLower, 'android') !== false && strpos($userAgentLower, 'wv') !== false ||
+            strpos($userAgentLower, 'ios') !== false && strpos($userAgentLower, 'safari') === false) {
+            return 'mobile_app';
+        }
+
+        // Check for phone integration (could be via API with specific header)
+        if ($request->hasHeader('X-Source') && strtolower($request->header('X-Source')) === 'phone') {
+            return 'phone';
+        }
+
+        // Check for email source (could be via email-to-ticket integration)
+        if ($request->hasHeader('X-Source') && strtolower($request->header('X-Source')) === 'email') {
+            return 'email';
+        }
+
+        // Check if it's a mobile browser (but not the app)
+        if (preg_match('/mobile|android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i', $userAgent)) {
+            // Still consider it web if accessed via browser
+            return 'web';
+        }
+
+        // Default to web for browser-based requests
+        return 'web';
     }
 
     protected function syncRelations(Ticket $ticket, array $data): void
@@ -1123,7 +1168,7 @@ class TicketController extends Controller
             // Check if user is in the assigned team
             if ($user->department_id === $ticket->assigned_team_id) {
                 // Check if user is an agent (has Agent or Senior Agent role)
-                return $user->hasAnyRole(['Agent', 'Senior Agent']);
+                return $user->hasAnyRole(RoleConstants::getAgentRoles());
             }
             return false;
         }
@@ -1154,22 +1199,18 @@ class TicketController extends Controller
         // Check if user can create tickets on behalf of others
         // IMPORTANT: Check department-limited roles FIRST to override permission
         // Most managers manage their department/team, not cross-functional teams
-        $isHOD = $user->hasRole('Head of Department');
-        $isLineManager = $user->hasRole('Line Manager');
+        $isHOD = $user->hasRole(RoleConstants::HEAD_OF_DEPARTMENT);
+        $isLineManager = $user->hasRole(RoleConstants::LINE_MANAGER);
         $isDepartmentManager = $user->hasAnyRole([
-            'IT Manager',
-            'Operations Manager',
-            'Finance Manager',
-            'HR Manager',
-            'Procurement Manager',
-            'Safety Manager',
+            RoleConstants::IT_MANAGER,
+            RoleConstants::OPERATIONS_MANAGER,
+            RoleConstants::FINANCE_MANAGER,
+            RoleConstants::HR_MANAGER,
+            RoleConstants::PROCUREMENT_MANAGER,
+            RoleConstants::SAFETY_MANAGER,
         ]);
-        $isExecutiveOrAdmin = $user->hasAnyRole([
-            'CEO',
-            'Director',
-            'Super Admin',
-        ]);
-        $isProjectManager = $user->hasRole('Project Manager');
+        $isExecutiveOrAdmin = $user->hasAnyRole(RoleConstants::getExecutiveRoles());
+        $isProjectManager = $user->hasRole(RoleConstants::PROJECT_MANAGER);
         $hasCreateOnBehalfPermission = $user->can('tickets.create-on-behalf');
         
         // Filter requesters based on permission and role
@@ -1204,10 +1245,7 @@ class TicketController extends Controller
         $agents = User::select('users.id', 'users.name')
             ->where('users.is_active', true)
             ->whereHas('roles', function ($roleQuery) {
-                $roleQuery->whereIn('name', [
-                    'Agent',
-                    'Senior Agent',
-                ]);
+                $roleQuery->whereIn('name', RoleConstants::getAgentRoles());
             })
             ->orderBy('users.name')
             ->get();
@@ -1580,7 +1618,7 @@ class TicketController extends Controller
         // Requesters can only see tickets they created or are watching
         if ($ticket->assigned_team_id && $user->department_id === $ticket->assigned_team_id) {
             // Allow if user is an Agent, Senior Agent, or Manager
-            if ($user->hasAnyRole(['Agent', 'Senior Agent', 'Manager'])) {
+            if ($user->hasAnyRole(array_merge(RoleConstants::getAgentRoles(), [RoleConstants::MANAGER]))) {
                 return true;
             }
         }
@@ -1592,7 +1630,7 @@ class TicketController extends Controller
         
         // For managers: can see tickets in their department (even if not assigned)
         // Check if user has Manager role using Spatie's HasRoles trait
-        if ($user->hasRole('Manager') && $user->department_id) {
+        if ($user->hasRole(RoleConstants::MANAGER) && $user->department_id) {
             if ($ticket->assignedTeam && $ticket->assignedTeam->id === $user->department_id) {
                 return true;
             }

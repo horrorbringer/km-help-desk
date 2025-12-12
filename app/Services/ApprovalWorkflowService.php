@@ -2,11 +2,14 @@
 
 namespace App\Services;
 
+use App\Constants\RoleConstants;
+
 use App\Models\Ticket;
 use App\Models\TicketApproval;
 use App\Models\User;
 use App\Models\Department;
 use App\Services\NotificationService;
+use App\Helpers\LogHelper;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -30,7 +33,8 @@ class ApprovalWorkflowService
             ->exists();
         
         if ($existingPendingApproval) {
-            Log::warning('Attempted to initialize workflow but pending approval already exists', [
+            // Only log warnings in development/staging (duplicate initialization is rare)
+            LogHelper::warning('Attempted to initialize workflow but pending approval already exists', [
                 'ticket_id' => $ticket->id,
             ]);
             return;
@@ -80,31 +84,28 @@ class ApprovalWorkflowService
         try {
             $notificationService = app(NotificationService::class);
             if ($lmApprover) {
-                Log::info('Sending approval requested notification', [
-                    'ticket_id' => $ticket->id,
-                    'approval_level' => 'lm',
-                    'approver_id' => $lmApprover->id,
-                    'approver_email' => $lmApprover->email,
-                ]);
                 $notificationService->notifyApprovalRequested($ticket, $lmApprover, 'lm');
-                Log::info('Approval workflow initialized and notification sent', [
+                // Single log after operation completes (reduces redundant logging)
+                LogHelper::workflow('Approval workflow initialized', [
                     'ticket_id' => $ticket->id,
                     'approval_level' => 'lm',
                     'approver_id' => $lmApprover->id,
                 ]);
             } else {
-                Log::warning('No Line Manager approver found for ticket', [
+                LogHelper::warning('No Line Manager approver found for ticket', [
                     'ticket_id' => $ticket->id,
                     'requester_id' => $ticket->requester_id,
                     'requester_department_id' => $ticket->requester?->department_id,
                 ]);
             }
         } catch (\Exception $e) {
-            Log::error('Failed to send approval notification', [
+            // Only include trace in development to reduce log size
+            LogHelper::error('Failed to send approval notification', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ], includeTrace: true);
         }
     }
 
@@ -136,26 +137,21 @@ class ApprovalWorkflowService
 
         // Send approval notification
         try {
-            Log::info('Sending approval approved notification', [
+            $notificationService = app(NotificationService::class);
+            $notificationService->notifyApprovalApproved($ticket, $approver, $approval->approval_level, $comments);
+            // Single log after operation completes
+            LogHelper::workflow('Approval approved', [
                 'ticket_id' => $ticket->id,
                 'approval_level' => $approval->approval_level,
                 'approver_id' => $approver->id,
-                'approver_email' => $approver->email,
-                'requester_id' => $ticket->requester_id,
-                'requester_email' => $ticket->requester?->email,
-            ]);
-            $notificationService = app(NotificationService::class);
-            $notificationService->notifyApprovalApproved($ticket, $approver, $approval->approval_level, $comments);
-            Log::info('Approval approved notification sent successfully', [
-                'ticket_id' => $ticket->id,
-                'approval_level' => $approval->approval_level,
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to send approval approved notification', [
+            LogHelper::error('Failed to send approval approved notification', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ], includeTrace: true);
         }
 
         // Route ticket based on approval level
@@ -217,27 +213,21 @@ class ApprovalWorkflowService
 
         // Send notification to requester
         try {
-            Log::info('Sending approval rejected notification', [
+            $notificationService = app(NotificationService::class);
+            $notificationService->notifyApprovalRejected($ticket, $approver, $approval->approval_level, $comments);
+            // Single log after operation completes
+            LogHelper::workflow('Approval rejected', [
                 'ticket_id' => $ticket->id,
                 'approval_level' => $approval->approval_level,
                 'approver_id' => $approver->id,
-                'approver_email' => $approver->email,
-                'requester_id' => $ticket->requester_id,
-                'requester_email' => $ticket->requester?->email,
-            ]);
-            $notificationService = app(NotificationService::class);
-            $notificationService->notifyApprovalRejected($ticket, $approver, $approval->approval_level, $comments);
-            Log::info('Ticket rejected and notification sent', [
-                'ticket_id' => $ticket->id,
-                'approval_level' => $approval->approval_level,
-                'note' => 'Ticket preserved for audit - not deleted',
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to send rejection notification', [
+            LogHelper::error('Failed to send rejection notification', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ], includeTrace: true);
         }
     }
 
@@ -494,12 +484,11 @@ class ApprovalWorkflowService
         if ($ticket->category && $ticket->category->hod_approval_threshold) {
             $ticketCost = $ticket->estimated_cost ?? 0;
             if ($ticketCost >= $ticket->category->hod_approval_threshold) {
-                Log::info('Approval required due to cost threshold (even though category may not require approval)', [
+                // Only log in development/staging (cost threshold logic is expected behavior)
+                LogHelper::debug('Approval required due to cost threshold', [
                     'ticket_id' => $ticket->id,
                     'cost' => $ticketCost,
                     'threshold' => $ticket->category->hod_approval_threshold,
-                    'category' => $ticket->category->name,
-                    'category_requires_approval' => $ticket->category->requires_approval,
                 ]);
                 return true; // Cost exceeds threshold - require approval
             }
@@ -516,7 +505,8 @@ class ApprovalWorkflowService
             // Using Gate::forUser to check permission for the requester
             try {
                 if (Gate::forUser($ticket->requester)->allows('tickets.auto-approve')) {
-                    Log::info('Auto-approval granted for user', [
+                    // Only log in development (auto-approval is expected behavior)
+                    LogHelper::debug('Auto-approval granted for user', [
                         'ticket_id' => $ticket->id,
                         'user_id' => $ticket->requester->id,
                     ]);
@@ -524,7 +514,8 @@ class ApprovalWorkflowService
                 }
             } catch (\Exception $e) {
                 // If permission doesn't exist or check fails, continue with approval requirement
-                Log::debug('Auto-approve permission check failed', [
+                // Only log in development (permission check failures are expected)
+                LogHelper::debug('Auto-approve permission check failed', [
                     'user_id' => $ticket->requester->id,
                     'error' => $e->getMessage(),
                 ]);
@@ -533,10 +524,10 @@ class ApprovalWorkflowService
         
         // 4. If category doesn't require approval and cost is below threshold, no approval needed
         if ($ticket->category && !$ticket->category->requires_approval) {
-            Log::info('No approval required - category does not require approval and cost is below threshold', [
+            // Only log in development (no approval needed is expected behavior)
+            LogHelper::debug('No approval required - category does not require approval', [
                 'ticket_id' => $ticket->id,
                 'category' => $ticket->category->name,
-                'cost' => $ticket->estimated_cost ?? 0,
             ]);
             return false;
         }
@@ -646,7 +637,7 @@ class ApprovalWorkflowService
             // Find manager in the same department (can be based on role)
             $manager = User::where('department_id', $ticket->requester->department_id)
                 ->whereHas('roles', function ($query) {
-                    $query->whereIn('name', ['Manager', 'Line Manager', 'Super Admin']);
+                    $query->whereIn('name', RoleConstants::getApprovalRoles());
                 })
                 ->where('is_active', true)
                 ->first();
@@ -660,7 +651,7 @@ class ApprovalWorkflowService
         if ($ticket->assignedTeam) {
             $manager = User::where('department_id', $ticket->assigned_team_id)
                 ->whereHas('roles', function ($query) {
-                    $query->whereIn('name', ['Manager', 'Line Manager', 'Super Admin']);
+                    $query->whereIn('name', RoleConstants::getApprovalRoles());
                 })
                 ->where('is_active', true)
                 ->first();
@@ -779,7 +770,7 @@ class ApprovalWorkflowService
         
         // Priority 5: Last resort - Super Admin (only if no HOD/Director found)
         $superAdmin = User::whereHas('roles', function ($query) {
-            $query->where('name', 'Super Admin');
+            $query->where('name', RoleConstants::SUPER_ADMIN);
         })
         ->where('is_active', true)
         ->first();

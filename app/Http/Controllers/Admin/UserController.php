@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Constants\RoleConstants;
 
 class UserController extends Controller
 {
@@ -41,7 +42,7 @@ class UserController extends Controller
         // Apply department-based visibility
         // Admins, CEO, Director, Super Admin can see all users
         // HODs, Line Managers, and Department Managers see only their department
-        if (!$user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
+        if (!$user->hasAnyRole(array_merge(RoleConstants::getExecutiveRoles(), [RoleConstants::PROJECT_MANAGER, 'Admin']))) {
             // Check if user has a department
             if ($user->department_id) {
                 $query->where('department_id', $user->department_id);
@@ -85,7 +86,7 @@ class UserController extends Controller
 
         // Get user statistics (respecting visibility)
         $statsQuery = User::query();
-        if (!$user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
+        if (!$user->hasAnyRole(array_merge(RoleConstants::getExecutiveRoles(), [RoleConstants::PROJECT_MANAGER, 'Admin']))) {
             if ($user->department_id) {
                 $statsQuery->where('department_id', $user->department_id);
             } else {
@@ -360,7 +361,7 @@ class UserController extends Controller
             });
 
         // Apply department-based visibility (same as index)
-        if (!$user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
+        if (!$user->hasAnyRole(array_merge(RoleConstants::getExecutiveRoles(), [RoleConstants::PROJECT_MANAGER, 'Admin']))) {
             if ($user->department_id) {
                 $query->where('department_id', $user->department_id);
             } else {

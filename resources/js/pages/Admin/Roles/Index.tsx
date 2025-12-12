@@ -87,7 +87,7 @@ export default function RolesIndex() {
                       <TableCell>
                         <div>
                           <p className="font-medium">{role.name}</p>
-                          {role.name === 'Super Admin' && (
+                          {role.name === 'Super Admin' && ( // TODO: Use role constants
                             <Badge variant="default" className="mt-1 text-xs">
                               System Role
                             </Badge>
