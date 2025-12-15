@@ -35,6 +35,7 @@ class UserSeeder extends Seeder
             'ceo' => Role::where('name', 'CEO')->first(),
             'director' => Role::where('name', 'Director')->first(),
             'hod' => Role::where('name', 'Head of Department')->first(),
+            'dhod' => Role::where('name', 'Deputy Head of Department')->first(),
             'it_manager' => Role::where('name', 'IT Manager')->first(),
             'operations_manager' => Role::where('name', 'Operations Manager')->first(),
             'finance_manager' => Role::where('name', 'Finance Manager')->first(),
@@ -42,6 +43,7 @@ class UserSeeder extends Seeder
             'procurement_manager' => Role::where('name', 'Procurement Manager')->first(),
             'safety_manager' => Role::where('name', 'Safety Manager')->first(),
             'line_manager' => Role::where('name', 'Line Manager')->first(),
+            'dlm' => Role::where('name', 'Deputy Line Manager')->first(),
             'project_manager' => Role::where('name', 'Project Manager')->first(),
             'it_administrator' => Role::where('name', 'IT Administrator')->first(),
             'senior_agent' => Role::where('name', 'Senior Agent')->first(),
@@ -79,8 +81,9 @@ class UserSeeder extends Seeder
             ],
 
             // ============================================
-            // HEAD OF DEPARTMENT
+            // IT DEPARTMENT - V1 FOCUS
             // ============================================
+            // Head of Department (IT)
             [
                 'name' => 'Sokuntha',
                 'email' => 'kmhodsokun@outlook.com',
@@ -89,9 +92,36 @@ class UserSeeder extends Seeder
                 'phone' => '+855 12 000 001',
                 'role_key' => 'hod',
             ],
+            // Deputy Head of Department (IT) - Backup for HOD
+            [
+                'name' => 'IT Deputy HOD',
+                'email' => 'it.dhod@kimmix.com',
+                'department_code' => 'IT-SD',
+                'employee_id' => 'EMP-0998',
+                'phone' => '+855 12 000 003',
+                'role_key' => 'dhod',
+            ],
+            // Line Manager (IT) - Required for approval workflow
+            [
+                'name' => 'IT Line Manager',
+                'email' => 'it.lm@kimmix.com',
+                'department_code' => 'IT-SD',
+                'employee_id' => 'EMP-1021',
+                'phone' => '+855 12 345 679',
+                'role_key' => 'line_manager',
+            ],
+            // Deputy Line Manager (IT) - Backup for LM
+            [
+                'name' => 'IT Deputy LM',
+                'email' => 'it.dlm@kimmix.com',
+                'department_code' => 'IT-SD',
+                'employee_id' => 'EMP-1022',
+                'phone' => '+855 12 345 680',
+                'role_key' => 'dlm',
+            ],
 
             // ============================================
-            // LINE MANAGERS
+            // OTHER DEPARTMENTS - LINE MANAGERS
             // ============================================
             [
                 'name' => 'Vannak',

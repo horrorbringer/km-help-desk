@@ -173,9 +173,18 @@ export default function DepartmentsIndex() {
                         <span className="font-medium">{department.tickets_count}</span>
                       </div>
                     </div>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={route('admin.departments.show', department.id)}>View</Link>
-                    </Button>
+                    <div className="flex gap-2">
+                      {can('departments.view') && (
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={route('admin.departments.show', department.id)}>View</Link>
+                        </Button>
+                      )}
+                      {can('departments.edit') && (
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={route('admin.departments.edit', department.id)}>Edit</Link>
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

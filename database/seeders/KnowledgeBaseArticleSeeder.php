@@ -22,19 +22,13 @@ class KnowledgeBaseArticleSeeder extends Seeder
             return;
         }
 
-        // Get categories
+        // Get categories - only IT Support categories
         $categories = TicketCategory::whereIn('slug', [
             'it-support',
             'hardware-requests',
             'hardware-issues',
             'network-connectivity',
             'application-access',
-            'site-operations',
-            'equipment-failure',
-            'safety-compliance',
-            'incident-reporting',
-            'purchase-request',
-            'invoice-processing',
         ])->get()->keyBy('slug');
 
         $articles = [
@@ -55,33 +49,6 @@ class KnowledgeBaseArticleSeeder extends Seeder
                 'status' => 'published',
                 'is_featured' => true,
                 'published_at' => now()->subDays(25),
-            ],
-            [
-                'title' => 'Reporting Safety Incidents',
-                'excerpt' => 'Complete guide on how to report workplace safety incidents and near misses.',
-                'content' => "## Reporting Safety Incidents\n\n### When to Report\n\nReport immediately if:\n- Someone is injured\n- Property is damaged\n- There's a near miss (could have caused injury)\n- Environmental incident occurs\n\n### How to Report\n\n1. **Immediate Actions**\n   - Ensure the area is safe\n   - Provide first aid if trained\n   - Call emergency services if needed\n\n2. **Create a Ticket**\n   - Log into the ticketing system\n   - Select 'Safety & Compliance' category\n   - Choose 'Incident Reporting' subcategory\n   - Fill in all required details\n\n3. **Provide Details**\n   - Date and time of incident\n   - Location (be specific)\n   - Description of what happened\n   - Names of witnesses\n   - Photos if available\n\n### Follow-Up\n\n- HSE team will contact you within 1 hour for critical incidents\n- Investigation will begin within 24 hours\n- You may be asked to provide additional information\n\n### Confidentiality\n\nAll reports are confidential. Retaliation for reporting is strictly prohibited.",
-                'category_slug' => 'incident-reporting',
-                'status' => 'published',
-                'is_featured' => true,
-                'published_at' => now()->subDays(20),
-            ],
-            [
-                'title' => 'Equipment Maintenance Request Process',
-                'excerpt' => 'How to request maintenance or report equipment failures on construction sites.',
-                'content' => "## Equipment Maintenance Request Process\n\n### When to Request Maintenance\n\n- Equipment is not functioning properly\n- Preventive maintenance is due\n- Safety concerns with equipment\n- Unusual noises or vibrations\n\n### Creating a Maintenance Request\n\n1. **Create a Ticket**\n   - Select 'Site Operations' category\n   - Choose 'Equipment Failure' subcategory\n   - Provide equipment details:\n     - Equipment type and model\n     - Serial number or asset tag\n     - Location on site\n     - Description of issue\n\n2. **Priority Guidelines**\n   - **Critical**: Equipment failure affecting safety or major delays\n   - **High**: Equipment down but workaround available\n   - **Medium**: Minor issues, equipment still operational\n   - **Low**: Preventive maintenance\n\n3. **Attach Photos**\n   - Take clear photos of the issue\n   - Include equipment identification tags\n   - Show any visible damage or problems\n\n### Response Times\n\n- Critical: 1 hour\n- High: 4 hours\n- Medium: 24 hours\n- Low: 48 hours\n\n### Follow-Up\n\nField Engineering team will:\n- Acknowledge your request\n- Schedule inspection or repair\n- Update ticket with progress\n- Mark as resolved when complete",
-                'category_slug' => 'equipment-failure',
-                'status' => 'published',
-                'is_featured' => false,
-                'published_at' => now()->subDays(15),
-            ],
-            [
-                'title' => 'Procurement Request Guidelines',
-                'excerpt' => 'Step-by-step process for submitting procurement requests and purchase orders.',
-                'content' => "## Procurement Request Guidelines\n\n### Before Submitting\n\n1. **Check Inventory**\n   - Verify if item is already in stock\n   - Check with warehouse team\n\n2. **Get Approvals**\n   - Manager approval required for items over $500\n   - Department head approval for items over $2,000\n   - Finance approval for items over $10,000\n\n3. **Gather Information**\n   - Item description and specifications\n   - Quantity needed\n   - Preferred vendor (if any)\n   - Budget code\n   - Expected delivery date\n\n### Submitting the Request\n\n1. Create a ticket in 'Procurement Requests' category\n2. Fill in all required fields\n3. Attach quotes or specifications if available\n4. Add any special instructions\n\n### Processing Timeline\n\n- **Standard Items**: 3-5 business days\n- **Custom Orders**: 1-2 weeks\n- **International Orders**: 2-4 weeks\n\n### Tracking Your Request\n\n- You'll receive email updates\n- Check ticket status in the system\n- Contact Procurement team for urgent requests\n\n### Tips\n\n- Submit requests early to avoid delays\n- Provide complete specifications\n- Include alternative options if available",
-                'category_slug' => 'purchase-request',
-                'status' => 'published',
-                'is_featured' => false,
-                'published_at' => now()->subDays(10),
             ],
             [
                 'title' => 'Laptop Setup for New Employees',

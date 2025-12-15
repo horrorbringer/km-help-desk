@@ -13,6 +13,7 @@ export const SUPER_ADMIN = 'Super Admin';
 export const CEO = 'CEO';
 export const DIRECTOR = 'Director';
 export const HEAD_OF_DEPARTMENT = 'Head of Department';
+export const DEPUTY_HEAD_OF_DEPARTMENT = 'Deputy Head of Department';
 
 // Management Level
 export const IT_MANAGER = 'IT Manager';
@@ -22,6 +23,7 @@ export const HR_MANAGER = 'HR Manager';
 export const PROCUREMENT_MANAGER = 'Procurement Manager';
 export const SAFETY_MANAGER = 'Safety Manager';
 export const LINE_MANAGER = 'Line Manager';
+export const DEPUTY_LINE_MANAGER = 'Deputy Line Manager';
 export const MANAGER = 'Manager';
 export const PROJECT_MANAGER = 'Project Manager';
 
@@ -41,10 +43,12 @@ export const getProtectedRoles = (): string[] => {
   return [
     SUPER_ADMIN,
     LINE_MANAGER,
+    DEPUTY_LINE_MANAGER,
     MANAGER,
     AGENT,
     SENIOR_AGENT,
     HEAD_OF_DEPARTMENT,
+    DEPUTY_HEAD_OF_DEPARTMENT,
   ];
 };
 
@@ -71,6 +75,7 @@ export const getManagementRoles = (): string[] => {
     PROCUREMENT_MANAGER,
     SAFETY_MANAGER,
     LINE_MANAGER,
+    DEPUTY_LINE_MANAGER,
     MANAGER,
     PROJECT_MANAGER,
   ];

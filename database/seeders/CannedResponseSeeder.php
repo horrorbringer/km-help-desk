@@ -56,12 +56,10 @@ class CannedResponseSeeder extends Seeder
 
         $categories = TicketCategory::whereIn('slug', [
             'it-support',
-            'safety-compliance',
-            'purchase-request',
-            'invoice-processing',
             'hardware-issues',
+            'hardware-requests',
+            'application-access',
             'network-connectivity',
-            'equipment-failure',
         ])->get()->keyBy('slug');
 
         $responses = [
@@ -71,29 +69,14 @@ class CannedResponseSeeder extends Seeder
                 'category_slug' => 'it-support',
             ],
             [
-                'title' => 'Safety Incident Checklist',
-                'content' => "Hello {{requester_name}},\n\nPlease ensure the area is cordoned off and submit any photos or witness statements. HSE will reach out within the hour.\n\nThanks,\nSafety Desk",
-                'category_slug' => 'safety-compliance',
-            ],
-            [
                 'title' => 'Password Reset Instructions',
                 'content' => "Hi {{requester_name}},\n\nTo reset your password:\n1. Go to the login page\n2. Click 'Forgot Password'\n3. Enter your email address\n4. Check your email for reset link\n5. Follow the instructions\n\nIf you need further assistance, please reply to this ticket.\n\nBest regards,\nIT Support",
-                'category_slug' => 'it-support',
+                'category_slug' => 'application-access',
             ],
             [
-                'title' => 'Procurement Request Acknowledged',
-                'content' => "Hello {{requester_name}},\n\nWe've received your procurement request and it's being processed. You'll receive updates as we progress through vendor selection and approval.\n\nEstimated processing time: 3-5 business days\n\nRegards,\nProcurement Team",
-                'category_slug' => 'purchase-request',
-            ],
-            [
-                'title' => 'Equipment Maintenance Scheduled',
-                'content' => "Hi {{requester_name}},\n\nWe've scheduled maintenance for the equipment you reported. Our field engineer will arrive on [DATE] at [TIME].\n\nPlease ensure the equipment is accessible and the area is clear.\n\nThank you,\nField Engineering",
-                'category_slug' => 'equipment-failure',
-            ],
-            [
-                'title' => 'Finance Query Under Review',
-                'content' => "Hello {{requester_name}},\n\nWe're reviewing your finance query and will get back to you within 2 business days. If you have any supporting documents, please attach them to this ticket.\n\nBest regards,\nFinance Team",
-                'category_slug' => 'invoice-processing',
+                'title' => 'Hardware Request Acknowledged',
+                'content' => "Hello {{requester_name}},\n\nWe've received your hardware request and it's being processed. You'll receive updates as we progress through approval and procurement.\n\nEstimated processing time: 3-5 business days\n\nRegards,\nIT Support",
+                'category_slug' => 'hardware-requests',
             ],
             [
                 'title' => 'VPN Connection Troubleshooting',

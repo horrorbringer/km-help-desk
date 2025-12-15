@@ -24,8 +24,31 @@ class ApprovalWorkflowService
      * - Only require approval when category/priority requires it
      * - Route based on category's default team, not always ITD
      * - Allow bypass for routine/low-priority tickets
+     * - Now supports workflow templates via WorkflowEngine
      */
     public function initializeWorkflow(Ticket $ticket): void
+    {
+        // Check if workflow template exists and use WorkflowEngine
+        try {
+            $workflowEngine = app(WorkflowEngine::class);
+            $workflowEngine->execute($ticket);
+            return;
+        } catch (\Exception $e) {
+            // If WorkflowEngine fails or no template found, fall back to default workflow
+            Log::info('WorkflowEngine not available or failed, using default workflow', [
+                'ticket_id' => $ticket->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+        
+        // Fallback to default workflow
+        $this->initializeDefaultWorkflow($ticket);
+    }
+
+    /**
+     * Initialize default workflow (original implementation)
+     */
+    protected function initializeDefaultWorkflow(Ticket $ticket): void
     {
         // Check if there are already pending approvals - don't create duplicates
         $existingPendingApproval = $ticket->approvals()
@@ -165,13 +188,30 @@ class ApprovalWorkflowService
                 // Keep ticket in pending state until HOD approves
                 // Don't route yet - wait for final approval
             } else {
-                // No HOD approval needed - route immediately after LM approval
-                $this->routeAfterLMApproval($ticket, $routedToTeamId);
+                // No HOD approval needed - check if CEO approval is needed
+                $needsCEOApproval = $this->requiresCEOApproval($ticket);
+                
+                if ($needsCEOApproval) {
+                    $this->checkNextApproval($ticket);
+                } else {
+                    // No further approval needed - route immediately after LM approval
+                    $this->routeAfterLMApproval($ticket, $routedToTeamId);
+                }
             }
         } elseif ($approval->approval_level === 'hod') {
-            // After HOD approval, this is the final approval - route now
-            $this->routeAfterHODApproval($ticket, $routedToTeamId);
-            // After HOD approval, no further approvals needed (don't call checkNextApproval)
+            // After HOD approval, check if CEO approval is needed
+            $needsCEOApproval = $this->requiresCEOApproval($ticket);
+            
+            if ($needsCEOApproval) {
+                // CEO approval is still needed - don't route yet
+                $this->checkNextApproval($ticket);
+            } else {
+                // No CEO approval needed - route now
+                $this->routeAfterHODApproval($ticket, $routedToTeamId);
+            }
+        } elseif ($approval->approval_level === 'ceo') {
+            // After CEO approval, this is the final approval - route now
+            $this->routeAfterCEOApproval($ticket, $routedToTeamId);
         }
     }
 
@@ -385,17 +425,18 @@ class ApprovalWorkflowService
 
     /**
      * Check if next approval is needed
-     * Only creates HOD approval if:
-     * 1. HOD approval is required
-     * 2. No pending HOD approval already exists
-     * 3. Previous approval was LM (not HOD) - prevents duplicate HOD approvals
+     * Creates HOD or CEO approval based on requirements
      */
     protected function checkNextApproval(Ticket $ticket): void
     {
-        // Check if HOD approval is needed
+        // Check if HOD approval is needed (and not already approved)
         $needsHODApproval = $this->requiresHODApproval($ticket);
+        $hasApprovedHOD = $ticket->approvals()
+            ->where('approval_level', 'hod')
+            ->where('status', 'approved')
+            ->exists();
 
-        if ($needsHODApproval) {
+        if ($needsHODApproval && !$hasApprovedHOD) {
             // Check if there's already a pending HOD approval
             $existingPendingHOD = $ticket->approvals()
                 ->where('approval_level', 'hod')
@@ -629,12 +670,37 @@ class ApprovalWorkflowService
 
     /**
      * Find Line Manager for ticket
+     * Made public for use by WorkflowEngine
      */
-    protected function findLineManager(Ticket $ticket): ?User
+    public function findLineManager(Ticket $ticket): ?User
     {
         // Option 1: Requester's department manager
         if ($ticket->requester && $ticket->requester->department_id) {
-            // Find manager in the same department (can be based on role)
+            // Priority 1: Find Line Manager
+            $lm = User::where('department_id', $ticket->requester->department_id)
+                ->whereHas('roles', function ($query) {
+                    $query->where('name', RoleConstants::LINE_MANAGER);
+                })
+                ->where('is_active', true)
+                ->first();
+
+            if ($lm) {
+                return $lm;
+            }
+
+            // Priority 2: Find Deputy Line Manager
+            $dlm = User::where('department_id', $ticket->requester->department_id)
+                ->whereHas('roles', function ($query) {
+                    $query->where('name', RoleConstants::DEPUTY_LINE_MANAGER);
+                })
+                ->where('is_active', true)
+                ->first();
+
+            if ($dlm) {
+                return $dlm;
+            }
+
+            // Priority 3: Find any manager in the same department
             $manager = User::where('department_id', $ticket->requester->department_id)
                 ->whereHas('roles', function ($query) {
                     $query->whereIn('name', RoleConstants::getApprovalRoles());
@@ -649,6 +715,31 @@ class ApprovalWorkflowService
 
         // Option 2: Assigned team manager
         if ($ticket->assignedTeam) {
+            // Priority 1: Find Line Manager
+            $lm = User::where('department_id', $ticket->assigned_team_id)
+                ->whereHas('roles', function ($query) {
+                    $query->where('name', RoleConstants::LINE_MANAGER);
+                })
+                ->where('is_active', true)
+                ->first();
+
+            if ($lm) {
+                return $lm;
+            }
+
+            // Priority 2: Find Deputy Line Manager
+            $dlm = User::where('department_id', $ticket->assigned_team_id)
+                ->whereHas('roles', function ($query) {
+                    $query->where('name', RoleConstants::DEPUTY_LINE_MANAGER);
+                })
+                ->where('is_active', true)
+                ->first();
+
+            if ($dlm) {
+                return $dlm;
+            }
+
+            // Priority 3: Find any manager
             $manager = User::where('department_id', $ticket->assigned_team_id)
                 ->whereHas('roles', function ($query) {
                     $query->whereIn('name', RoleConstants::getApprovalRoles());
@@ -661,9 +752,29 @@ class ApprovalWorkflowService
             }
         }
 
-        // Fallback: First active manager
+        // Fallback: First active manager (LM → DLM → Manager → Super Admin)
+        $lm = User::whereHas('roles', function ($query) {
+            $query->where('name', RoleConstants::LINE_MANAGER);
+        })
+        ->where('is_active', true)
+        ->first();
+
+        if ($lm) {
+            return $lm;
+        }
+
+        $dlm = User::whereHas('roles', function ($query) {
+            $query->where('name', RoleConstants::DEPUTY_LINE_MANAGER);
+        })
+        ->where('is_active', true)
+        ->first();
+
+        if ($dlm) {
+            return $dlm;
+        }
+
         return User::whereHas('roles', function ($query) {
-            $query->whereIn('name', ['Manager', 'Line Manager', 'Super Admin']);
+            $query->whereIn('name', ['Manager', 'Super Admin']);
         })
         ->where('is_active', true)
         ->first();
@@ -671,14 +782,16 @@ class ApprovalWorkflowService
 
     /**
      * Find Head of Department for ticket
+     * Made public for use by WorkflowEngine
      */
-    protected function findHOD(Ticket $ticket): ?User
+    public function findHOD(Ticket $ticket): ?User
     {
         // Priority 1: Find HOD in the ticket's assigned team/department
         if ($ticket->assigned_team_id) {
+            // Priority 1.1: Find Head of Department
             $hod = User::where('department_id', $ticket->assigned_team_id)
                 ->whereHas('roles', function ($query) {
-                    $query->whereIn('name', ['Head of Department', 'HOD']);
+                    $query->where('name', RoleConstants::HEAD_OF_DEPARTMENT);
                 })
                 ->where('is_active', true)
                 ->first();
@@ -692,13 +805,32 @@ class ApprovalWorkflowService
                 ]);
                 return $hod;
             }
+
+            // Priority 1.2: Find Deputy Head of Department
+            $dhod = User::where('department_id', $ticket->assigned_team_id)
+                ->whereHas('roles', function ($query) {
+                    $query->where('name', RoleConstants::DEPUTY_HEAD_OF_DEPARTMENT);
+                })
+                ->where('is_active', true)
+                ->first();
+            
+            if ($dhod) {
+                Log::info('DHOD found in assigned team (HOD unavailable)', [
+                    'ticket_id' => $ticket->id,
+                    'dhod_id' => $dhod->id,
+                    'dhod_name' => $dhod->name,
+                    'department_id' => $ticket->assigned_team_id,
+                ]);
+                return $dhod;
+            }
         }
         
         // Priority 1.5: Find HOD in category's default team (if ticket not yet assigned)
         if ($ticket->category && $ticket->category->default_team_id) {
+            // Priority 1.5.1: Find Head of Department
             $hod = User::where('department_id', $ticket->category->default_team_id)
                 ->whereHas('roles', function ($query) {
-                    $query->whereIn('name', ['Head of Department', 'HOD']);
+                    $query->where('name', RoleConstants::HEAD_OF_DEPARTMENT);
                 })
                 ->where('is_active', true)
                 ->first();
@@ -713,13 +845,33 @@ class ApprovalWorkflowService
                 ]);
                 return $hod;
             }
+
+            // Priority 1.5.2: Find Deputy Head of Department
+            $dhod = User::where('department_id', $ticket->category->default_team_id)
+                ->whereHas('roles', function ($query) {
+                    $query->where('name', RoleConstants::DEPUTY_HEAD_OF_DEPARTMENT);
+                })
+                ->where('is_active', true)
+                ->first();
+            
+            if ($dhod) {
+                Log::info('DHOD found in category default team (HOD unavailable)', [
+                    'ticket_id' => $ticket->id,
+                    'dhod_id' => $dhod->id,
+                    'dhod_name' => $dhod->name,
+                    'category_id' => $ticket->category_id,
+                    'default_team_id' => $ticket->category->default_team_id,
+                ]);
+                return $dhod;
+            }
         }
         
         // Priority 2: Find HOD in requester's department
         if ($ticket->requester && $ticket->requester->department_id) {
+            // Priority 2.1: Find Head of Department
             $hod = User::where('department_id', $ticket->requester->department_id)
                 ->whereHas('roles', function ($query) {
-                    $query->whereIn('name', ['Head of Department', 'HOD']);
+                    $query->where('name', RoleConstants::HEAD_OF_DEPARTMENT);
                 })
                 ->where('is_active', true)
                 ->first();
@@ -733,11 +885,29 @@ class ApprovalWorkflowService
                 ]);
                 return $hod;
             }
+
+            // Priority 2.2: Find Deputy Head of Department
+            $dhod = User::where('department_id', $ticket->requester->department_id)
+                ->whereHas('roles', function ($query) {
+                    $query->where('name', RoleConstants::DEPUTY_HEAD_OF_DEPARTMENT);
+                })
+                ->where('is_active', true)
+                ->first();
+            
+            if ($dhod) {
+                Log::info('DHOD found in requester department (HOD unavailable)', [
+                    'ticket_id' => $ticket->id,
+                    'dhod_id' => $dhod->id,
+                    'dhod_name' => $dhod->name,
+                    'requester_department_id' => $ticket->requester->department_id,
+                ]);
+                return $dhod;
+            }
         }
         
-        // Priority 3: Find any Head of Department (prioritize HOD role over Super Admin)
+        // Priority 3: Find any Head of Department
         $hod = User::whereHas('roles', function ($query) {
-            $query->whereIn('name', ['Head of Department', 'HOD']);
+            $query->where('name', RoleConstants::HEAD_OF_DEPARTMENT);
         })
         ->where('is_active', true)
         ->first();
@@ -750,6 +920,23 @@ class ApprovalWorkflowService
                 'hod_department_id' => $hod->department_id,
             ]);
             return $hod;
+        }
+
+        // Priority 3.5: Find any Deputy Head of Department
+        $dhod = User::whereHas('roles', function ($query) {
+            $query->where('name', RoleConstants::DEPUTY_HEAD_OF_DEPARTMENT);
+        })
+        ->where('is_active', true)
+        ->first();
+        
+        if ($dhod) {
+            Log::info('DHOD found (any department, HOD unavailable)', [
+                'ticket_id' => $ticket->id,
+                'dhod_id' => $dhod->id,
+                'dhod_name' => $dhod->name,
+                'dhod_department_id' => $dhod->department_id,
+            ]);
+            return $dhod;
         }
         
         // Priority 4: Fallback to Director
@@ -781,6 +968,127 @@ class ApprovalWorkflowService
                 'super_admin_id' => $superAdmin->id,
                 'super_admin_name' => $superAdmin->name,
                 'note' => 'This should not happen if HOD users are properly configured',
+            ]);
+        }
+        
+        return $superAdmin;
+    }
+
+    /**
+     * Determine if ticket requires CEO approval
+     * CEO approval is required for very expensive purchases (typically >$10,000 or $50,000)
+     */
+    protected function requiresCEOApproval(Ticket $ticket): bool
+    {
+        // CEO approval typically required for very high-cost items
+        // Default threshold: $10,000 (can be configured per category)
+        $ceoApprovalThreshold = $ticket->category?->ceo_approval_threshold ?? 10000;
+        
+        $ticketCost = $ticket->estimated_cost ?? 0;
+        
+        if ($ticketCost >= $ceoApprovalThreshold) {
+            Log::info('CEO approval required due to cost threshold', [
+                'ticket_id' => $ticket->id,
+                'cost' => $ticketCost,
+                'threshold' => $ceoApprovalThreshold,
+            ]);
+            return true;
+        }
+
+        // Check if category explicitly requires CEO approval
+        if ($ticket->category && $ticket->category->requires_ceo_approval) {
+            Log::info('CEO approval required due to category flag', [
+                'ticket_id' => $ticket->id,
+                'category' => $ticket->category->name,
+            ]);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Route ticket after CEO approval
+     */
+    protected function routeAfterCEOApproval(Ticket $ticket, ?int $routedToTeamId = null): void
+    {
+        // CEO can route to different destinations, or use category's default team
+        $teamId = $routedToTeamId ?? $ticket->category?->default_team_id;
+        
+        if ($teamId) {
+            $ticket->update([
+                'assigned_team_id' => $teamId,
+                'status' => 'assigned',
+            ]);
+
+            $team = Department::find($teamId);
+            $ticket->histories()->create([
+                'user_id' => Auth::id(),
+                'action' => 'routed',
+                'field_name' => 'assigned_team_id',
+                'old_value' => null,
+                'new_value' => $teamId,
+                'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . ' after CEO approval',
+                'created_at' => now(),
+            ]);
+        } else {
+            Log::warning('CEO approval completed but no team to route to', [
+                'ticket_id' => $ticket->id,
+                'category_id' => $ticket->category_id,
+            ]);
+            $ticket->update(['status' => 'resolved']);
+        }
+    }
+
+    /**
+     * Find CEO for ticket
+     * Made public for use by WorkflowEngine
+     */
+    public function findCEO(Ticket $ticket): ?User
+    {
+        // Priority 1: Find CEO role
+        $ceo = User::whereHas('roles', function ($query) {
+            $query->where('name', 'CEO');
+        })
+        ->where('is_active', true)
+        ->first();
+        
+        if ($ceo) {
+            Log::info('CEO found', [
+                'ticket_id' => $ticket->id,
+                'ceo_id' => $ceo->id,
+                'ceo_name' => $ceo->name,
+            ]);
+            return $ceo;
+        }
+        
+        // Priority 2: Fallback to Director
+        $director = User::whereHas('roles', function ($query) {
+            $query->where('name', 'Director');
+        })
+        ->where('is_active', true)
+        ->first();
+        
+        if ($director) {
+            Log::warning('CEO not found, using Director as fallback', [
+                'ticket_id' => $ticket->id,
+                'director_id' => $director->id,
+                'director_name' => $director->name,
+            ]);
+            return $director;
+        }
+        
+        // Priority 3: Last resort - Super Admin
+        $superAdmin = User::whereHas('roles', function ($query) {
+            $query->where('name', RoleConstants::SUPER_ADMIN);
+        })
+        ->where('is_active', true)
+        ->first();
+        
+        if ($superAdmin) {
+            Log::warning('CEO and Director not found, using Super Admin as last resort', [
+                'ticket_id' => $ticket->id,
+                'super_admin_id' => $superAdmin->id,
             ]);
         }
         

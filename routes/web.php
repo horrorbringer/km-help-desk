@@ -123,6 +123,11 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::resource('ticket-templates', TicketTemplateController::class)
         ->names('admin.ticket-templates');
 
+    Route::resource('workflow-templates', \App\Http\Controllers\Admin\WorkflowTemplateController::class)
+        ->names('admin.workflow-templates');
+    Route::post('workflow-templates/{workflowTemplate}/toggle-status', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'toggleStatus'])
+        ->name('admin.workflow-templates.toggle-status');
+
     Route::resource('roles', RoleController::class)
         ->names('admin.roles');
 

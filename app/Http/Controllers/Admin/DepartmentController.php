@@ -15,9 +15,12 @@ class DepartmentController extends Controller
 {
     public function index(Request $request): Response
     {
+        abort_unless($request->user()->can('departments.view'), 403, 'You do not have permission to view departments.');
+        
+        $user = $request->user();
         $filters = $request->only(['q', 'is_support_team', 'is_active']);
 
-        $departments = Department::query()
+        $query = Department::query()
             ->withCount(['users', 'tickets'])
             ->when($filters['q'] ?? null, function ($query, $q) {
                 $query->where(function ($qry) use ($q) {
@@ -31,8 +34,22 @@ class DepartmentController extends Controller
             })
             ->when(isset($filters['is_active']), function ($query) use ($filters) {
                 $query->where('is_active', $filters['is_active'] === '1');
-            })
-            ->latest()
+            });
+
+        // Apply department-based visibility
+        // Executives (Super Admin, CEO, Director) can see all departments
+        // All other users can only see their own department
+        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+            if ($user->department_id) {
+                // User has a department - show only their department
+                $query->where('id', $user->department_id);
+            } else {
+                // User has no department - show nothing (or empty result)
+                $query->whereRaw('1 = 0'); // Always false condition
+            }
+        }
+
+        $departments = $query->latest()
             ->paginate(15)
             ->withQueryString()
             ->through(fn ($department) => [
@@ -55,6 +72,8 @@ class DepartmentController extends Controller
 
     public function create(): Response
     {
+        abort_unless(auth()->user()->can('departments.create'), 403, 'You do not have permission to create departments.');
+        
         return Inertia::render('Admin/Departments/Form', [
             'department' => null,
         ]);
@@ -71,9 +90,24 @@ class DepartmentController extends Controller
 
     public function show(Department $department): Response
     {
-        $department->load(['users', 'tickets' => function ($query) {
+        abort_unless(auth()->user()->can('departments.view'), 403, 'You do not have permission to view departments.');
+        
+        $user = request()->user();
+        
+        // Check if user can view this department
+        // Executives can view all, others can only view their own
+        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+            if ($user->department_id !== $department->id) {
+                abort(403, 'You can only view your own department.');
+            }
+        }
+        
+        $department->load(['users.roles', 'tickets' => function ($query) {
             $query->latest()->take(10);
         }]);
+        
+        $usersCount = $department->users()->count();
+        $ticketsCount = $department->tickets()->count();
 
         return Inertia::render('Admin/Departments/Show', [
             'department' => [
@@ -88,7 +122,12 @@ class DepartmentController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'is_active' => $user->is_active,
+                    'roles' => $user->roles->map(fn ($role) => [
+                        'id' => $role->id,
+                        'name' => $role->name,
+                    ]),
                 ]),
+                'users_count' => $usersCount,
                 'recent_tickets' => $department->tickets->map(fn ($ticket) => [
                     'id' => $ticket->id,
                     'ticket_number' => $ticket->ticket_number,
@@ -97,6 +136,7 @@ class DepartmentController extends Controller
                     'priority' => $ticket->priority,
                     'created_at' => $ticket->created_at->toDateTimeString(),
                 ]),
+                'tickets_count' => $ticketsCount,
                 'created_at' => $department->created_at->toDateTimeString(),
             ],
         ]);
@@ -104,6 +144,18 @@ class DepartmentController extends Controller
 
     public function edit(Department $department): Response
     {
+        abort_unless(auth()->user()->can('departments.edit'), 403, 'You do not have permission to edit departments.');
+        
+        $user = auth()->user();
+        
+        // Check if user can edit this department
+        // Executives can edit all, others can only edit their own
+        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+            if ($user->department_id !== $department->id) {
+                abort(403, 'You can only edit your own department.');
+            }
+        }
+        
         return Inertia::render('Admin/Departments/Form', [
             'department' => [
                 'id' => $department->id,
@@ -118,6 +170,18 @@ class DepartmentController extends Controller
 
     public function update(DepartmentRequest $request, Department $department): RedirectResponse
     {
+        abort_unless($request->user()->can('departments.edit'), 403, 'You do not have permission to edit departments.');
+        
+        $user = $request->user();
+        
+        // Check if user can edit this department
+        // Executives can edit all, others can only edit their own
+        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+            if ($user->department_id !== $department->id) {
+                abort(403, 'You can only edit your own department.');
+            }
+        }
+        
         $department->update($request->validated());
 
         return redirect()
@@ -127,6 +191,8 @@ class DepartmentController extends Controller
 
     public function destroy(Department $department): RedirectResponse
     {
+        abort_unless(auth()->user()->can('departments.delete'), 403, 'You do not have permission to delete departments.');
+        
         // Check if department has users or tickets
         if ($department->users()->count() > 0) {
             return redirect()

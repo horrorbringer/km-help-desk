@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Spatie\Permission\Models\Role;
+use App\Models\Role;
 use Spatie\Permission\Models\Permission;
 
 class RolePermissionSeeder extends Seeder
@@ -99,40 +99,261 @@ class RolePermissionSeeder extends Seeder
     }
 
     /**
-     * Step 2: Create all system roles
+     * Step 2: Create all system roles with hierarchy and metadata
      * Organized by hierarchy: Executive → Management → Operations → Support → Users
      */
     protected function createRoles(): void
     {
         $roles = [
-            // Executive Level
-            'Super Admin',           // Full system access
-            'CEO',                   // Chief Executive Officer
-            'Director',              // Department Director
-            'Head of Department',    // HOD - Department head with approval authority
+            // Executive Level (Level 10-7)
+            [
+                'name' => 'Super Admin',
+                'hierarchy_level' => 10,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => null, // Unlimited
+                    'department_scope' => 'all',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'CEO',
+                'hierarchy_level' => 9,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => null, // Unlimited
+                    'department_scope' => 'all',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Director',
+                'hierarchy_level' => 8,
+                'parent_role_id' => null, // Will set after creation
+                'metadata' => [
+                    'approval_limit' => 50000,
+                    'department_scope' => 'all',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Head of Department',
+                'hierarchy_level' => 7,
+                'parent_role_id' => null, // Will set after creation
+                'metadata' => [
+                    'approval_limit' => 10000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Deputy Head of Department',
+                'hierarchy_level' => 6.5, // Between HOD (7) and Managers (6)
+                'parent_role_id' => null, // Will set after creation (parent: HOD)
+                'metadata' => [
+                    'approval_limit' => 7500, // Slightly lower than HOD
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
             
-            // Management Level
-            'IT Manager',            // IT Department Manager
-            'Operations Manager',     // Operations/Field Manager
-            'Finance Manager',       // Finance Department Manager
-            'HR Manager',            // Human Resources Manager
-            'Procurement Manager',   // Procurement/Purchasing Manager
-            'Safety Manager',        // Health & Safety Manager
-            'Line Manager',          // Team Lead/Line Manager (first-level approval)
-            'Project Manager',       // Project-specific manager
+            // Management Level (Level 6-4)
+            [
+                'name' => 'IT Manager',
+                'hierarchy_level' => 6,
+                'parent_role_id' => null, // Will set after creation
+                'metadata' => [
+                    'approval_limit' => 5000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Operations Manager',
+                'hierarchy_level' => 6,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => 5000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Finance Manager',
+                'hierarchy_level' => 6,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => 5000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'HR Manager',
+                'hierarchy_level' => 6,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => 5000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Procurement Manager',
+                'hierarchy_level' => 6,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => 5000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Safety Manager',
+                'hierarchy_level' => 6,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => 5000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Line Manager',
+                'hierarchy_level' => 5,
+                'parent_role_id' => null, // Will set after creation
+                'metadata' => [
+                    'approval_limit' => 1000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Deputy Line Manager',
+                'hierarchy_level' => 4.5, // Between LM (5) and Operations (3-2)
+                'parent_role_id' => null, // Will set after creation (parent: LM)
+                'metadata' => [
+                    'approval_limit' => 750, // Slightly lower than LM
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Project Manager',
+                'hierarchy_level' => 5,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => 5000,
+                    'department_scope' => 'project',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Manager',
+                'hierarchy_level' => 5,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => 1000,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
             
-            // Operations Level
-            'IT Administrator',       // IT Admin with system access
-            'Senior Agent',          // Senior support agent
-            'Agent',                 // Support agent
+            // Operations Level (Level 3-2)
+            [
+                'name' => 'IT Administrator',
+                'hierarchy_level' => 3,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => null,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Senior Agent',
+                'hierarchy_level' => 2,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => null,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Agent',
+                'hierarchy_level' => 2,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => null,
+                    'department_scope' => 'own_department',
+                ],
+                'is_system_role' => true,
+            ],
             
-            // User Level
-            'Requester',             // Regular user submitting tickets
-            'Contractor',            // External contractor (limited access)
+            // User Level (Level 1-0)
+            [
+                'name' => 'Requester',
+                'hierarchy_level' => 1,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => null,
+                    'department_scope' => 'none',
+                ],
+                'is_system_role' => true,
+            ],
+            [
+                'name' => 'Contractor',
+                'hierarchy_level' => 0,
+                'parent_role_id' => null,
+                'metadata' => [
+                    'approval_limit' => null,
+                    'department_scope' => 'none',
+                ],
+                'is_system_role' => true,
+            ],
         ];
 
-        foreach ($roles as $roleName) {
-            Role::firstOrCreate(['name' => $roleName]);
+        // First pass: Create all roles
+        $createdRoles = [];
+        foreach ($roles as $roleData) {
+            $role = Role::firstOrCreate(
+                ['name' => $roleData['name']],
+                [
+                    'hierarchy_level' => $roleData['hierarchy_level'],
+                    'metadata' => $roleData['metadata'],
+                    'is_system_role' => $roleData['is_system_role'],
+                ]
+            );
+            $createdRoles[$roleData['name']] = $role;
+        }
+
+        // Second pass: Set parent relationships
+        $parentMappings = [
+            'Director' => 'CEO',
+            'Head of Department' => 'Director',
+            'Deputy Head of Department' => 'Head of Department',
+            'IT Manager' => 'Head of Department',
+            'Operations Manager' => 'Head of Department',
+            'Finance Manager' => 'Head of Department',
+            'HR Manager' => 'Head of Department',
+            'Procurement Manager' => 'Head of Department',
+            'Safety Manager' => 'Head of Department',
+            'Line Manager' => 'Head of Department',
+            'Deputy Line Manager' => 'Line Manager',
+            'Manager' => 'Head of Department',
+            'Project Manager' => 'Head of Department',
+            'IT Administrator' => 'IT Manager',
+            'Senior Agent' => 'Line Manager',
+            'Agent' => 'Line Manager',
+        ];
+
+        foreach ($parentMappings as $childName => $parentName) {
+            if (isset($createdRoles[$childName]) && isset($createdRoles[$parentName])) {
+                $createdRoles[$childName]->update([
+                    'parent_role_id' => $createdRoles[$parentName]->id
+                ]);
+            }
         }
     }
 
@@ -147,6 +368,7 @@ class RolePermissionSeeder extends Seeder
         $this->assignCEOPermissions();
         $this->assignDirectorPermissions();
         $this->assignHODPermissions();
+        $this->assignDHODPermissions();
 
         // Management Level
         $this->assignITManagerPermissions();
@@ -156,6 +378,7 @@ class RolePermissionSeeder extends Seeder
         $this->assignProcurementManagerPermissions();
         $this->assignSafetyManagerPermissions();
         $this->assignLineManagerPermissions();
+        $this->assignDLMPermissions();
         $this->assignProjectManagerPermissions();
 
         // Operations Level
@@ -263,6 +486,45 @@ class RolePermissionSeeder extends Seeder
             'tickets.resolve',
             'tickets.close',
             'tickets.auto-approve', // Can bypass approval workflow
+            'tickets.create-on-behalf',
+            
+            // Resource Viewing
+            'users.view',
+            'departments.view',
+            'categories.view',
+            'projects.view',
+            'tags.view',
+            
+            // Time Management
+            'time-entries.view',
+            'time-entries.approve',
+            
+            // Knowledge & Reports
+            'knowledge-base.view',
+            'reports.view',
+        ]);
+    }
+
+    /**
+     * Deputy Head of Department: Acts as HOD when HOD is unavailable
+     */
+    protected function assignDHODPermissions(): void
+    {
+        $role = Role::where('name', 'Deputy Head of Department')->first();
+        if (!$role) {
+            return;
+        }
+        
+        // DHOD has similar permissions to HOD but slightly reduced approval limit
+        $role->givePermissionTo([
+            // Ticket Management
+            'tickets.view',
+            'tickets.create',
+            'tickets.edit',
+            'tickets.assign',
+            'tickets.resolve',
+            'tickets.close',
+            'tickets.auto-approve', // Can bypass approval workflow (when HOD unavailable)
             'tickets.create-on-behalf',
             
             // Resource Viewing
@@ -546,6 +808,45 @@ class RolePermissionSeeder extends Seeder
     }
 
     /**
+     * Deputy Line Manager: Acts as LM when LM is unavailable
+     */
+    protected function assignDLMPermissions(): void
+    {
+        $role = Role::where('name', 'Deputy Line Manager')->first();
+        if (!$role) {
+            return;
+        }
+        
+        // DLM has similar permissions to LM but slightly reduced approval limit
+        $role->givePermissionTo([
+            // Ticket Management
+            'tickets.view',
+            'tickets.create',
+            'tickets.edit',
+            'tickets.assign',
+            'tickets.resolve',
+            'tickets.close',
+            'tickets.auto-approve', // Can approve team member requests (when LM unavailable)
+            'tickets.create-on-behalf',
+            
+            // Resource Viewing
+            'users.view',
+            'departments.view',
+            'categories.view',
+            'projects.view',
+            'tags.view',
+            
+            // Time Management
+            'time-entries.view',
+            'time-entries.approve',
+            
+            // Knowledge & Reports
+            'knowledge-base.view',
+            'reports.view',
+        ]);
+    }
+
+    /**
      * Project Manager: Project-specific management
      */
     protected function assignProjectManagerPermissions(): void
@@ -696,6 +997,9 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',     // Can close tickets
             // Note: Agents do NOT have 'tickets.assign' - they can only see tickets assigned to them or their team
             
+            // Resource Viewing (own department)
+            'departments.view',   // Can view their own department
+            
             // Time Tracking
             'time-entries.view',
             'time-entries.create',
@@ -719,6 +1023,9 @@ class RolePermissionSeeder extends Seeder
             'tickets.create',    // Can create tickets
             'tickets.edit',      // Can edit their own open tickets
             
+            // Resource Viewing (own department)
+            'departments.view',   // Can view their own department
+            
             // Knowledge Base
             'knowledge-base.view',
         ]);
@@ -736,6 +1043,9 @@ class RolePermissionSeeder extends Seeder
             'tickets.create',    // Can create tickets
             'tickets.edit',      // Can edit tickets assigned to them
             'tickets.resolve',   // Can resolve tickets assigned to them
+            
+            // Resource Viewing (own department)
+            'departments.view',   // Can view their own department
             
             // Time Tracking
             'time-entries.view',

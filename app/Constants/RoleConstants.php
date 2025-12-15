@@ -18,6 +18,7 @@ class RoleConstants
     public const CEO = 'CEO';
     public const DIRECTOR = 'Director';
     public const HEAD_OF_DEPARTMENT = 'Head of Department';
+    public const DEPUTY_HEAD_OF_DEPARTMENT = 'Deputy Head of Department';
 
     // Management Level
     public const IT_MANAGER = 'IT Manager';
@@ -27,6 +28,7 @@ class RoleConstants
     public const PROCUREMENT_MANAGER = 'Procurement Manager';
     public const SAFETY_MANAGER = 'Safety Manager';
     public const LINE_MANAGER = 'Line Manager';
+    public const DEPUTY_LINE_MANAGER = 'Deputy Line Manager';
     public const MANAGER = 'Manager';
     public const PROJECT_MANAGER = 'Project Manager';
 
@@ -49,10 +51,12 @@ class RoleConstants
         return [
             self::SUPER_ADMIN,
             self::LINE_MANAGER,
+            self::DEPUTY_LINE_MANAGER,
             self::MANAGER,
             self::AGENT,
             self::SENIOR_AGENT,
             self::HEAD_OF_DEPARTMENT,
+            self::DEPUTY_HEAD_OF_DEPARTMENT,
         ];
     }
 
@@ -85,6 +89,7 @@ class RoleConstants
             self::PROCUREMENT_MANAGER,
             self::SAFETY_MANAGER,
             self::LINE_MANAGER,
+            self::DEPUTY_LINE_MANAGER,
             self::MANAGER,
             self::PROJECT_MANAGER,
         ];
@@ -113,6 +118,9 @@ class RoleConstants
         return [
             self::MANAGER,
             self::LINE_MANAGER,
+            self::DEPUTY_LINE_MANAGER,
+            self::HEAD_OF_DEPARTMENT,
+            self::DEPUTY_HEAD_OF_DEPARTMENT,
             self::SUPER_ADMIN,
         ];
     }
@@ -141,6 +149,7 @@ class RoleConstants
             self::CEO,
             self::DIRECTOR,
             self::HEAD_OF_DEPARTMENT,
+            self::DEPUTY_HEAD_OF_DEPARTMENT,
             // Management
             self::IT_MANAGER,
             self::OPERATIONS_MANAGER,
@@ -149,6 +158,7 @@ class RoleConstants
             self::PROCUREMENT_MANAGER,
             self::SAFETY_MANAGER,
             self::LINE_MANAGER,
+            self::DEPUTY_LINE_MANAGER,
             self::MANAGER,
             self::PROJECT_MANAGER,
             // Operations

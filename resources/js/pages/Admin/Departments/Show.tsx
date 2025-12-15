@@ -1,10 +1,24 @@
 import React from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { usePermissions } from '@/hooks/use-permissions';
+import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Trash2 } from 'lucide-react';
 
 interface Department {
   id: number;
@@ -18,7 +32,12 @@ interface Department {
     name: string;
     email: string;
     is_active: boolean;
+    roles: Array<{
+      id: number;
+      name: string;
+    }>;
   }>;
+  users_count: number;
   recent_tickets: Array<{
     id: number;
     ticket_number: string;
@@ -27,6 +46,7 @@ interface Department {
     priority: string;
     created_at: string;
   }>;
+  tickets_count: number;
   created_at: string;
 }
 
@@ -52,6 +72,19 @@ const priorityColorMap: Record<string, string> = {
 };
 
 export default function DepartmentShow({ department }: DepartmentShowProps) {
+  const { can } = usePermissions();
+  const { toast } = useToast();
+
+  const handleDelete = () => {
+    router.delete(route('admin.departments.destroy', department.id), {
+      onSuccess: () => {
+        toast.success('Department deleted successfully.');
+      },
+      onError: () => {
+        toast.error('Failed to delete department.');
+      },
+    });
+  };
 
   return (
     <AppLayout>
@@ -68,9 +101,48 @@ export default function DepartmentShow({ department }: DepartmentShowProps) {
             <Button asChild variant="outline">
               <Link href={route('admin.departments.index')}>← Back</Link>
             </Button>
-            <Button asChild>
-              <Link href={route('admin.departments.edit', department.id)}>Edit</Link>
-            </Button>
+            {can('departments.edit') && (
+              <Button asChild>
+                <Link href={route('admin.departments.edit', department.id)}>Edit</Link>
+              </Button>
+            )}
+            {can('departments.delete') && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Department</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete "{department.name}"? This action cannot be undone.
+                      {department.users_count > 0 && (
+                        <span className="block mt-2 text-red-600 font-medium">
+                          Warning: This department has {department.users_count} user(s) assigned. You must reassign or remove all users before deleting.
+                        </span>
+                      )}
+                      {department.tickets_count > 0 && (
+                        <span className="block mt-2 text-red-600 font-medium">
+                          Warning: This department has {department.tickets_count} ticket(s) assigned. You must reassign or close all tickets before deleting.
+                        </span>
+                      )}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDelete}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         </div>
 
@@ -130,11 +202,13 @@ export default function DepartmentShow({ department }: DepartmentShowProps) {
                   <CardTitle>Team Members ({department.users.length})</CardTitle>
                   <CardDescription>Users assigned to this department</CardDescription>
                 </div>
-                <Button asChild variant="outline" size="sm">
-                  <Link href={route('admin.users.index', { department: department.id })}>
-                    Manage Users
-                  </Link>
-                </Button>
+                {can('users.view') && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={route('admin.users.index', { department: department.id })}>
+                      Manage Users
+                    </Link>
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -149,20 +223,31 @@ export default function DepartmentShow({ department }: DepartmentShowProps) {
                       key={user.id}
                       className="flex items-center justify-between p-3 rounded border hover:bg-muted/50 transition"
                     >
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">{user.name}</p>
                         <p className="text-xs text-muted-foreground">{user.email}</p>
+                        {user.roles && user.roles.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {user.roles.map((role) => (
+                              <Badge key={role.id} variant="outline" className="text-xs">
+                                {role.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 ml-4">
                         <Badge
                           variant={user.is_active ? 'default' : 'secondary'}
                           className={user.is_active ? 'bg-emerald-100 text-emerald-800' : ''}
                         >
                           {user.is_active ? 'Active' : 'Inactive'}
                         </Badge>
-                        <Button asChild variant="ghost" size="sm">
-                          <Link href={route('admin.users.edit', user.id)}>Edit</Link>
-                        </Button>
+                        {can('users.edit') && (
+                          <Button asChild variant="ghost" size="sm">
+                            <Link href={route('admin.users.edit', user.id)}>Edit</Link>
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -179,11 +264,13 @@ export default function DepartmentShow({ department }: DepartmentShowProps) {
                   <CardTitle>Recent Tickets</CardTitle>
                   <CardDescription>Latest tickets assigned to this team</CardDescription>
                 </div>
-                <Button asChild variant="outline" size="sm">
-                  <Link href={route('admin.tickets.index', { team: department.id })}>
-                    View All
-                  </Link>
-                </Button>
+                {can('tickets.view') && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={route('admin.tickets.index', { team: department.id })}>
+                      View All
+                    </Link>
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>

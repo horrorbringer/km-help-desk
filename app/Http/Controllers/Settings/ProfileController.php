@@ -15,6 +15,37 @@ use Inertia\Response;
 class ProfileController extends Controller
 {
     /**
+     * Show the user's profile details (read-only view).
+     */
+    public function show(Request $request): Response
+    {
+        $user = $request->user();
+        $user->load(['department:id,name', 'roles:id,name']);
+        
+        return Inertia::render('settings/profile-show', [
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'avatar' => $user->avatar,
+                'phone' => $user->phone,
+                'employee_id' => $user->employee_id,
+                'department' => $user->department ? [
+                    'id' => $user->department->id,
+                    'name' => $user->department->name,
+                ] : null,
+                'roles' => $user->roles->map(fn ($role) => [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                ]),
+                'is_active' => $user->is_active,
+                'created_at' => $user->created_at->toDateTimeString(),
+                'updated_at' => $user->updated_at->toDateTimeString(),
+            ],
+        ]);
+    }
+
+    /**
      * Show the user's profile settings page.
      */
     public function edit(Request $request): Response

@@ -17,6 +17,7 @@ import {
   IconSettings,
   IconTicket,
   IconUsers,
+  IconRoute,
 } from "@tabler/icons-react"
 import { LINE_MANAGER } from "@/constants/roles"
 
@@ -80,14 +81,13 @@ const getNavMain = (can: (permission: string) => boolean, enableAdvancedOptions:
           icon: IconUsers,
           permission: "roles.view",
         },
-        // Show Departments if user has Line Manager role OR has a department assigned
-        // Line Manager should see all departments
-        ...((userDepartmentId || userRoles.includes(LINE_MANAGER)) ? [{
+        // All users can see their own department
+        {
           title: "Departments",
           url: route("admin.departments.index"),
           icon: IconFolder,
           permission: "departments.view",
-        }] : []),
+        },
         {
           title: "Projects",
           url: route("admin.projects.index"),
@@ -117,6 +117,12 @@ const getNavMain = (can: (permission: string) => boolean, enableAdvancedOptions:
       url: route("admin.email-templates.index"),
       icon: IconMail,
       permission: "email-templates.view",
+    },
+    {
+      title: "Workflow Templates",
+      url: route("admin.workflow-templates.index"),
+      icon: IconRoute,
+      permission: "categories.view", // Use categories permission for now
     },
     // {
     //   title: "Automation Rules",

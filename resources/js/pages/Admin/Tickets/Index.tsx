@@ -1,6 +1,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
-import { Download, Clock, CheckCircle2, XCircle, Plus, Ticket, User, Users, Calendar, Tag, Edit, Trash2, MoreVertical, UserPlus } from 'lucide-react';
+import React from 'react';
+import { Download, Clock, CheckCircle2, XCircle, Plus, Ticket, User, Users, Calendar, Tag, Edit, Trash2, MoreVertical, UserPlus, Search } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -8,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -91,6 +93,10 @@ type Props = {
     requesters: Option[];
     tags: Array<{ id: number; name: string; color: string }>;
   };
+  flash?: {
+    success?: string;
+    error?: string;
+  };
 };
 
 const statusColorMap: Record<string, string> = {
@@ -110,7 +116,7 @@ const priorityColorMap: Record<string, string> = {
   critical: 'bg-red-100 text-red-800',
 };
 
-export default function TicketIndex({ tickets, filters, options }: Props) {
+export default function TicketIndex({ tickets, filters, options, flash }: Props) {
   const { can } = usePermissions();
   const { toast } = useToast(); // Handle flash messages
   const [selectedTickets, setSelectedTickets] = useState<number[]>([]);
@@ -119,12 +125,36 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
   const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
   const [bulkDialogValue, setBulkDialogValue] = useState<string>('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState(filters.q || '');
   
   // Get current user info for pick ticket functionality
   const page = usePage();
   const pageProps = page.props as any;
   const currentUserId = pageProps.auth?.user?.id;
   const currentUserDepartmentId = pageProps.auth?.user?.department_id;
+
+  // Sync search query with filters when filters change from other sources
+  React.useEffect(() => {
+    setSearchQuery(filters.q || '');
+  }, [filters.q]);
+
+  // Debounce search - only search after user stops typing for 500ms
+  React.useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery !== (filters.q || '')) {
+        const newFilters = { ...filters };
+        if (searchQuery === '') {
+          delete newFilters.q;
+        } else {
+          newFilters.q = searchQuery;
+        }
+        handleFiltersChange(newFilters);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   const handleFiltersChange = (newFilters: Filters) => {
     router.get(route('admin.tickets.index'), newFilters, {
@@ -285,16 +315,50 @@ export default function TicketIndex({ tickets, filters, options }: Props) {
           </div>
         </div>
 
-      {/* Advanced Search */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <AdvancedSearch
-            filters={filters}
-            options={options}
-            onFiltersChange={handleFiltersChange}
-          />
-        </CardContent>
-      </Card>
+        {/* Flash Message */}
+        {flash?.success && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {flash.success}
+          </div>
+        )}
+        {flash?.error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {flash.error}
+          </div>
+        )}
+
+        {/* Search and Advanced Filters - Combined */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tickets by number, subject, description, or requester..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const newFilters = { ...filters };
+                      if (searchQuery === '') {
+                        delete newFilters.q;
+                      } else {
+                        newFilters.q = searchQuery;
+                      }
+                      handleFiltersChange(newFilters);
+                    }
+                  }}
+                  className="pl-10"
+                />
+              </div>
+              <AdvancedSearch
+                filters={filters}
+                options={options}
+                onFiltersChange={handleFiltersChange}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
       <Card>
         <CardHeader className="border-b bg-muted/30">
