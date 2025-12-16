@@ -35,14 +35,28 @@ class WorkflowEngine
      */
     public function execute(Ticket $ticket): void
     {
+        // Prevent duplicate workflow initialization
+        $existingPendingApproval = $ticket->approvals()
+            ->where('status', 'pending')
+            ->exists();
+        
+        if ($existingPendingApproval) {
+            Log::info('Workflow already initialized for ticket, skipping', [
+                'ticket_id' => $ticket->id,
+            ]);
+            return;
+        }
+        
         $template = WorkflowTemplate::forTicket($ticket);
         
         if (!$template) {
-            // Fallback to default workflow
+            // Fallback to default workflow - call initializeDefaultWorkflow directly to avoid circular call
             Log::info('No workflow template found, using default workflow', [
                 'ticket_id' => $ticket->id,
             ]);
-            $this->approvalService->initializeWorkflow($ticket);
+            // Use reflection or make the method public, or call it directly
+            // Since initializeDefaultWorkflow is protected, we'll use a flag to skip template check
+            $this->approvalService->initializeWorkflow($ticket, true);
             return;
         }
 
@@ -131,13 +145,74 @@ class WorkflowEngine
         $approvalLevel = $step['approval_level'] ?? 'lm';
         $approverType = $step['approver_type'] ?? 'line_manager';
         
-        // Use existing approval service to create approval
-        // This maintains compatibility with existing code
-        if ($approvalLevel === 'lm') {
-            $this->approvalService->initializeWorkflow($ticket);
-        } else {
-            // For other approval levels, create directly
-            $this->createApprovalForLevel($ticket, $approvalLevel, $approverType);
+        // Check if approval already exists to prevent duplicates
+        $existingApproval = \App\Models\TicketApproval::where('ticket_id', $ticket->id)
+            ->where('approval_level', $approvalLevel)
+            ->where('status', 'pending')
+            ->exists();
+        
+        if ($existingApproval) {
+            Log::info('Approval already exists, skipping creation', [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approvalLevel,
+            ]);
+            return;
+        }
+        
+        // Create approval directly without triggering workflow initialization
+        $this->createApprovalDirectly($ticket, $approvalLevel, $approverType);
+    }
+    
+    /**
+     * Create approval directly without triggering workflow initialization
+     * This prevents infinite loops when called from workflow templates
+     */
+    protected function createApprovalDirectly(Ticket $ticket, string $approvalLevel, string $approverType): void
+    {
+        // Get the highest sequence number to ensure proper ordering
+        $maxSequence = $ticket->approvals()->max('sequence') ?? 0;
+        
+        $approval = \App\Models\TicketApproval::create([
+            'ticket_id' => $ticket->id,
+            'approval_level' => $approvalLevel,
+            'status' => 'pending',
+            'sequence' => $maxSequence + 1,
+        ]);
+        
+        // Find approver based on type
+        $approver = null;
+        if ($approvalLevel === 'lm' || $approverType === 'line_manager') {
+            $approver = $this->approvalService->findLineManager($ticket);
+        } elseif ($approvalLevel === 'hod' || $approverType === 'head_of_department') {
+            $approver = $this->approvalService->findHOD($ticket);
+        }
+        
+        if ($approver) {
+            $approval->update(['approver_id' => $approver->id]);
+        }
+        
+        // Record in ticket history
+        $ticket->histories()->create([
+            'user_id' => \Illuminate\Support\Facades\Auth::id() ?? $ticket->requester_id,
+            'action' => 'approval_requested',
+            'field_name' => 'approval',
+            'old_value' => null,
+            'new_value' => ucfirst($approvalLevel) . ' Approval',
+            'description' => 'Ticket submitted for ' . ucfirst($approvalLevel) . ' approval',
+            'created_at' => now(),
+        ]);
+        
+        // Send notification
+        if ($approver) {
+            try {
+                $this->notificationService->notifyApprovalRequested($ticket, $approver, $approvalLevel);
+            } catch (\Exception $e) {
+                Log::error('Failed to send approval notification', [
+                    'ticket_id' => $ticket->id,
+                    'approval_level' => $approvalLevel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -215,6 +290,17 @@ class WorkflowEngine
                 'description' => 'Ticket routed to ' . ($ticket->category->defaultTeam->name ?? 'team'),
                 'created_at' => now(),
             ]);
+
+            // Notify department managers when ticket is routed to their team
+            try {
+                $this->notificationService->notifyDepartmentManagers($ticket);
+            } catch (\Exception $e) {
+                Log::warning('Failed to notify department managers after workflow routing', [
+                    'ticket_id' => $ticket->id,
+                    'team_id' => $ticket->category->default_team_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         } elseif (isset($step['team_id'])) {
             $ticket->update([
                 'assigned_team_id' => $step['team_id'],
@@ -232,6 +318,17 @@ class WorkflowEngine
                 'description' => 'Ticket routed to ' . ($team->name ?? 'team'),
                 'created_at' => now(),
             ]);
+
+            // Notify department managers when ticket is routed to their team
+            try {
+                $this->notificationService->notifyDepartmentManagers($ticket);
+            } catch (\Exception $e) {
+                Log::warning('Failed to notify department managers after workflow routing', [
+                    'ticket_id' => $ticket->id,
+                    'team_id' => $step['team_id'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

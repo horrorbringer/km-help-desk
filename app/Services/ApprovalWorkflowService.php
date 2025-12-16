@@ -26,8 +26,26 @@ class ApprovalWorkflowService
      * - Allow bypass for routine/low-priority tickets
      * - Now supports workflow templates via WorkflowEngine
      */
-    public function initializeWorkflow(Ticket $ticket): void
+    public function initializeWorkflow(Ticket $ticket, bool $skipTemplateCheck = false): void
     {
+        // Prevent infinite loops - if we're already in a fallback, don't try WorkflowEngine again
+        if ($skipTemplateCheck) {
+            $this->initializeDefaultWorkflow($ticket);
+            return;
+        }
+        
+        // Check if workflow has already been initialized to prevent duplicate initialization
+        $existingPendingApproval = $ticket->approvals()
+            ->where('status', 'pending')
+            ->exists();
+        
+        if ($existingPendingApproval) {
+            LogHelper::warning('Workflow already initialized for ticket', [
+                'ticket_id' => $ticket->id,
+            ]);
+            return;
+        }
+        
         // Check if workflow template exists and use WorkflowEngine
         try {
             $workflowEngine = app(WorkflowEngine::class);
@@ -385,6 +403,18 @@ class ApprovalWorkflowService
                 'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . ' after LM approval',
                 'created_at' => now(),
             ]);
+
+            // Notify department managers when ticket is routed to their team
+            try {
+                $notificationService = app(NotificationService::class);
+                $notificationService->notifyDepartmentManagers($ticket);
+            } catch (\Exception $e) {
+                Log::warning('Failed to notify department managers after routing', [
+                    'ticket_id' => $ticket->id,
+                    'team_id' => $targetTeamId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -412,6 +442,18 @@ class ApprovalWorkflowService
                 'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . ' after HOD approval',
                 'created_at' => now(),
             ]);
+
+            // Notify department managers when ticket is routed to their team
+            try {
+                $notificationService = app(NotificationService::class);
+                $notificationService->notifyDepartmentManagers($ticket);
+            } catch (\Exception $e) {
+                Log::warning('Failed to notify department managers after HOD routing', [
+                    'ticket_id' => $ticket->id,
+                    'team_id' => $teamId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         } else {
             // Fallback: If no team specified and category has no default team, mark as resolved
             // This should rarely happen if categories are properly configured
@@ -598,6 +640,18 @@ class ApprovalWorkflowService
                 'description' => 'Ticket routed directly to ' . ($ticket->category->defaultTeam->name ?? 'team') . ' (no approval required)',
                 'created_at' => now(),
             ]);
+
+            // Notify department managers when ticket is routed to their team
+            try {
+                $notificationService = app(NotificationService::class);
+                $notificationService->notifyDepartmentManagers($ticket);
+            } catch (\Exception $e) {
+                Log::warning('Failed to notify department managers after direct routing', [
+                    'ticket_id' => $ticket->id,
+                    'team_id' => $ticket->category->default_team_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -674,9 +728,10 @@ class ApprovalWorkflowService
      */
     public function findLineManager(Ticket $ticket): ?User
     {
-        // Option 1: Requester's department manager
+        // Priority 1: Requester's department manager
+        // This is correct: User's own department manager should approve their tickets
         if ($ticket->requester && $ticket->requester->department_id) {
-            // Priority 1: Find Line Manager
+            // Priority 1.1: Find Line Manager
             $lm = User::where('department_id', $ticket->requester->department_id)
                 ->whereHas('roles', function ($query) {
                     $query->where('name', RoleConstants::LINE_MANAGER);
@@ -688,7 +743,7 @@ class ApprovalWorkflowService
                 return $lm;
             }
 
-            // Priority 2: Find Deputy Line Manager
+            // Priority 1.2: Find Deputy Line Manager
             $dlm = User::where('department_id', $ticket->requester->department_id)
                 ->whereHas('roles', function ($query) {
                     $query->where('name', RoleConstants::DEPUTY_LINE_MANAGER);
@@ -700,7 +755,7 @@ class ApprovalWorkflowService
                 return $dlm;
             }
 
-            // Priority 3: Find any manager in the same department
+            // Priority 1.3: Find any manager in the same department
             $manager = User::where('department_id', $ticket->requester->department_id)
                 ->whereHas('roles', function ($query) {
                     $query->whereIn('name', RoleConstants::getApprovalRoles());
@@ -713,9 +768,9 @@ class ApprovalWorkflowService
             }
         }
 
-        // Option 2: Assigned team manager
+        // Priority 2: Assigned team manager (fallback when requester has no department)
         if ($ticket->assignedTeam) {
-            // Priority 1: Find Line Manager
+            // Priority 2.1: Find Line Manager
             $lm = User::where('department_id', $ticket->assigned_team_id)
                 ->whereHas('roles', function ($query) {
                     $query->where('name', RoleConstants::LINE_MANAGER);
@@ -727,7 +782,7 @@ class ApprovalWorkflowService
                 return $lm;
             }
 
-            // Priority 2: Find Deputy Line Manager
+            // Priority 2.2: Find Deputy Line Manager
             $dlm = User::where('department_id', $ticket->assigned_team_id)
                 ->whereHas('roles', function ($query) {
                     $query->where('name', RoleConstants::DEPUTY_LINE_MANAGER);
@@ -739,7 +794,7 @@ class ApprovalWorkflowService
                 return $dlm;
             }
 
-            // Priority 3: Find any manager
+            // Priority 2.3: Find any manager
             $manager = User::where('department_id', $ticket->assigned_team_id)
                 ->whereHas('roles', function ($query) {
                     $query->whereIn('name', RoleConstants::getApprovalRoles());

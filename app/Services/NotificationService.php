@@ -206,6 +206,9 @@ class NotificationService
                 "Ticket #{$ticket->ticket_number} has been assigned to you: {$ticket->subject}"
             );
         } elseif ($ticket->assigned_team_id) {
+            // Notify department managers (LM/DLM/HOD/DHOD) when ticket is routed to their team
+            $this->notifyDepartmentManagers($ticket);
+            
             // Notify all active users in the team
             $team = $ticket->assignedTeam;
             if ($team) {
@@ -325,6 +328,9 @@ class NotificationService
                 'New Ticket Assigned',
                 "Ticket #{$ticket->ticket_number} has been assigned to you: {$ticket->subject}"
             );
+        } elseif ($ticket->assigned_team_id) {
+            // Notify department managers when ticket is routed to their team
+            $this->notifyDepartmentManagers($ticket);
         } elseif ($ticket->assigned_team_id) {
             // Notify all active users in the team
             $team = $ticket->assignedTeam;
@@ -758,6 +764,93 @@ class NotificationService
                 "Ticket Rejected by {$approvalLevelName}",
                 "Ticket #{$ticket->ticket_number} has been rejected by {$approver->name} ({$approvalLevelName})" . ($comments ? ": {$comments}" : '')
             );
+        }
+    }
+
+    /**
+     * Notify department managers (LM/DLM/HOD/DHOD) when ticket is routed to their department
+     * This ensures IT Department managers are notified when tickets are assigned to IT.D
+     */
+    public function notifyDepartmentManagers(Ticket $ticket): void
+    {
+        if (!$ticket->assigned_team_id) {
+            return;
+        }
+
+        try {
+            $team = $ticket->assignedTeam;
+            if (!$team) {
+                return;
+            }
+
+            // Find all managers in the assigned department (LM, DLM, HOD, DHOD)
+            $managers = \App\Models\User::where('department_id', $ticket->assigned_team_id)
+                ->where('is_active', true)
+                ->whereHas('roles', function ($query) {
+                    $query->whereIn('name', [
+                        \App\Constants\RoleConstants::LINE_MANAGER,
+                        \App\Constants\RoleConstants::DEPUTY_LINE_MANAGER,
+                        \App\Constants\RoleConstants::HEAD_OF_DEPARTMENT,
+                        \App\Constants\RoleConstants::DEPUTY_HEAD_OF_DEPARTMENT,
+                    ]);
+                })
+                ->get();
+
+            if ($managers->isEmpty()) {
+                Log::info('No department managers found to notify', [
+                    'ticket_id' => $ticket->id,
+                    'assigned_team_id' => $ticket->assigned_team_id,
+                    'team_name' => $team->name,
+                ]);
+                return;
+            }
+
+            $title = "New Ticket Routed to {$team->name}";
+            $message = "Ticket #{$ticket->ticket_number} has been routed to your department: {$ticket->subject}";
+
+            foreach ($managers as $manager) {
+                // Create in-app notification
+                $this->create(
+                    $manager->id,
+                    'ticket_routed_to_team',
+                    $title,
+                    $message,
+                    $ticket->id,
+                    null,
+                    [
+                        'team_id' => $ticket->assigned_team_id,
+                        'team_name' => $team->name,
+                    ]
+                );
+
+                // Send email notification
+                try {
+                    $emailService = app(\App\Services\EmailService::class);
+                    $emailService->sendTicketAssigned($ticket, $manager);
+                } catch (\Exception $e) {
+                    Log::error('Failed to send email notification to department manager', [
+                        'ticket_id' => $ticket->id,
+                        'manager_id' => $manager->id,
+                        'manager_email' => $manager->email,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            Log::info('Department managers notified', [
+                'ticket_id' => $ticket->id,
+                'assigned_team_id' => $ticket->assigned_team_id,
+                'team_name' => $team->name,
+                'managers_notified' => $managers->pluck('id')->toArray(),
+                'managers_count' => $managers->count(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to notify department managers', [
+                'ticket_id' => $ticket->id,
+                'assigned_team_id' => $ticket->assigned_team_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
     }
 }

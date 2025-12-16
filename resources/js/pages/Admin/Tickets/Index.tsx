@@ -93,6 +93,10 @@ type Props = {
     requesters: Option[];
     tags: Array<{ id: number; name: string; color: string }>;
   };
+  counts?: {
+    pending_approvals: number;
+    rejected_tickets: number;
+  };
   flash?: {
     success?: string;
     error?: string;
@@ -116,7 +120,7 @@ const priorityColorMap: Record<string, string> = {
   critical: 'bg-red-100 text-red-800',
 };
 
-export default function TicketIndex({ tickets, filters, options, flash }: Props) {
+export default function TicketIndex({ tickets, filters, options, counts, flash }: Props) {
   const { can } = usePermissions();
   const { toast } = useToast(); // Handle flash messages
   const [selectedTickets, setSelectedTickets] = useState<number[]>([]);
@@ -275,20 +279,38 @@ export default function TicketIndex({ tickets, filters, options, flash }: Props)
               variant="outline"
               size="sm"
               asChild
+              className="relative"
             >
               <Link href={route('admin.ticket-approvals.pending')}>
                 <CheckCircle2 className="h-4 w-4 mr-2" />
                 Pending Approvals
+                {counts && counts.pending_approvals > 0 && (
+                  <Badge 
+                    variant="default" 
+                    className="ml-2 bg-blue-600 text-white text-xs min-w-[20px] h-5 flex items-center justify-center"
+                  >
+                    {counts.pending_approvals > 99 ? '99+' : counts.pending_approvals}
+                  </Badge>
+                )}
               </Link>
             </Button>
             <Button
               variant="outline"
               size="sm"
               asChild
+              className="relative"
             >
               <Link href={route('admin.tickets.rejected')}>
                 <XCircle className="h-4 w-4 mr-2" />
                 Rejected
+                {counts && counts.rejected_tickets > 0 && (
+                  <Badge 
+                    variant="default" 
+                    className="ml-2 bg-red-600 text-white text-xs min-w-[20px] h-5 flex items-center justify-center"
+                  >
+                    {counts.rejected_tickets > 99 ? '99+' : counts.rejected_tickets}
+                  </Badge>
+                )}
               </Link>
             </Button>
             <Button

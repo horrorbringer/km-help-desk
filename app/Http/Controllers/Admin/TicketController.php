@@ -52,14 +52,61 @@ class TicketController extends Controller
 
         // Use optimized search service with user context for visibility filtering
         $searchService = app(SearchService::class);
-        $tickets = $searchService->searchTickets($filters, 15, Auth::user())
+        $tickets = $searchService->searchTickets($filters, 30, Auth::user())
             ->withQueryString()
             ->through(fn ($ticket) => TicketResource::make($ticket)->resolve());
+
+        // Get pending approvals count (same logic as TicketApprovalController::pending)
+        $user = Auth::user();
+        $pendingApprovalsQuery = \App\Models\TicketApproval::where('status', 'pending')
+            ->whereHas('ticket', function ($query) {
+                $query->whereNotIn('status', ['resolved', 'closed', 'cancelled']);
+            });
+        
+        // If user can assign tickets, they can see all pending approvals
+        // Otherwise, they only see approvals assigned to them or unassigned
+        if (!$user->can('tickets.assign')) {
+            $pendingApprovalsQuery->where(function ($query) use ($user) {
+                $query->where('approver_id', $user->id)
+                    ->orWhereNull('approver_id');
+            });
+        }
+        
+        $pendingApprovalsCount = $pendingApprovalsQuery->count();
+
+        // Get rejected tickets count (same logic as TicketController::rejected)
+        $rejectedTicketsQuery = Ticket::whereHas('approvals', function ($query) {
+            $query->where('status', 'rejected');
+        });
+
+        // Apply visibility filters based on user role
+        if (!$user->can('tickets.assign')) {
+            // Regular users (Requester/Agent) can only see:
+            // 1. Tickets they created (requester)
+            // 2. Tickets assigned to them (agent)
+            // 3. Tickets assigned to their team (agent)
+            $rejectedTicketsQuery->where(function ($q) use ($user) {
+                $q->where('requester_id', $user->id) // Own tickets
+                    ->orWhere('assigned_agent_id', $user->id) // Assigned to me
+                    ->orWhere(function ($subQ) use ($user) {
+                        // Assigned to my team
+                        $subQ->where('assigned_team_id', $user->department_id)
+                            ->whereNotNull('assigned_team_id');
+                    });
+            });
+        }
+        // If user can assign tickets, they see all rejected tickets (no additional filter)
+
+        $rejectedTicketsCount = $rejectedTicketsQuery->count();
 
         return Inertia::render('Admin/Tickets/Index', [
             'tickets' => $tickets,
             'filters' => $filters,
             'options' => $this->filterOptions(),
+            'counts' => [
+                'pending_approvals' => $pendingApprovalsCount,
+                'rejected_tickets' => $rejectedTicketsCount,
+            ],
         ]);
     }
 
@@ -86,13 +133,24 @@ class TicketController extends Controller
 
             // Initialize approval workflow (synchronous - needed immediately)
             // This is kept synchronous because it affects ticket status and routing
-            try {
-                $approvalService = app(\App\Services\ApprovalWorkflowService::class);
-                $approvalService->initializeWorkflow($ticket);
-            } catch (\Exception $e) {
-                \Log::warning('Approval workflow service failed on ticket creation', [
+            // Check if workflow already initialized to prevent duplicate initialization
+            $hasPendingApproval = $ticket->approvals()
+                ->where('status', 'pending')
+                ->exists();
+            
+            if (!$hasPendingApproval) {
+                try {
+                    $approvalService = app(\App\Services\ApprovalWorkflowService::class);
+                    $approvalService->initializeWorkflow($ticket);
+                } catch (\Exception $e) {
+                    \Log::warning('Approval workflow service failed on ticket creation', [
+                        'ticket_id' => $ticket->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            } else {
+                \Log::info('Workflow already initialized, skipping duplicate initialization', [
                     'ticket_id' => $ticket->id,
-                    'error' => $e->getMessage(),
                 ]);
             }
 
