@@ -24,25 +24,23 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Install Redis extension
 RUN pecl install redis && docker-php-ext-enable redis
 
-# Copy existing application directory permissions
+# Copy application files (as root first)
+COPY . /var/www/html
+
+# Set proper ownership
 RUN chown -R www-data:www-data /var/www/html
 
-# Change current user to www-data
-USER www-data
-
-# Copy application files
-COPY --chown=www-data:www-data . /var/www/html
-
-# Install PHP dependencies
+# Install PHP dependencies (as root, but files owned by www-data)
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Install Node dependencies and build assets
-RUN npm ci && npm run build
+# Install Node dependencies and build assets (as root)
+# Fix npm cache permissions by using a temp cache location and cleaning up
+RUN npm ci --cache /tmp/.npm --prefer-offline --no-audit && \
+    npm run build && \
+    rm -rf /tmp/.npm && \
+    rm -rf /var/www/.npm 2>/dev/null || true
 
-# Switch back to root for final setup
-USER root
-
-# Set proper permissions
+# Set proper permissions for storage and cache
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html/storage \
     && chmod -R 755 /var/www/html/bootstrap/cache
