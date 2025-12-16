@@ -189,6 +189,7 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
         Route::get('/sla', [ReportController::class, 'sla'])->name('sla');
         Route::get('/categories', [ReportController::class, 'categories'])->name('categories');
         Route::get('/projects', [ReportController::class, 'projects'])->name('projects');
+        Route::get('/time-entries', [ReportController::class, 'timeEntries'])->name('time-entries');
     });
 
     Route::prefix('notifications')->name('admin.notifications.')->group(function () {

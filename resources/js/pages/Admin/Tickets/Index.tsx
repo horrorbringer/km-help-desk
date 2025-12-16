@@ -1,7 +1,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import React from 'react';
-import { Download, Clock, CheckCircle2, XCircle, Plus, Ticket, User, Users, Calendar, Tag, Edit, Trash2, MoreVertical, UserPlus, Search } from 'lucide-react';
+import { Download, Clock, CheckCircle2, XCircle, Plus, Ticket, User, Users, Calendar, Tag, Edit, Trash2, MoreVertical, UserPlus, Search, UserCircle, List } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -136,6 +137,42 @@ export default function TicketIndex({ tickets, filters, options, counts, flash }
   const pageProps = page.props as any;
   const currentUserId = pageProps.auth?.user?.id;
   const currentUserDepartmentId = pageProps.auth?.user?.department_id;
+
+  // Tab state - determine active tab based on filters
+  const getActiveViewTab = () => {
+    if (filters.agent === String(currentUserId)) {
+      return 'my-tickets';
+    }
+    return 'all-tickets';
+  };
+
+  const getActiveStatusTab = () => {
+    return filters.status || 'all';
+  };
+
+  const handleViewTabChange = (value: string) => {
+    const newFilters = { ...filters };
+    
+    if (value === 'my-tickets') {
+      newFilters.agent = String(currentUserId);
+    } else {
+      delete newFilters.agent;
+    }
+    
+    handleFiltersChange(newFilters);
+  };
+
+  const handleStatusTabChange = (value: string) => {
+    const newFilters = { ...filters };
+    
+    if (value === 'all') {
+      delete newFilters.status;
+    } else {
+      newFilters.status = value;
+    }
+    
+    handleFiltersChange(newFilters);
+  };
 
   // Sync search query with filters when filters change from other sources
   React.useEffect(() => {
@@ -264,14 +301,16 @@ export default function TicketIndex({ tickets, filters, options, counts, flash }
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Ticket className="h-5 w-5 text-primary" />
+              <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20">
+                <Ticket className="h-6 w-6 text-primary" />
               </div>
-              <h1 className="text-3xl font-bold tracking-tight">Tickets</h1>
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">Tickets</h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Manage customer issues across projects and departments
+                </p>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground ml-12">
-              Manage customer issues across projects and departments
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -349,8 +388,93 @@ export default function TicketIndex({ tickets, filters, options, counts, flash }
           </div>
         )}
 
+        {/* Tabs for View and Status */}
+        <Card className="border-2 shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="space-y-4">
+              {/* View Tabs (My Tickets / All Tickets) */}
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
+                  View
+                </label>
+                <Tabs value={getActiveViewTab()} onValueChange={handleViewTabChange} className="w-full">
+                  <TabsList className="w-full sm:w-auto h-auto p-1 bg-muted/50 border">
+                    <TabsTrigger 
+                      value="my-tickets" 
+                      className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                    >
+                      <UserCircle className="h-4 w-4" />
+                      <span className="font-medium">My Tickets</span>
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="all-tickets" 
+                      className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                    >
+                      <List className="h-4 w-4" />
+                      <span className="font-medium">All Tickets</span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              {/* Status Tabs */}
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
+                  Status
+                </label>
+                <Tabs value={getActiveStatusTab()} onValueChange={handleStatusTabChange} className="w-full">
+                  <TabsList className="w-full h-auto p-1 bg-muted/30 border flex-wrap gap-1">
+                    <TabsTrigger 
+                      value="all" 
+                      className="text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                    >
+                      All
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="open" 
+                      className="text-xs sm:text-sm data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-blue-200 dark:data-[state=active]:bg-blue-950 dark:data-[state=active]:text-blue-300"
+                    >
+                      Open
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="assigned" 
+                      className="text-xs sm:text-sm data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:border-indigo-200 dark:data-[state=active]:bg-indigo-950 dark:data-[state=active]:text-indigo-300"
+                    >
+                      Assigned
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="in_progress" 
+                      className="text-xs sm:text-sm data-[state=active]:bg-amber-50 data-[state=active]:text-amber-700 data-[state=active]:border-amber-200 dark:data-[state=active]:bg-amber-950 dark:data-[state=active]:text-amber-300"
+                    >
+                      In Progress
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="pending" 
+                      className="text-xs sm:text-sm data-[state=active]:bg-yellow-50 data-[state=active]:text-yellow-700 data-[state=active]:border-yellow-200 dark:data-[state=active]:bg-yellow-950 dark:data-[state=active]:text-yellow-300"
+                    >
+                      Pending
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="resolved" 
+                      className="text-xs sm:text-sm data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700 data-[state=active]:border-emerald-200 dark:data-[state=active]:bg-emerald-950 dark:data-[state=active]:text-emerald-300"
+                    >
+                      Resolved
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="closed" 
+                      className="text-xs sm:text-sm data-[state=active]:bg-slate-50 data-[state=active]:text-slate-700 data-[state=active]:border-slate-200 dark:data-[state=active]:bg-slate-950 dark:data-[state=active]:text-slate-300"
+                    >
+                      Closed
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Search and Advanced Filters - Combined */}
-        <Card>
+        <Card className="border-2 shadow-sm">
           <CardContent className="pt-4">
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -382,14 +506,21 @@ export default function TicketIndex({ tickets, filters, options, counts, flash }
           </CardContent>
         </Card>
 
-      <Card>
+      <Card className="border-2 shadow-sm">
         <CardHeader className="border-b bg-muted/30">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
-              <CardTitle className="text-xl">All Tickets</CardTitle>
+              <CardTitle className="text-xl">
+                {getActiveViewTab() === 'my-tickets' ? 'My Tickets' : 'All Tickets'}
+              </CardTitle>
               <Badge variant="secondary" className="font-normal">
                 {tickets.total} {tickets.total === 1 ? 'ticket' : 'tickets'}
               </Badge>
+              {filters.status && (
+                <Badge variant="outline" className="capitalize">
+                  {filters.status.replace('_', ' ')}
+                </Badge>
+              )}
             </div>
             {selectedTickets.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
