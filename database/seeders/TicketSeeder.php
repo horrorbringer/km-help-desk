@@ -34,13 +34,8 @@ class TicketSeeder extends Seeder
         $categories = TicketCategory::whereIn('slug', [
             'hardware-requests',
             'hardware-issues',
-            'equipment-failure',
-            'incident-reporting',
-            'purchase-request',
             'application-access',
             'network-connectivity',
-            'invoice-processing',
-            'expense-reimbursement',
         ])->get()->keyBy('slug');
 
         $slaPolicies = SlaPolicy::get()->keyBy('priority');
@@ -52,9 +47,9 @@ class TicketSeeder extends Seeder
                 'subject' => 'Laptop won\'t connect to site VPN',
                 'description' => 'Unable to reach VPN gateway while on remote site. Error 809 displayed.',
                 'requester' => 'vannak@kimmix.com', // Field Ops Manager
-                'assigned_team_id' => optional($categories['hardware-issues'] ?? null)->default_team_id,
+                'assigned_team_id' => optional($categories['network-connectivity'] ?? null)->default_team_id,
                 'assigned_agent' => 'makara@kimmix.com', // System Administrator
-                'category' => 'hardware-issues',
+                'category' => 'network-connectivity',
                 'project' => 'PRJ-DTE-01',
                 'sla' => 'medium',
                 'priority' => 'high',
@@ -75,52 +70,6 @@ class TicketSeeder extends Seeder
                 'histories' => [
                     ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'in_progress', 'user' => 'makara@kimmix.com'],
                     ['action' => 'assignment', 'field_name' => 'assigned_agent_id', 'old' => null, 'new' => 'makara@kimmix.com', 'user' => 'makara@kimmix.com'],
-                ],
-            ],
-            [
-                'subject' => 'Tower crane hydraulic leak',
-                'description' => 'Oil leak detected on TC-04 at level 18. Need inspection ASAP.',
-                'requester' => 'vannak@kimmix.com', // Field Ops Manager
-                'assigned_team_id' => optional($categories['equipment-failure'] ?? null)->default_team_id,
-                'assigned_agent' => 'vutty@kimmix.com', // Safety Officer
-                'category' => 'equipment-failure',
-                'project' => 'PRJ-DTE-01',
-                'sla' => 'critical',
-                'priority' => 'critical',
-                'status' => 'assigned',
-                'tags' => ['urgent', 'site-visit'],
-                'watchers' => ['vutty@kimmix.com', 'makara@kimmix.com'],
-                'comments' => [
-                    [
-                        'author' => 'vutty@kimmix.com',
-                        'body' => 'Dispatching HSE inspector to site. Please keep crane offline.',
-                    ],
-                ],
-                'histories' => [
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'assigned', 'user' => 'vutty@kimmix.com'],
-                ],
-            ],
-            [
-                'subject' => 'Request for fast-setting concrete mix',
-                'description' => 'Need expedited PO for 200m3 of fast-setting mix for Riverside pour.',
-                'requester' => 'vannak@kimmix.com',
-                'assigned_team_id' => optional($categories['purchase-request'] ?? null)->default_team_id,
-                'assigned_agent' => 'vanny@kimmix.com',
-                'category' => 'purchase-request',
-                'project' => 'PRJ-RBU-02',
-                'sla' => 'high',
-                'priority' => 'high',
-                'status' => 'pending',
-                'tags' => ['client-facing'],
-                'watchers' => ['vanny@kimmix.com', 'sopheap@kimmix.com'],
-                'comments' => [
-                    [
-                        'author' => 'vanny@kimmix.com',
-                        'body' => 'RFQ sent to preferred vendor. Awaiting quote.',
-                    ],
-                ],
-                'histories' => [
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'pending', 'user' => 'vanny@kimmix.com'],
                 ],
             ],
             [
@@ -152,34 +101,6 @@ class TicketSeeder extends Seeder
                 ],
             ],
             [
-                'subject' => 'Near miss incident - falling debris',
-                'description' => 'Small piece of concrete fell from level 12, landed near workers on level 8. No injuries but close call. Area secured.',
-                'requester' => 'sokun@kimmix.com',
-                'assigned_team_id' => optional($categories['incident-reporting'] ?? null)->default_team_id,
-                'assigned_agent' => 'vutty@kimmix.com',
-                'category' => 'incident-reporting',
-                'sla' => 'critical',
-                'priority' => 'critical',
-                'status' => 'resolved',
-                'tags' => ['safety', 'site-visit'],
-                'watchers' => ['vutty@kimmix.com', 'makara@kimmix.com'],
-                'comments' => [
-                    [
-                        'author' => 'vutty@kimmix.com',
-                        'body' => 'HSE inspector dispatched to site. Initial assessment complete.',
-                    ],
-                    [
-                        'author' => 'vutty@kimmix.com',
-                        'body' => 'Root cause identified: inadequate edge protection. Corrective action implemented. All workers briefed on safety protocols.',
-                    ],
-                ],
-                'histories' => [
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'assigned', 'user' => 'vutty@kimmix.com'],
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'assigned', 'new' => 'in_progress', 'user' => 'vutty@kimmix.com'],
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'in_progress', 'new' => 'resolved', 'user' => 'vutty@kimmix.com'],
-                ],
-            ],
-            [
                 'subject' => 'Printer not printing in color',
                 'description' => 'Office printer on 3rd floor only prints in black and white. Color cartridge was just replaced.',
                 'requester' => 'chanthou@kimmix.com',
@@ -198,63 +119,6 @@ class TicketSeeder extends Seeder
                 ],
                 'histories' => [
                     ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'resolved', 'user' => 'ratha@kimmix.com'],
-                ],
-            ],
-            [
-                'subject' => 'Request for office supplies',
-                'description' => 'Need to order office supplies: pens, notebooks, staplers, and printer paper for Q1.',
-                'requester' => 'sophea@kimmix.com',
-                'assigned_team_id' => optional($categories['purchase-request'] ?? null)->default_team_id,
-                'assigned_agent' => 'srey@kimmix.com',
-                'category' => 'purchase-request',
-                'sla' => 'medium',
-                'priority' => 'low',
-                'status' => 'open',
-                'tags' => ['procurement'],
-            ],
-            [
-                'subject' => 'Excavator hydraulic system failure',
-                'description' => 'Excavator EX-05 at Downtown Tower site has hydraulic leak. Machine is down and blocking work area.',
-                'requester' => 'vannak.field@kimmix.com',
-                'assigned_team_id' => optional($categories['equipment-failure'] ?? null)->default_team_id,
-                'assigned_agent' => 'sokha@kimmix.com',
-                'category' => 'equipment-failure',
-                'project' => 'PRJ-DTE-01',
-                'sla' => 'high',
-                'priority' => 'high',
-                'status' => 'assigned',
-                'tags' => ['equipment', 'urgent', 'site-visit'],
-                'watchers' => ['sokha@kimmix.com', 'vannak@kimmix.com'],
-                'comments' => [
-                    [
-                        'author' => 'sokha@kimmix.com',
-                        'body' => 'Field engineer dispatched. ETA 2 hours. Will assess and provide repair estimate.',
-                    ],
-                ],
-                'histories' => [
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'assigned', 'user' => 'sokha@kimmix.com'],
-                ],
-            ],
-            [
-                'subject' => 'Payroll query - missing overtime hours',
-                'description' => 'My overtime hours from last week are not showing in this week\'s payroll. I worked 8 hours overtime on Tuesday.',
-                'requester' => 'pov@kimmix.com',
-                'assigned_team_id' => optional($categories['invoice-processing'] ?? null)->default_team_id,
-                'assigned_agent' => 'sopheap@kimmix.com',
-                'category' => 'invoice-processing',
-                'sla' => 'medium',
-                'priority' => 'medium',
-                'status' => 'pending',
-                'tags' => ['finance'],
-                'watchers' => ['sopheap@kimmix.com'],
-                'comments' => [
-                    [
-                        'author' => 'sopheap@kimmix.com',
-                        'body' => 'Checking timesheet records and payroll system. Will update once verified.',
-                    ],
-                ],
-                'histories' => [
-                    ['action' => 'status_changed', 'field_name' => 'status', 'old' => 'open', 'new' => 'pending', 'user' => 'sopheap@kimmix.com'],
                 ],
             ],
             [

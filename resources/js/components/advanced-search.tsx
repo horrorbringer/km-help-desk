@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { IconBookmark, IconBookmarkFilled, IconX, IconSearch } from '@tabler/icons-react';
+import { IconBookmark, IconBookmarkFilled, IconX } from '@tabler/icons-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,33 +136,14 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
   }).length;
 
   return (
-    <div className="space-y-4">
-      {/* Quick Search Bar */}
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
-          <IconSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search tickets by number, subject, description, or requester..."
-            value={filters.q ?? ''}
-            onChange={(e) => handleFilter('q', e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                router.get(route('admin.tickets.index'), filters, {
-                  preserveState: true,
-                  replace: true,
-                });
-              }
-            }}
-            className="pl-10"
-          />
-        </div>
-        <Popover open={showAdvanced} onOpenChange={setShowAdvanced}>
-          <PopoverTrigger asChild>
-            <Button variant="outline">
-              Advanced {activeFiltersCount > 0 && `(${activeFiltersCount})`}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[600px] p-0" align="start">
+    <>
+      <Popover open={showAdvanced} onOpenChange={setShowAdvanced}>
+        <PopoverTrigger asChild>
+          <Button variant="outline">
+            Advanced {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[600px] p-0" align="start">
             <ScrollArea className="h-[500px]">
               <div className="p-4 space-y-4">
                 {/* Saved Searches */}
@@ -598,13 +579,12 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
                 </div>
               </div>
             </ScrollArea>
-          </PopoverContent>
-        </Popover>
-      </div>
+        </PopoverContent>
+      </Popover>
 
       {/* Active Filters Display */}
       {activeFiltersCount > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 mt-2">
           {Object.entries(filters).map(([key, value]) => {
             if (!value || value === '__all') return null;
             if (Array.isArray(value) && value.length === 0) return null;
@@ -688,7 +668,7 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
           })}
         </div>
       )}
-    </div>
+    </>
   );
 }
 

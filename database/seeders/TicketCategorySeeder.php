@@ -13,7 +13,7 @@ class TicketCategorySeeder extends Seeder
     {
         $teams = Department::pluck('id', 'code');
 
-        // Only include categories that are actually used in other seeders
+        // Only IT Support categories
         $categories = [
             [
                 'name' => 'IT Support',
@@ -47,78 +47,6 @@ class TicketCategorySeeder extends Seeder
                         'description' => 'Network issues: VPN access, Wi-Fi problems, internet connectivity, network configuration.',
                         'sort_order' => 14,
                         'requires_approval' => false,
-                    ],
-                ],
-            ],
-            [
-                'name' => 'Site Operations',
-                'description' => 'Field operations support for construction sites, equipment, and logistics.',
-                'team_code' => 'FIELD-ENG',
-                'sort_order' => 20,
-                'requires_approval' => false,
-                'children' => [
-                    [
-                        'name' => 'Equipment Failure',
-                        'description' => 'Heavy machinery breakdowns: cranes, excavators, lifts, generators, and construction equipment.',
-                        'sort_order' => 21,
-                        'requires_approval' => true,
-                    ],
-                ],
-            ],
-            [
-                'name' => 'Safety & Compliance',
-                'description' => 'Health, safety, environmental compliance, and incident reporting.',
-                'team_code' => 'HSE',
-                'sort_order' => 30,
-                'requires_approval' => false,
-                'children' => [
-                    [
-                        'name' => 'Incident Reporting',
-                        'description' => 'Report workplace incidents, accidents, near misses, or injuries.',
-                        'sort_order' => 31,
-                        'requires_approval' => true,
-                    ],
-                ],
-            ],
-            [
-                'name' => 'Procurement',
-                'description' => 'Purchase requests, vendor management, RFQs, and procurement support.',
-                'team_code' => 'PROC',
-                'sort_order' => 40,
-                'requires_approval' => true,
-                'requires_hod_approval' => false,
-                'hod_approval_threshold' => 500.00,
-                'children' => [
-                    [
-                        'name' => 'Purchase Request',
-                        'description' => 'Submit new purchase requests for goods or services.',
-                        'sort_order' => 41,
-                        'requires_approval' => true,
-                        'requires_hod_approval' => false,
-                        'hod_approval_threshold' => 500.00,
-                    ],
-                ],
-            ],
-            [
-                'name' => 'Finance & Accounting',
-                'description' => 'Financial queries, invoicing, payroll, reimbursements, and budget questions.',
-                'team_code' => 'FIN',
-                'sort_order' => 50,
-                'requires_approval' => false,
-                'children' => [
-                    [
-                        'name' => 'Invoice Processing',
-                        'description' => 'Invoice submission, payment status, invoice disputes, and payment queries.',
-                        'sort_order' => 51,
-                        'requires_approval' => false,
-                    ],
-                    [
-                        'name' => 'Expense Reimbursement',
-                        'description' => 'Submit expense reports, reimbursement requests, and travel expense claims.',
-                        'sort_order' => 52,
-                        'requires_approval' => true,
-                        'requires_hod_approval' => false,
-                        'hod_approval_threshold' => 1000.00,
                     ],
                 ],
             ],

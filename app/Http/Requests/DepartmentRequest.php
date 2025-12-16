@@ -9,7 +9,28 @@ class DepartmentRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // Add authorization logic as needed
+        $user = $this->user();
+        
+        // Check permission based on action
+        if ($this->routeIs('admin.departments.store')) {
+            return $user->can('departments.create');
+        }
+        
+        if ($this->routeIs('admin.departments.update')) {
+            if (!$user->can('departments.edit')) {
+                return false;
+            }
+            
+            // Executives can edit all, others can only edit their own
+            if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+                $department = $this->route('department');
+                return $department && $user->department_id === $department->id;
+            }
+            
+            return true;
+        }
+        
+        return true;
     }
 
     public function rules(): array

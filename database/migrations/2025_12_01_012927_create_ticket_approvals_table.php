@@ -17,8 +17,8 @@ return new class extends Migration
                 ->constrained('tickets')
                 ->onDelete('cascade');
             
-            $table->enum('approval_level', ['lm', 'hod'])
-                ->comment('Line Manager (lm) or Head of Department (hod)');
+            $table->enum('approval_level', ['lm', 'hod', 'ceo'])
+                ->comment('Line Manager (lm), Head of Department (hod), or CEO (ceo)');
             
             $table->foreignId('approver_id')
                 ->nullable()

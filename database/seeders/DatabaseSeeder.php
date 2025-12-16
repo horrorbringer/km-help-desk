@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             RolePermissionSeeder::class, // Must run first to create roles
             DepartmentSeeder::class,
             TicketCategorySeeder::class,
+            WorkflowTemplateSeeder::class, // Workflow templates (after categories)
             TagSeeder::class,
             SlaPolicySeeder::class,
             UserSeeder::class,

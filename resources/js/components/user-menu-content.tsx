@@ -43,12 +43,24 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                 <DropdownMenuItem asChild>
                     <Link
                         className="block w-full"
-                        href={edit()}
+                        href={route('profile.show')}
                         as="button"
                         prefetch
                         onClick={cleanup}
                     >
                         <UserIcon className="mr-2 h-4 w-4" />
+                        My Profile
+                    </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                    <Link
+                        className="block w-full"
+                        href={edit()}
+                        as="button"
+                        prefetch
+                        onClick={cleanup}
+                    >
+                        <Settings className="mr-2 h-4 w-4" />
                         Profile Settings
                     </Link>
                 </DropdownMenuItem>

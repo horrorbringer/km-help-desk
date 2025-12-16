@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePermissions } from '@/hooks/use-permissions';
+import { useToast } from '@/hooks/use-toast';
 import type { PageProps } from '@/types';
 
 interface Department {
@@ -36,8 +37,9 @@ interface DepartmentsIndexProps extends PageProps {
 }
 
 export default function DepartmentsIndex() {
-  const { departments, filters, flash } = usePage<DepartmentsIndexProps>().props;
+  const { departments, filters } = usePage<DepartmentsIndexProps>().props;
   const { can } = usePermissions();
+  useToast(); // Handle flash messages automatically via toast notifications
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -66,18 +68,6 @@ export default function DepartmentsIndex() {
             </Button>
           )}
         </div>
-
-        {/* Flash Message */}
-        {flash?.success && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {flash.success}
-          </div>
-        )}
-        {flash?.error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {flash.error}
-          </div>
-        )}
 
         {/* Filters */}
         <Card>
@@ -173,9 +163,18 @@ export default function DepartmentsIndex() {
                         <span className="font-medium">{department.tickets_count}</span>
                       </div>
                     </div>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={route('admin.departments.show', department.id)}>View</Link>
-                    </Button>
+                    <div className="flex gap-2">
+                      {can('departments.view') && (
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={route('admin.departments.show', department.id)}>View</Link>
+                        </Button>
+                      )}
+                      {can('departments.edit') && (
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={route('admin.departments.edit', department.id)}>Edit</Link>
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

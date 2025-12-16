@@ -27,7 +27,7 @@ class TicketApproval extends Model
         'rejected_at' => 'datetime',
     ];
 
-    public const LEVELS = ['lm', 'hod'];
+    public const LEVELS = ['lm', 'hod', 'ceo'];
     public const STATUSES = ['pending', 'approved', 'rejected'];
 
     /**

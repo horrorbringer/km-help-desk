@@ -52,14 +52,61 @@ class TicketController extends Controller
 
         // Use optimized search service with user context for visibility filtering
         $searchService = app(SearchService::class);
-        $tickets = $searchService->searchTickets($filters, 15, Auth::user())
+        $tickets = $searchService->searchTickets($filters, 30, Auth::user())
             ->withQueryString()
             ->through(fn ($ticket) => TicketResource::make($ticket)->resolve());
+
+        // Get pending approvals count (same logic as TicketApprovalController::pending)
+        $user = Auth::user();
+        $pendingApprovalsQuery = \App\Models\TicketApproval::where('status', 'pending')
+            ->whereHas('ticket', function ($query) {
+                $query->whereNotIn('status', ['resolved', 'closed', 'cancelled']);
+            });
+        
+        // If user can assign tickets, they can see all pending approvals
+        // Otherwise, they only see approvals assigned to them or unassigned
+        if (!$user->can('tickets.assign')) {
+            $pendingApprovalsQuery->where(function ($query) use ($user) {
+                $query->where('approver_id', $user->id)
+                    ->orWhereNull('approver_id');
+            });
+        }
+        
+        $pendingApprovalsCount = $pendingApprovalsQuery->count();
+
+        // Get rejected tickets count (same logic as TicketController::rejected)
+        $rejectedTicketsQuery = Ticket::whereHas('approvals', function ($query) {
+            $query->where('status', 'rejected');
+        });
+
+        // Apply visibility filters based on user role
+        if (!$user->can('tickets.assign')) {
+            // Regular users (Requester/Agent) can only see:
+            // 1. Tickets they created (requester)
+            // 2. Tickets assigned to them (agent)
+            // 3. Tickets assigned to their team (agent)
+            $rejectedTicketsQuery->where(function ($q) use ($user) {
+                $q->where('requester_id', $user->id) // Own tickets
+                    ->orWhere('assigned_agent_id', $user->id) // Assigned to me
+                    ->orWhere(function ($subQ) use ($user) {
+                        // Assigned to my team
+                        $subQ->where('assigned_team_id', $user->department_id)
+                            ->whereNotNull('assigned_team_id');
+                    });
+            });
+        }
+        // If user can assign tickets, they see all rejected tickets (no additional filter)
+
+        $rejectedTicketsCount = $rejectedTicketsQuery->count();
 
         return Inertia::render('Admin/Tickets/Index', [
             'tickets' => $tickets,
             'filters' => $filters,
             'options' => $this->filterOptions(),
+            'counts' => [
+                'pending_approvals' => $pendingApprovalsCount,
+                'rejected_tickets' => $rejectedTicketsCount,
+            ],
         ]);
     }
 
@@ -84,62 +131,83 @@ class TicketController extends Controller
 
             $this->syncRelations($ticket, $request->validated());
 
-            // Execute automation rules (wrap in try-catch to prevent failures from blocking ticket creation)
-            try {
-                $automationService = app(AutomationService::class);
-                $automationService->onTicketCreated($ticket);
-            } catch (\Exception $e) {
-                \Log::warning('Automation service failed on ticket creation', [
+            // Initialize approval workflow (synchronous - needed immediately)
+            // This is kept synchronous because it affects ticket status and routing
+            // Check if workflow already initialized to prevent duplicate initialization
+            $hasPendingApproval = $ticket->approvals()
+                ->where('status', 'pending')
+                ->exists();
+            
+            if (!$hasPendingApproval) {
+                try {
+                    $approvalService = app(\App\Services\ApprovalWorkflowService::class);
+                    $approvalService->initializeWorkflow($ticket);
+                } catch (\Exception $e) {
+                    \Log::warning('Approval workflow service failed on ticket creation', [
+                        'ticket_id' => $ticket->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            } else {
+                \Log::info('Workflow already initialized, skipping duplicate initialization', [
                     'ticket_id' => $ticket->id,
-                    'error' => $e->getMessage(),
                 ]);
             }
 
-            // Initialize approval workflow (wrap in try-catch to prevent failures from blocking ticket creation)
-            try {
-                $approvalService = app(\App\Services\ApprovalWorkflowService::class);
-                $approvalService->initializeWorkflow($ticket);
-            } catch (\Exception $e) {
-                \Log::warning('Approval workflow service failed on ticket creation', [
-                    'ticket_id' => $ticket->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            // Queue heavy operations to run asynchronously (non-blocking)
+            // This allows the response to return immediately while processing continues in background
+            
+            // Execute automation rules (async)
+            dispatch(function () use ($ticket) {
+                try {
+                    $automationService = app(AutomationService::class);
+                    $automationService->onTicketCreated($ticket);
+                } catch (\Exception $e) {
+                    \Log::warning('Automation service failed on ticket creation', [
+                        'ticket_id' => $ticket->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            })->afterResponse();
 
-            // Send notifications (wrap in try-catch to prevent failures from blocking ticket creation)
-            try {
-                \Log::info('TicketController::store - Calling notification service', [
-                    'ticket_id' => $ticket->id,
-                    'assigned_agent_id' => $ticket->assigned_agent_id,
-                    'assigned_team_id' => $ticket->assigned_team_id,
-                ]);
-                $notificationService = app(NotificationService::class);
-                $notificationService->notifyTicketCreated($ticket);
-                
-                // If ticket was created with an assigned agent, also send assignment notification
-                if ($ticket->assigned_agent_id) {
-                    \Log::info('TicketController::store - Ticket created with assigned agent, calling notifyTicketAssigned', [
+            // Send notifications (async)
+            dispatch(function () use ($ticket) {
+                try {
+                    \Log::info('TicketController::store - Calling notification service', [
                         'ticket_id' => $ticket->id,
                         'assigned_agent_id' => $ticket->assigned_agent_id,
+                        'assigned_team_id' => $ticket->assigned_team_id,
                     ]);
-                    $notificationService->notifyTicketAssigned($ticket);
+                    $notificationService = app(NotificationService::class);
+                    $notificationService->notifyTicketCreated($ticket);
+                    
+                    // If ticket was created with an assigned agent, also send assignment notification
+                    if ($ticket->assigned_agent_id) {
+                        \Log::info('TicketController::store - Ticket created with assigned agent, calling notifyTicketAssigned', [
+                            'ticket_id' => $ticket->id,
+                            'assigned_agent_id' => $ticket->assigned_agent_id,
+                        ]);
+                        $notificationService->notifyTicketAssigned($ticket);
+                    }
+                } catch (\Exception $e) {
+                    \Log::error('Notification service failed on ticket creation', [
+                        'ticket_id' => $ticket->id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
                 }
-            } catch (\Exception $e) {
-                \Log::error('Notification service failed on ticket creation', [
-                    'ticket_id' => $ticket->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-            }
+            })->afterResponse();
 
-            // Clear search cache (wrap in try-catch to prevent failures from blocking ticket creation)
-            try {
-                app(SearchService::class)->clearCache();
-            } catch (\Exception $e) {
-                \Log::warning('Search service failed to clear cache', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            // Clear search cache (async)
+            dispatch(function () use ($ticket) {
+                try {
+                    app(SearchService::class)->clearCache();
+                } catch (\Exception $e) {
+                    \Log::warning('Search service failed to clear cache', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            })->afterResponse();
 
             // Refresh the ticket to ensure all relations are loaded
             $ticket->refresh();
@@ -1213,6 +1281,9 @@ class TicketController extends Controller
         $isProjectManager = $user->hasRole(RoleConstants::PROJECT_MANAGER);
         $hasCreateOnBehalfPermission = $user->can('tickets.create-on-behalf');
         
+        // Optimize: Load user roles once to avoid multiple queries
+        $user->load('roles');
+        
         // Filter requesters based on permission and role
         if (($isHOD || $isLineManager || $isDepartmentManager) && $user->department_id) {
             // Department managers can only select users from their own department
@@ -1242,13 +1313,23 @@ class TicketController extends Controller
         }
         
         // Filter agents: Only show users with Agent or Senior Agent roles
+        // Optimize: Use eager loading and cache role names
+        $agentRoleNames = RoleConstants::getAgentRoles();
         $agents = User::select('users.id', 'users.name')
             ->where('users.is_active', true)
-            ->whereHas('roles', function ($roleQuery) {
-                $roleQuery->whereIn('name', RoleConstants::getAgentRoles());
+            ->whereHas('roles', function ($roleQuery) use ($agentRoleNames) {
+                $roleQuery->whereIn('name', $agentRoleNames);
             })
             ->orderBy('users.name')
             ->get();
+        
+        // Optimize: Cache settings to avoid multiple queries
+        $canAssign = $user->can('tickets.assign');
+        $enableAdvancedOptions = $canAssign ? \App\Models\Setting::get('enable_advanced_options', true) : false;
+        $enableSlaOptions = $canAssign ? \App\Models\Setting::get('enable_sla_options', true) : false;
+        $enableCustomFields = $canAssign ? \App\Models\Setting::get('enable_custom_fields', true) : false;
+        $enableTags = $canAssign ? \App\Models\Setting::get('enable_tags', true) : false;
+        $enableWatchers = $canAssign ? \App\Models\Setting::get('enable_watchers', true) : false;
         
         return [
             'statuses' => Ticket::STATUSES,
@@ -1265,21 +1346,11 @@ class TicketController extends Controller
             'tags' => Tag::select('id', 'name', 'color')->orderBy('name')->get(),
             // Advanced Options settings
             // Disable advanced options for agents (users without tickets.assign permission)
-            'enable_advanced_options' => $user->can('tickets.assign') 
-                ? \App\Models\Setting::get('enable_advanced_options', true) 
-                : false,
-            'enable_sla_options' => $user->can('tickets.assign') 
-                ? \App\Models\Setting::get('enable_sla_options', true) 
-                : false,
-            'enable_custom_fields' => $user->can('tickets.assign') 
-                ? \App\Models\Setting::get('enable_custom_fields', true) 
-                : false,
-            'enable_tags' => $user->can('tickets.assign') 
-                ? \App\Models\Setting::get('enable_tags', true) 
-                : false,
-            'enable_watchers' => $user->can('tickets.assign') 
-                ? \App\Models\Setting::get('enable_watchers', true) 
-                : false,
+            'enable_advanced_options' => $enableAdvancedOptions,
+            'enable_sla_options' => $enableSlaOptions,
+            'enable_custom_fields' => $enableCustomFields,
+            'enable_tags' => $enableTags,
+            'enable_watchers' => $enableWatchers,
             'customFields' => CustomField::active()->ordered()->get()->map(function ($field) {
                 // Transform options from associative array to array of objects
                 $options = [];
