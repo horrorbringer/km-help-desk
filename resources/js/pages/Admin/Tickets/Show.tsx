@@ -1,11 +1,13 @@
 import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
 import { useState, useEffect, useRef } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, Send, Edit, Trash2, X, Check, Reply, Maximize, Minimize, CheckCircle2, XCircle, Clock, User, Users, Mail, Calendar, ArrowRight, Shield, UserPlus } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Send, Edit, Trash2, X, Check, Reply, Maximize, Minimize, CheckCircle2, XCircle, Clock, User, Users, Mail, Calendar, ArrowRight, Shield, UserPlus, Zap, Filter, TrendingUp, TrendingDown, AlertCircle, Timer, Paperclip, Upload, Loader2 } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -124,6 +126,8 @@ type TicketShowProps = {
     created_at: string;
     updated_at: string;
   };
+  agents?: BaseOption[];
+  departments?: BaseOption[];
 };
 
 const statusColorMap: Record<string, string> = {
@@ -149,6 +153,7 @@ export default function TicketShow(props: TicketShowProps) {
   const page = usePage();
   const pageProps = page.props as any;
   const departments = pageProps.departments || [];
+  const agents = props.agents || [];
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteAttachmentDialogOpen, setDeleteAttachmentDialogOpen] = useState<number | null>(null);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
@@ -200,6 +205,18 @@ export default function TicketShow(props: TicketShowProps) {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [selectedApprovalId, setSelectedApprovalId] = useState<number | null>(null);
 
+  // File upload state
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Quick actions state
+  const [quickStatusChange, setQuickStatusChange] = useState<string | null>(null);
+  const [quickPriorityChange, setQuickPriorityChange] = useState<string | null>(null);
+  const [quickAssignmentChange, setQuickAssignmentChange] = useState<number | null>(null);
+  const [commentFilter, setCommentFilter] = useState<'all' | 'internal' | 'public'>('all');
+  const [activeTab, setActiveTab] = useState('details');
+
   const canEditComment = (comment: any) => {
     return comment.user?.id === currentUserId || can('tickets.edit');
   };
@@ -225,6 +242,123 @@ export default function TicketShow(props: TicketShowProps) {
         editCommentForm.reset();
       },
     });
+  };
+
+  // File upload handlers
+  const getCsrfToken = (): string => {
+    const pageProps = page.props as any;
+    if (pageProps?.csrf_token) {
+      return pageProps.csrf_token;
+    }
+    
+    let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (token) return token;
+    
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split('=');
+      if (name === 'XSRF-TOKEN') {
+        return decodeURIComponent(value);
+      }
+    }
+    
+    throw new Error('CSRF token not found. Please refresh the page and try again.');
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    // Validate file count (max 10)
+    if (selectedFiles.length + files.length > 10) {
+      toast.error('Too many files', {
+        description: 'You can upload a maximum of 10 files at once.',
+      });
+      return;
+    }
+
+    // Validate file sizes (max 10MB each)
+    const invalidFiles = files.filter(file => file.size > 10 * 1024 * 1024);
+    if (invalidFiles.length > 0) {
+      toast.error('File too large', {
+        description: `${invalidFiles.length} file(s) exceed the 10MB limit.`,
+      });
+      return;
+    }
+
+    setSelectedFiles(prev => [...prev, ...files]);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileRemove = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleFileUpload = async () => {
+    if (selectedFiles.length === 0) return;
+
+    setUploadingFiles(true);
+    const formData = new FormData();
+    selectedFiles.forEach((file) => {
+      formData.append('files[]', file);
+    });
+
+    try {
+      const csrfToken = getCsrfToken();
+      formData.append('_token', csrfToken);
+
+      const response = await fetch(route('admin.ticket-attachments.store', ticket.id), {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+        },
+        credentials: 'same-origin',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const fileCount = selectedFiles.length;
+        setSelectedFiles([]);
+        toast.success('Files uploaded successfully', {
+          description: `${fileCount} file${fileCount === 1 ? '' : 's'} uploaded successfully`,
+        });
+        // Reload the page to show new attachments
+        router.reload({ only: ['ticket'] });
+      } else {
+        let errorMessage = 'Failed to upload files.';
+        if (response.status === 419) {
+          errorMessage = 'Session expired. Please refresh the page and try again.';
+        } else if (response.status === 413) {
+          errorMessage = 'File size is too large. Maximum allowed: 10MB per file.';
+        } else if (response.status === 422) {
+          try {
+            const data = await response.json();
+            if (data.errors) {
+              const errorDetails = Object.values(data.errors).flat();
+              errorMessage = errorDetails.join(' ');
+            }
+          } catch (e) {
+            // Ignore JSON parse errors
+          }
+        }
+        toast.error('Upload failed', {
+          description: errorMessage,
+        });
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      toast.error('Upload failed', {
+        description: error.message || 'Failed to upload files. Please try again.',
+      });
+    } finally {
+      setUploadingFiles(false);
+    }
   };
 
   // Reset zoom and position when dialog closes
@@ -361,142 +495,250 @@ export default function TicketShow(props: TicketShowProps) {
     <AppLayout>
       <Head title={`Ticket ${ticket.ticket_number}`} />
 
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <p className="text-xs sm:text-sm font-medium text-muted-foreground">Ticket #{ticket.ticket_number}</p>
+      {/* Simplified Header */}
+      <div className="mb-6 space-y-4">
+        {/* Back Button & Ticket Number */}
+        <div className="flex items-center justify-between">
+          <Button asChild variant="ghost" size="sm" className="h-8 -ml-2">
+            <Link href={route('admin.tickets.index')}>
+              <ArrowRight className="h-4 w-4 mr-1 rotate-180" />
+              Back to Tickets
+            </Link>
+          </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">#{ticket.ticket_number}</span>
             {ticket.status && (
-              <Badge className={cn('capitalize text-xs', statusColorMap[ticket.status] ?? '')}>
+              <Badge className={cn('text-xs', statusColorMap[ticket.status] ?? '')}>
                 {ticket.status.replace('_', ' ')}
               </Badge>
             )}
             {ticket.priority && (
-              <Badge className={cn('capitalize text-xs', priorityColorMap[ticket.priority] ?? '')}>
+              <Badge className={cn('text-xs', priorityColorMap[ticket.priority] ?? '')}>
                 {ticket.priority}
               </Badge>
             )}
           </div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold break-words">{ticket.subject}</h1>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Button asChild variant="outline" className="w-full sm:w-auto">
-            <Link href={route('admin.tickets.index')}>← Back to list</Link>
-          </Button>
-          {canPickTicket && (
-            <Button
-              onClick={() => {
-                router.put(route('admin.tickets.update', { ticket: ticket.id }), {
-                  assigned_agent_id: currentUserId,
-                }, {
-                  preserveScroll: true,
-                  onSuccess: () => {
-                    toast.success('Ticket picked successfully!');
-                  },
-                  onError: (errors) => {
-                    const errorMessage = errors.assigned_agent_id 
-                      || errors.message 
-                      || Object.values(errors).flat().join(', ') 
-                      || 'Failed to pick ticket.';
-                    toast.error(errorMessage);
-                  },
-                });
-              }}
-              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Pick Ticket
-            </Button>
-          )}
-          {can('tickets.edit') && (
-            <Button asChild className="w-full sm:w-auto">
-              <Link href={route('admin.tickets.edit', { ticket: ticket.id })}>Edit Ticket</Link>
-            </Button>
-          )}
-          {can('tickets.delete') && (
-            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="destructive"
-                  onClick={() => setDeleteDialogOpen(true)}
-                  className="w-full sm:w-auto"
-                >
-                  Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete ticket "{ticket.ticket_number}"? This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const ticketId = ticket.id;
-                      setDeleteDialogOpen(false); // Close dialog immediately
-                      router.delete(route('admin.tickets.destroy', { ticket: ticketId }), {
-                        preserveScroll: true,
-                        onSuccess: () => {
-                          // Success handled by flash message and redirect
-                        },
-                        onError: (errors) => {
-                          console.error('Delete errors:', errors);
-                          // Error handled by flash message
-                        },
-                      });
-                    }}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+        {/* Title & Quick Info */}
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-semibold mb-3 break-words">{ticket.subject}</h1>
+          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+            {ticket.requester && (
+              <div className="flex items-center gap-1.5">
+                <User className="h-4 w-4" />
+                <span>{ticket.requester.name}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-4 w-4" />
+              <span>{new Date(ticket.created_at).toLocaleDateString()}</span>
+            </div>
+            {ticket.category && (
+              <div className="flex items-center gap-1.5">
+                <span>{ticket.category.name}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-2">
+            {canPickTicket && (
+              <Button
+                onClick={() => {
+                  router.put(route('admin.tickets.update', { ticket: ticket.id }), {
+                    assigned_agent_id: currentUserId,
+                  }, {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                      toast.success('Ticket picked successfully!');
+                    },
+                    onError: (errors) => {
+                      const errorMessage = errors.assigned_agent_id 
+                        || errors.message 
+                        || Object.values(errors).flat().join(', ') 
+                        || 'Failed to pick ticket.';
+                      toast.error(errorMessage);
+                    },
+                  });
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Pick Ticket
+              </Button>
+            )}
+            {can('tickets.edit') && (
+              <Button asChild variant="outline">
+                <Link href={route('admin.tickets.edit', { ticket: ticket.id })}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </Link>
+              </Button>
+            )}
+            {can('tickets.delete') && (
+              <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setDeleteDialogOpen(true)}
                   >
+                    <Trash2 className="h-4 w-4 mr-2" />
                     Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete ticket "{ticket.ticket_number}"? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const ticketId = ticket.id;
+                        setDeleteDialogOpen(false);
+                        router.delete(route('admin.tickets.destroy', { ticket: ticketId }), {
+                          preserveScroll: true,
+                          onSuccess: () => {},
+                          onError: (errors) => {
+                            console.error('Delete errors:', errors);
+                          },
+                        });
+                      }}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="p-4 sm:p-6">
-            <CardTitle className="text-lg sm:text-xl">Details & Context</CardTitle>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
-              Created {new Date(ticket.created_at).toLocaleString()}
-              <span className="hidden sm:inline"> · </span>
-              <span className="block sm:inline">Last updated {new Date(ticket.updated_at).toLocaleString()}</span>
-            </p>
-          </CardHeader>
+      {/* Main Content with Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="w-full justify-start h-auto p-1 bg-muted/50">
+          <TabsTrigger value="details" className="data-[state=active]:bg-background">
+            Details
+          </TabsTrigger>
+          <TabsTrigger value="comments" className="data-[state=active]:bg-background">
+            Comments
+            {(ticket.comments?.length ?? 0) > 0 && (
+              <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5 text-xs">
+                {ticket.comments?.length ?? 0}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="attachments" className="data-[state=active]:bg-background">
+            Attachments
+            {(ticket.attachments?.length ?? 0) > 0 && (
+              <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5 text-xs">
+                {ticket.attachments?.length ?? 0}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="data-[state=active]:bg-background">
+            Activity
+          </TabsTrigger>
+        </TabsList>
 
-          <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6">
-            <div className="space-y-2">
-              <h2 className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-wide">Description</h2>
-              <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
-                <p className="whitespace-pre-line text-sm leading-relaxed break-words">{ticket.description}</p>
+        {/* Details Tab */}
+        <TabsContent value="details" className="space-y-4 mt-4">
+          {/* Quick Info Cards - Cleaner Design */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <Card className="p-4 bg-muted/30 border-0">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <User className="h-5 w-5 text-blue-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground mb-1">Requester</p>
+                <p className="text-sm font-medium truncate">{ticket.requester?.name ?? '—'}</p>
               </div>
             </div>
+          </Card>
+          <Card className="p-4 bg-muted/30 border-0">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                <Users className="h-5 w-5 text-indigo-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground mb-1">Assigned To</p>
+                <p className="text-sm font-medium truncate">
+                  {ticket.assigned_agent?.name ?? ticket.assigned_team?.name ?? 'Unassigned'}
+                </p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4 bg-muted/30 border-0">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground mb-1">Comments</p>
+                <p className="text-sm font-medium">{(ticket.comments?.length ?? 0)}</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4 bg-muted/30 border-0">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <Mail className="h-5 w-5 text-amber-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground mb-1">Attachments</p>
+                <p className="text-sm font-medium">{(ticket.attachments?.length ?? 0)}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
 
-            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
-              <div className="p-3 bg-muted/30 rounded-lg border">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Requester</h3>
-                <div className="flex items-center gap-2.5">
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Main Content Area */}
+            <div className="lg:col-span-2 space-y-4">
+          {/* Description Card - Cleaner */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Description</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="p-4 bg-muted/20 rounded-lg">
+                <p className="whitespace-pre-line text-sm leading-relaxed break-words text-foreground">{ticket.description}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Ticket Information Card - Cleaner */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Ticket Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+              <div className="p-4 bg-muted/20 rounded-lg border">
+                <div className="flex items-center gap-3">
                   {ticket.requester && (
-                    <UserAvatar user={ticket.requester} size="sm" />
+                    <UserAvatar user={ticket.requester} size="md" />
                   )}
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Requester</p>
                     <p className="text-sm font-semibold">{ticket.requester?.name ?? '—'}</p>
                     {ticket.requester?.email && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{ticket.requester.email}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{ticket.requester.email}</p>
                     )}
                   </div>
                 </div>
               </div>
-              <div className="p-3 bg-muted/30 rounded-lg border">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assignment</h3>
+              <div className="p-4 bg-muted/20 rounded-lg border">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-medium text-muted-foreground">Assignment</p>
                   {canPickTicket && (
                     <Button
                       size="sm"
@@ -521,12 +763,12 @@ export default function TicketShow(props: TicketShowProps) {
                     </Button>
                   )}
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-3">
                   {ticket.assigned_agent ? (
-                    <UserAvatar user={ticket.assigned_agent} size="sm" />
+                    <UserAvatar user={ticket.assigned_agent} size="md" />
                   ) : ticket.assigned_team ? (
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <Users className="h-4 w-4 text-primary" />
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <Users className="h-5 w-5 text-primary" />
                     </div>
                   ) : null}
                   <div className="min-w-0 flex-1">
@@ -543,30 +785,28 @@ export default function TicketShow(props: TicketShowProps) {
                   </div>
                 </div>
               </div>
-              <div className="p-3 bg-muted/30 rounded-lg border">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Category</h3>
+              <div className="p-4 bg-muted/20 rounded-lg border">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Category</p>
                 <p className="text-sm font-semibold">{ticket.category?.name ?? '—'}</p>
               </div>
-              <div className="p-3 bg-muted/30 rounded-lg border">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Project</h3>
+              <div className="p-4 bg-muted/20 rounded-lg border">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Project</p>
                 <p className="text-sm font-semibold">{ticket.project?.name ?? 'No project'}</p>
               </div>
-              <div className="p-3 bg-muted/30 rounded-lg border">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Source</h3>
+              <div className="p-4 bg-muted/20 rounded-lg border">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Source</p>
                 <p className="text-sm font-semibold capitalize">{ticket.source}</p>
               </div>
-              <div className="p-3 bg-muted/30 rounded-lg border">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">SLA Policy</h3>
+              <div className="p-4 bg-muted/20 rounded-lg border">
+                <p className="text-xs font-medium text-muted-foreground mb-1">SLA Policy</p>
                 <p className="text-sm font-semibold">{ticket.sla_policy?.name ?? 'No SLA'}</p>
               </div>
             </div>
 
             {(ticket.custom_field_values?.length ?? 0) > 0 && (
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-                  Custom Fields
-                </h3>
-                <div className="grid gap-4 md:grid-cols-2">
+              <div className="pt-4 border-t">
+                <h3 className="text-sm font-semibold mb-3">Custom Fields</h3>
+                <div className="grid gap-3 md:grid-cols-2">
                   {(ticket.custom_field_values ?? []).map((cfv) => {
                     let displayValue = cfv.value;
                     
@@ -604,11 +844,11 @@ export default function TicketShow(props: TicketShowProps) {
             )}
 
             {(ticket.tags?.length ?? 0) > 0 && (
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Tags</h3>
+              <div className="pt-4 border-t">
+                <h3 className="text-sm font-semibold mb-3">Tags</h3>
                 <div className="flex flex-wrap gap-2">
                   {(ticket.tags ?? []).map((tag) => (
-                    <Badge key={tag.id} style={{ backgroundColor: tag.color, color: '#fff' }}>
+                    <Badge key={tag.id} style={{ backgroundColor: tag.color, color: '#fff' }} className="text-xs">
                       {tag.name}
                     </Badge>
                   ))}
@@ -617,20 +857,23 @@ export default function TicketShow(props: TicketShowProps) {
             )}
 
             {(ticket.watchers?.length ?? 0) > 0 && (
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Watchers</h3>
-                <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+              <div className="pt-4 border-t">
+                <h3 className="text-sm font-semibold mb-3">Watchers</h3>
+                <div className="flex flex-wrap gap-3">
                   {(ticket.watchers ?? []).map((watcher) => (
-                    <span key={watcher.id}>{watcher.name}</span>
+                    <div key={watcher.id} className="flex items-center gap-2">
+                      <UserAvatar user={watcher} size="xs" />
+                      <span className="text-sm">{watcher.name}</span>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
+            </CardContent>
+          </Card>
 
-            <Separator />
-
-            {/* Approval Section - Show only completed approvals (not current pending) */}
-            {ticket.approvals && ticket.approvals.length > 0 && (() => {
+          {/* Approval Section */}
+          {ticket.approvals && ticket.approvals.length > 0 && (() => {
               // Filter out the current pending approval to avoid duplication
               const completedApprovals = ticket.approvals.filter(approval => {
                 if (ticket.current_approval && approval.id === ticket.current_approval.id) {
@@ -809,11 +1052,10 @@ export default function TicketShow(props: TicketShowProps) {
               ) : null;
             })()}
 
-            {/* Current Pending Approval - Prominent Display */}
-            {/* Only show pending approval banner if ticket is not resolved/closed/cancelled */}
-            {ticket.current_approval && 
-             ticket.current_approval.status === 'pending' && 
-             !['resolved', 'closed', 'cancelled'].includes(ticket.status) && (
+          {/* Current Pending Approval */}
+          {ticket.current_approval && 
+           ticket.current_approval.status === 'pending' && 
+           !['resolved', 'closed', 'cancelled'].includes(ticket.status) && (
               <Card className="border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-amber-50/80 to-amber-100/60 shadow-lg">
                 <CardContent className="p-5">
                   <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
@@ -885,8 +1127,8 @@ export default function TicketShow(props: TicketShowProps) {
               </Card>
             )}
 
-            {/* Rejected Ticket - Prominent Display */}
-            {ticket.rejected_approval && ticket.status === 'cancelled' && (
+          {/* Rejected Ticket */}
+          {ticket.rejected_approval && ticket.status === 'cancelled' && (
               <Card className="border-2 border-red-300 bg-gradient-to-br from-red-50 to-red-100/50 shadow-md">
                 <CardContent className="p-5">
                   <div className="flex items-start gap-3 mb-4">
@@ -1016,17 +1258,54 @@ export default function TicketShow(props: TicketShowProps) {
               </Card>
             )}
 
-            {(ticket.approvals && ticket.approvals.length > 0) && <Separator />}
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold">Comments</h3>
-                <Badge variant="outline">{(ticket.comments?.length ?? 0)}</Badge>
+          {/* Comments Section */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <CardTitle className="text-lg">Comments</CardTitle>
+                  <Badge variant="outline">{(ticket.comments?.length ?? 0)}</Badge>
+                </div>
+                {can('tickets.edit') && (ticket.comments?.length ?? 0) > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex gap-1 border rounded-md p-0.5">
+                      <Button
+                        type="button"
+                        variant={commentFilter === 'all' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => setCommentFilter('all')}
+                      >
+                        All
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={commentFilter === 'public' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => setCommentFilter('public')}
+                      >
+                        Public
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={commentFilter === 'internal' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => setCommentFilter('internal')}
+                      >
+                        Internal
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-
+            </CardHeader>
+            <CardContent className="space-y-4">
               {/* Add Comment Form */}
               {can('tickets.view') && (
-                <div className="rounded-lg border p-3 sm:p-4 bg-muted/30">
+                <div className="rounded-lg border p-4 bg-muted/30">
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -1093,7 +1372,15 @@ export default function TicketShow(props: TicketShowProps) {
                 </div>
               )}
               <div className="space-y-3">
-                {((ticket.comments ?? []).filter((c: any) => !c.parent_id) as any[]).map((comment) => (
+                {((ticket.comments ?? [])
+                  .filter((c: any) => {
+                    // Filter by parent_id first
+                    if (c.parent_id) return false;
+                    // Then filter by comment filter
+                    if (commentFilter === 'internal') return c.is_internal === true;
+                    if (commentFilter === 'public') return c.is_internal === false;
+                    return true; // 'all'
+                  }) as any[]).map((comment) => (
                   <div
                     key={comment.id}
                     className={cn(
@@ -1339,22 +1626,105 @@ export default function TicketShow(props: TicketShowProps) {
                   </div>
                 ))}
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <Separator />
-
-            <div className="space-y-4">
+          {/* Attachments Section */}
+          <Card>
+            <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold">Attachments</h3>
-                <Badge variant="outline">{(ticket.attachments?.length ?? 0)}</Badge>
+                <div className="flex items-center gap-2">
+                  <Paperclip className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-lg">Attachments</CardTitle>
+                  <Badge variant="outline">{(ticket.attachments?.length ?? 0)}</Badge>
+                </div>
+                {can('tickets.edit') && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.zip,.rar,.7z"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingFiles}
+                      className="h-8"
+                    >
+                      <Upload className="h-3 w-3 mr-2" />
+                      Add Files
+                    </Button>
+                  </div>
+                )}
               </div>
-              {(ticket.attachments?.length ?? 0) === 0 && (
+            </CardHeader>
+            <CardContent>
+              {/* Selected Files Preview */}
+              {selectedFiles.length > 0 && (
+                <div className="mb-4 p-3 rounded-lg border bg-muted/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      Selected Files ({selectedFiles.length})
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      onClick={handleFileUpload}
+                      disabled={uploadingFiles}
+                      className="h-8"
+                    >
+                      {uploadingFiles ? (
+                        <>
+                          <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-3 w-3 mr-2" />
+                          Upload All
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {selectedFiles.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 p-2 rounded-md bg-background border text-sm"
+                      >
+                        <Paperclip className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="flex-1 min-w-0 truncate">{file.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleFileRemove(index)}
+                          disabled={uploadingFiles}
+                          className="h-6 w-6 p-0"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(ticket.attachments?.length ?? 0) === 0 ? (
                 <div className="text-center py-8 border rounded-lg bg-muted/20">
                   <p className="text-sm text-muted-foreground">No attachments uploaded.</p>
                 </div>
-              )}
-              <div className="space-y-2">
-                {(ticket.attachments ?? []).map((attachment) => {
+              ) : (
+                <div className="space-y-2">
+                  {(ticket.attachments ?? []).map((attachment) => {
                   const isImage = attachment.mime_type?.startsWith('image/');
                   const imageUrl = isImage ? route('admin.ticket-attachments.download', attachment.id) : null;
 
@@ -1458,63 +1828,886 @@ export default function TicketShow(props: TicketShowProps) {
                     </div>
                   );
                 })}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="p-4 sm:p-6">
-            <CardTitle className="text-lg sm:text-xl">Activity Timeline</CardTitle>
-            <p className="text-xs sm:text-sm text-muted-foreground">Status changes, assignments, and SLA tracking.</p>
-          </CardHeader>
-          <CardContent className="space-y-4 p-4 sm:p-6">
-            {(ticket.histories?.length ?? 0) === 0 && (
-              <div className="text-center py-8 border rounded-lg bg-muted/20">
-                <p className="text-sm text-muted-foreground">No history recorded.</p>
-              </div>
-            )}
-            <div className="space-y-3">
-              {(ticket.histories ?? []).map((history, index) => (
-                <div key={history.id} className="relative">
-                  {index < (ticket.histories?.length ?? 0) - 1 && (
-                    <div className="absolute left-3 top-8 bottom-0 w-0.5 bg-border" />
-                  )}
-                  <div className="flex gap-2 sm:gap-3">
-                    <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center mt-0.5">
-                      <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0 rounded-lg border p-2 sm:p-3 bg-card">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-1">
-                        <span className="font-semibold text-xs sm:text-sm">{history.user?.name ?? 'System'}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(history.created_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="font-medium text-xs sm:text-sm capitalize mb-1 break-words">
-                        {history.action.replace('_', ' ')}
-                      </p>
-                      {history.field_name && (
-                        <div className="text-xs text-muted-foreground space-y-1 break-words">
-                          <p>
-                            <span className="font-medium">{history.field_name}:</span>{' '}
-                            <span className="line-through text-red-600">{history.old_value ?? '—'}</span>
-                            {' → '}
-                            <span className="text-green-600 font-medium">{history.new_value ?? '—'}</span>
-                          </p>
+          {/* Activity Timeline */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Activity Timeline</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Status changes, assignments, and SLA tracking</p>
+            </CardHeader>
+            <CardContent>
+              {(ticket.histories?.length ?? 0) === 0 ? (
+                <div className="text-center py-8 border rounded-lg bg-muted/20">
+                  <p className="text-sm text-muted-foreground">No history recorded.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(ticket.histories ?? []).map((history, index) => (
+                    <div key={history.id} className="relative">
+                      {index < (ticket.histories?.length ?? 0) - 1 && (
+                        <div className="absolute left-3 top-8 bottom-0 w-0.5 bg-border" />
+                      )}
+                      <div className="flex gap-2 sm:gap-3">
+                        <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center mt-0.5">
+                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-primary" />
                         </div>
-                      )}
-                      {history.description && (
-                        <p className="text-xs text-muted-foreground mt-2 italic break-words">{history.description}</p>
-                      )}
+                        <div className="flex-1 min-w-0 rounded-lg border p-2 sm:p-3 bg-card">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-1">
+                            <span className="font-semibold text-xs sm:text-sm">{history.user?.name ?? 'System'}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(history.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="font-medium text-xs sm:text-sm capitalize mb-1 break-words">
+                            {history.action.replace('_', ' ')}
+                          </p>
+                          {history.field_name && (
+                            <div className="text-xs text-muted-foreground space-y-1 break-words">
+                              <p>
+                                <span className="font-medium">{history.field_name}:</span>{' '}
+                                <span className="line-through text-red-600">{history.old_value ?? '—'}</span>
+                                {' → '}
+                                <span className="text-green-600 font-medium">{history.new_value ?? '—'}</span>
+                              </p>
+                            </div>
+                          )}
+                          {history.description && (
+                            <p className="text-xs text-muted-foreground mt-2 italic break-words">{history.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+            </div>
+
+            {/* Sidebar - Quick Actions */}
+            <div className="space-y-6">
+              {can('tickets.edit') && (
+                <Card className="sticky top-6">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-5 w-5 text-primary" />
+                      <CardTitle className="text-lg">Quick Actions</CardTitle>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Update without leaving page</p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Quick Status Change */}
+                    <div>
+                      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 block">Status</Label>
+                      <Select
+                        value={ticket.status}
+                        onValueChange={(value) => {
+                          router.put(route('admin.tickets.update', { ticket: ticket.id }), {
+                            status: value,
+                          }, {
+                            preserveScroll: true,
+                            onSuccess: () => {
+                              toast.success('Status updated successfully');
+                            },
+                            onError: (errors) => {
+                              toast.error(errors.status || 'Failed to update status');
+                            },
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {['open', 'assigned', 'in_progress', 'pending', 'resolved', 'closed', 'cancelled'].map((status) => (
+                            <SelectItem key={status} value={status}>
+                              <div className="flex items-center gap-2">
+                                <Badge className={cn('text-xs', statusColorMap[status] ?? '')}>
+                                  {status.replace('_', ' ')}
+                                </Badge>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Quick Priority Change */}
+                    <div>
+                      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 block">Priority</Label>
+                      <Select
+                        value={ticket.priority}
+                        onValueChange={(value) => {
+                          router.put(route('admin.tickets.update', { ticket: ticket.id }), {
+                            priority: value,
+                          }, {
+                            preserveScroll: true,
+                            onSuccess: () => {
+                              toast.success('Priority updated successfully');
+                            },
+                            onError: (errors) => {
+                              toast.error(errors.priority || 'Failed to update priority');
+                            },
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {['low', 'medium', 'high', 'critical'].map((priority) => (
+                            <SelectItem key={priority} value={priority}>
+                              <div className="flex items-center gap-2">
+                                <Badge className={cn('text-xs', priorityColorMap[priority] ?? '')}>
+                                  {priority}
+                                </Badge>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Quick Assignment Change */}
+                    {can('tickets.assign') && ticket.assigned_team && (
+                      <div>
+                        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 block">Assign Agent</Label>
+                        <Select
+                          value={ticket.assigned_agent?.id ? String(ticket.assigned_agent.id) : '__unassign'}
+                          onValueChange={(value) => {
+                            router.put(route('admin.tickets.update', { ticket: ticket.id }), {
+                              assigned_agent_id: value === '__unassign' ? null : parseInt(value),
+                            }, {
+                              preserveScroll: true,
+                              onSuccess: () => {
+                                toast.success('Assignment updated successfully');
+                              },
+                              onError: (errors) => {
+                                toast.error(errors.assigned_agent_id || 'Failed to update assignment');
+                              },
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="h-9 text-sm">
+                            <SelectValue placeholder="Unassigned" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__unassign">Unassigned</SelectItem>
+                            {agents.length > 0 ? (
+                              agents.map((agent: any) => (
+                                <SelectItem key={agent.id} value={String(agent.id)}>
+                                  <div className="flex items-center gap-2">
+                                    {agent.avatar ? (
+                                      <img src={agent.avatar} alt={agent.name} className="h-4 w-4 rounded-full" />
+                                    ) : (
+                                      <div className="h-4 w-4 rounded-full bg-primary/10 flex items-center justify-center text-xs">
+                                        {agent.name.charAt(0).toUpperCase()}
+                                      </div>
+                                    )}
+                                    <span>{agent.name}</span>
+                                  </div>
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="__no_agents" disabled>No agents available</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {agents.length === 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">No agents in {ticket.assigned_team?.name}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* SLA Information */}
+                    {(ticket.first_response_due_at || ticket.resolution_due_at) && (
+                      <div className="pt-4 border-t">
+                        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3 block">SLA Status</Label>
+                        <div className="space-y-3">
+                          {ticket.first_response_due_at && (
+                            <div className="p-3 rounded-lg border bg-muted/30">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-medium">First Response</span>
+                                {ticket.response_sla_breached && (
+                                  <Badge variant="destructive" className="text-xs">Breached</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Timer className="h-3 w-3" />
+                                <span>Due: {new Date(ticket.first_response_due_at).toLocaleString()}</span>
+                              </div>
+                              {ticket.first_response_at && (
+                                <div className="text-xs text-emerald-600 mt-1">
+                                  ✓ Responded: {new Date(ticket.first_response_at).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {ticket.resolution_due_at && (
+                            <div className="p-3 rounded-lg border bg-muted/30">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-medium">Resolution</span>
+                                {ticket.resolution_sla_breached && (
+                                  <Badge variant="destructive" className="text-xs">Breached</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Timer className="h-3 w-3" />
+                                <span>Due: {new Date(ticket.resolution_due_at).toLocaleString()}</span>
+                              </div>
+                              {ticket.resolved_at && (
+                                <div className="text-xs text-emerald-600 mt-1">
+                                  ✓ Resolved: {new Date(ticket.resolved_at).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Comments Tab */}
+        <TabsContent value="comments" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <CardTitle className="text-lg">Comments</CardTitle>
+                  <Badge variant="outline">{(ticket.comments?.length ?? 0)}</Badge>
+                </div>
+                {can('tickets.edit') && (ticket.comments?.length ?? 0) > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex gap-1 border rounded-md p-0.5">
+                      <Button
+                        type="button"
+                        variant={commentFilter === 'all' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => setCommentFilter('all')}
+                      >
+                        All
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={commentFilter === 'public' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => setCommentFilter('public')}
+                      >
+                        Public
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={commentFilter === 'internal' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => setCommentFilter('internal')}
+                      >
+                        Internal
+                      </Button>
                     </div>
                   </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Add Comment Form */}
+              {can('tickets.view') && (
+                <div className="rounded-lg border p-4 bg-muted/30">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      commentForm.post(route('admin.ticket-comments.store', ticket.id), {
+                        preserveScroll: true,
+                        onSuccess: () => {
+                          commentForm.reset();
+                          commentForm.setData('parent_id', null);
+                          setReplyingToCommentId(null);
+                        },
+                      });
+                    }}
+                    className="space-y-3"
+                  >
+                    <div>
+                      <Textarea
+                        placeholder="Add a comment..."
+                        value={commentForm.data.body}
+                        onChange={(e) => commentForm.setData('body', e.target.value)}
+                        rows={3}
+                        className="resize-none text-sm"
+                      />
+                      {commentForm.errors.body && (
+                        <p className="text-xs text-destructive mt-1">{commentForm.errors.body}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex items-center space-x-2">
+                        {can('tickets.edit') && (
+                          <>
+                            <Checkbox
+                              id="internal-comment"
+                              checked={commentForm.data.is_internal}
+                              onCheckedChange={(checked) =>
+                                commentForm.setData('is_internal', checked === true)
+                              }
+                            />
+                            <Label
+                              htmlFor="internal-comment"
+                              className="text-xs text-muted-foreground cursor-pointer"
+                            >
+                              Internal (only visible to agents)
+                            </Label>
+                          </>
+                        )}
+                      </div>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={commentForm.processing || !commentForm.data.body.trim()}
+                        className="w-full sm:w-auto"
+                      >
+                        <Send className="h-4 w-4 mr-2" />
+                        {commentForm.processing ? 'Posting...' : 'Post Comment'}
+                      </Button>
+                    </div>
+                  </form>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              )}
+
+              {(ticket.comments?.length ?? 0) === 0 && (
+                <div className="text-center py-8 border rounded-lg bg-muted/20">
+                  <p className="text-sm text-muted-foreground">No comments yet.</p>
+                </div>
+              )}
+              <div className="space-y-3">
+                {((ticket.comments ?? [])
+                  .filter((c: any) => {
+                    if (c.parent_id) return false;
+                    if (commentFilter === 'internal') return c.is_internal === true;
+                    if (commentFilter === 'public') return c.is_internal === false;
+                    return true;
+                  }) as any[]).map((comment) => (
+                  <div
+                    key={comment.id}
+                    className={cn(
+                      'rounded-lg border p-4 transition-colors',
+                      comment.is_internal ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-card'
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2.5">
+                        {comment.user && (
+                          <UserAvatar user={comment.user} size="sm" />
+                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">{comment.user?.name ?? 'System'}</span>
+                        {comment.is_internal && (
+                          <Badge variant="secondary" className="text-xs">Internal</Badge>
+                        )}
+                        {comment.type && (
+                          <Badge variant="outline" className="text-xs capitalize">{comment.type}</Badge>
+                        )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(comment.created_at).toLocaleString()}
+                        </span>
+                        {canEditComment(comment) && (
+                          <div className="flex items-center gap-1">
+                            {editingCommentId === comment.id ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleSaveComment(comment.id)}
+                                  disabled={editCommentForm.processing}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Check className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={handleCancelEdit}
+                                  disabled={editCommentForm.processing}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditComment(comment)}
+                                  className="h-7 w-7 p-0"
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <AlertDialog
+                                  open={deleteCommentDialogOpen === comment.id}
+                                  onOpenChange={(open) => {
+                                    if (!open) {
+                                      setDeleteCommentDialogOpen(null);
+                                    }
+                                  }}
+                                >
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setDeleteCommentDialogOpen(comment.id)}
+                                      className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Comment</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete this comment? This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => {
+                                          router.delete(route('admin.ticket-comments.destroy', { ticket: ticket.id, comment: comment.id }), {
+                                            preserveScroll: true,
+                                            onSuccess: () => {
+                                              setDeleteCommentDialogOpen(null);
+                                            },
+                                          });
+                                        }}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {editingCommentId === comment.id ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={editCommentForm.data.body}
+                          onChange={(e) => editCommentForm.setData('body', e.target.value)}
+                          rows={3}
+                          className="resize-none"
+                        />
+                        {editCommentForm.errors.body && (
+                          <p className="text-xs text-destructive">{editCommentForm.errors.body}</p>
+                        )}
+                        {can('tickets.edit') && (
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`edit-internal-${comment.id}`}
+                              checked={editCommentForm.data.is_internal}
+                              onCheckedChange={(checked) =>
+                                editCommentForm.setData('is_internal', checked === true)
+                              }
+                            />
+                            <Label
+                              htmlFor={`edit-internal-${comment.id}`}
+                              className="text-xs text-muted-foreground cursor-pointer"
+                            >
+                              Internal (only visible to agents)
+                            </Label>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm whitespace-pre-line leading-relaxed">{comment.body}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setReplyingToCommentId(comment.id);
+                              commentForm.setData('parent_id', comment.id);
+                            }}
+                            className="h-7 text-xs"
+                          >
+                            <Reply className="h-3 w-3 mr-1" />
+                            Reply
+                          </Button>
+                          {comment.replies && (comment.replies as any[]).length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {(comment.replies as any[]).length} {(comment.replies as any[]).length === 1 ? 'reply' : 'replies'}
+                            </span>
+                          )}
+                        </div>
+                        {/* Display replies */}
+                        {comment.replies && (comment.replies as any[]).length > 0 && (
+                          <div className="mt-3 ml-6 space-y-2 border-l-2 border-muted pl-4">
+                            {(comment.replies as any[]).map((reply: any) => (
+                              <div
+                                key={reply.id}
+                                className={cn(
+                                  'rounded-lg border p-3 text-sm',
+                                  reply.is_internal ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : 'bg-muted/30'
+                                )}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center gap-2">
+                                    {reply.user && (
+                                      <UserAvatar user={reply.user} size="xs" />
+                                    )}
+                                    <span className="font-semibold text-xs">{reply.user?.name ?? 'System'}</span>
+                                    {reply.is_internal && (
+                                      <Badge variant="secondary" className="text-xs">Internal</Badge>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">
+                                    {new Date(reply.created_at).toLocaleString()}
+                                  </span>
+                                </div>
+                                <p className="text-xs whitespace-pre-line leading-relaxed">{reply.body}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Reply form */}
+                        {replyingToCommentId === comment.id && (
+                          <div className="mt-3 ml-6 border-l-2 border-primary pl-4">
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                commentForm.post(route('admin.ticket-comments.store', ticket.id), {
+                                  preserveScroll: true,
+                                  onSuccess: () => {
+                                    commentForm.reset();
+                                    setReplyingToCommentId(null);
+                                  },
+                                });
+                              }}
+                              className="space-y-2"
+                            >
+                              <Textarea
+                                placeholder="Write a reply..."
+                                value={commentForm.data.body}
+                                onChange={(e) => commentForm.setData('body', e.target.value)}
+                                rows={2}
+                                className="resize-none text-sm"
+                                autoFocus
+                              />
+                              <div className="flex items-center justify-between">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setReplyingToCommentId(null);
+                                    commentForm.setData('parent_id', null);
+                                    commentForm.setData('body', '');
+                                  }}
+                                  className="h-7 text-xs"
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  disabled={commentForm.processing || !commentForm.data.body.trim()}
+                                  className="h-7 text-xs"
+                                >
+                                  <Send className="h-3 w-3 mr-1" />
+                                  {commentForm.processing ? 'Posting...' : 'Reply'}
+                                </Button>
+                              </div>
+                            </form>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Attachments Tab */}
+        <TabsContent value="attachments" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Paperclip className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-lg">Attachments</CardTitle>
+                  <Badge variant="outline">{(ticket.attachments?.length ?? 0)}</Badge>
+                </div>
+                {can('tickets.edit') && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.zip,.rar,.7z"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingFiles}
+                      className="h-8"
+                    >
+                      <Upload className="h-3 w-3 mr-2" />
+                      Add Files
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Selected Files Preview */}
+              {selectedFiles.length > 0 && (
+                <div className="mb-4 p-3 rounded-lg border bg-muted/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      Selected Files ({selectedFiles.length})
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      onClick={handleFileUpload}
+                      disabled={uploadingFiles}
+                      className="h-8"
+                    >
+                      {uploadingFiles ? (
+                        <>
+                          <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-3 w-3 mr-2" />
+                          Upload All
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {selectedFiles.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 p-2 rounded-md bg-background border text-sm"
+                      >
+                        <Paperclip className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="flex-1 min-w-0 truncate">{file.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleFileRemove(index)}
+                          disabled={uploadingFiles}
+                          className="h-6 w-6 p-0"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(ticket.attachments?.length ?? 0) === 0 ? (
+                <div className="text-center py-8 border rounded-lg bg-muted/20">
+                  <p className="text-sm text-muted-foreground">No attachments uploaded.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {(ticket.attachments ?? []).map((attachment) => {
+                    const isImage = attachment.mime_type?.startsWith('image/');
+                    const imageUrl = isImage ? route('admin.ticket-attachments.download', attachment.id) : null;
+
+                    return (
+                      <div
+                        key={attachment.id}
+                        className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          {isImage && imageUrl && (
+                            <div className="flex-shrink-0">
+                              <button
+                                onClick={() => {
+                                  setPreviewImageUrl(imageUrl);
+                                  setPreviewImageName(attachment.original_filename);
+                                  setImagePreviewOpen(true);
+                                }}
+                                className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-md overflow-hidden border bg-muted hover:opacity-80 transition-opacity"
+                              >
+                                <img
+                                  src={imageUrl}
+                                  alt={attachment.original_filename}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              </button>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{attachment.original_filename}</p>
+                            <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
+                              <p className="text-xs text-muted-foreground">{attachment.mime_type}</p>
+                              <span className="text-xs text-muted-foreground hidden sm:inline">·</span>
+                              <p className="text-xs text-muted-foreground">
+                                {(attachment.file_size / 1024).toFixed(1)} KB
+                              </p>
+                              {attachment.uploader && (
+                                <>
+                                  <span className="text-xs text-muted-foreground hidden sm:inline">·</span>
+                                  <p className="text-xs text-muted-foreground">by {attachment.uploader.name}</p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <Button variant="outline" size="sm" asChild className="flex-1 sm:flex-initial">
+                            <a
+                              href={route('admin.ticket-attachments.download', attachment.id)}
+                              download
+                            >
+                              Download
+                            </a>
+                          </Button>
+                          {can('tickets.edit') && (
+                            <AlertDialog open={deleteAttachmentDialogOpen === attachment.id} onOpenChange={(open) => {
+                              if (!open) {
+                                setDeleteAttachmentDialogOpen(null);
+                              }
+                            }}>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setDeleteAttachmentDialogOpen(attachment.id)}
+                                  className="flex-1 sm:flex-initial"
+                                >
+                                  Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Attachment</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete "{attachment.original_filename}"? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => {
+                                      router.delete(route('admin.ticket-attachments.destroy', attachment.id), {
+                                        preserveScroll: true,
+                                        onSuccess: () => {
+                                          setDeleteAttachmentDialogOpen(null);
+                                        },
+                                      });
+                                    }}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Activity Tab */}
+        <TabsContent value="activity" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Activity Timeline</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Status changes, assignments, and SLA tracking</p>
+            </CardHeader>
+            <CardContent>
+              {(ticket.histories?.length ?? 0) === 0 ? (
+                <div className="text-center py-8 border rounded-lg bg-muted/20">
+                  <p className="text-sm text-muted-foreground">No history recorded.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(ticket.histories ?? []).map((history, index) => (
+                    <div key={history.id} className="relative">
+                      {index < (ticket.histories?.length ?? 0) - 1 && (
+                        <div className="absolute left-3 top-8 bottom-0 w-0.5 bg-border" />
+                      )}
+                      <div className="flex gap-2 sm:gap-3">
+                        <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center mt-0.5">
+                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0 rounded-lg border p-2 sm:p-3 bg-card">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-1">
+                            <span className="font-semibold text-xs sm:text-sm">{history.user?.name ?? 'System'}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(history.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="font-medium text-xs sm:text-sm capitalize mb-1 break-words">
+                            {history.action.replace('_', ' ')}
+                          </p>
+                          {history.field_name && (
+                            <div className="text-xs text-muted-foreground space-y-1 break-words">
+                              <p>
+                                <span className="font-medium">{history.field_name}:</span>{' '}
+                                <span className="line-through text-red-600">{history.old_value ?? '—'}</span>
+                                {' → '}
+                                <span className="text-green-600 font-medium">{history.new_value ?? '—'}</span>
+                              </p>
+                            </div>
+                          )}
+                          {history.description && (
+                            <p className="text-xs text-muted-foreground mt-2 italic break-words">{history.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Image Preview Dialog */}
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>

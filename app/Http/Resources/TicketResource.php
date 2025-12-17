@@ -110,8 +110,44 @@ class TicketResource extends JsonResource
                     ];
                 });
             }),
-            'attachments' => $this->whenLoaded('attachments'),
-            'histories' => $this->whenLoaded('histories'),
+            'attachments' => $this->whenLoaded('attachments', function () {
+                return $this->attachments->map(function ($attachment) {
+                    return [
+                        'id' => $attachment->id,
+                        'filename' => $attachment->filename,
+                        'original_filename' => $attachment->original_filename,
+                        'file_path' => $attachment->file_path,
+                        'mime_type' => $attachment->mime_type,
+                        'file_size' => $attachment->file_size,
+                        'created_at' => $attachment->created_at?->toDateTimeString(),
+                        'uploader' => $attachment->uploader ? [
+                            'id' => $attachment->uploader->id,
+                            'name' => $attachment->uploader->name,
+                            'email' => $attachment->uploader->email,
+                            'avatar' => $attachment->uploader->avatar,
+                        ] : null,
+                    ];
+                });
+            }),
+            'histories' => $this->whenLoaded('histories', function () {
+                return $this->histories->map(function ($history) {
+                    return [
+                        'id' => $history->id,
+                        'action' => $history->action,
+                        'field_name' => $history->field_name,
+                        'old_value' => $history->old_value,
+                        'new_value' => $history->new_value,
+                        'description' => $history->description,
+                        'created_at' => $history->created_at?->toDateTimeString(),
+                        'user' => $history->user ? [
+                            'id' => $history->user->id,
+                            'name' => $history->user->name,
+                            'email' => $history->user->email,
+                            'avatar' => $history->user->avatar,
+                        ] : null,
+                    ];
+                });
+            }),
             'approvals' => $this->whenLoaded('approvals', function () {
                 return $this->approvals->map(function ($approval) {
                     return [

@@ -260,9 +260,23 @@ class TicketController extends Controller
             'approvals.routedToTeam',
         ]);
 
+        // Get agents for assignment (users with Agent or Senior Agent role in the assigned team)
+        $agents = collect();
+        if ($ticket->assigned_team_id) {
+            $agents = User::where('department_id', $ticket->assigned_team_id)
+                ->whereHas('roles', function ($query) {
+                    $query->whereIn('name', ['Agent', 'Senior Agent']);
+                })
+                ->where('is_active', true)
+                ->select('id', 'name', 'email', 'avatar')
+                ->orderBy('name')
+                ->get();
+        }
+
         return Inertia::render('Admin/Tickets/Show', [
             'ticket' => TicketResource::make($ticket),
             'departments' => Department::select('id', 'name')->orderBy('name')->get(),
+            'agents' => $agents,
         ]);
     }
 

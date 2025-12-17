@@ -1,12 +1,23 @@
 import React from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { ArrowLeft, Filter, Download, TrendingUp, Ticket as TicketIcon } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface Ticket {
@@ -93,51 +104,77 @@ export default function TicketsReport() {
 
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Ticket Reports</h1>
-            <p className="text-muted-foreground">Detailed ticket analysis and statistics</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Button asChild variant="ghost" size="icon">
+              <Link href={route('admin.reports.index')}>
+                <ArrowLeft className="h-5 w-5" />
+              </Link>
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-2">
+                <TicketIcon className="h-8 w-8 text-primary" />
+                Ticket Reports
+              </h1>
+              <p className="text-muted-foreground mt-1">Detailed ticket analysis and statistics</p>
+            </div>
           </div>
-          <Button asChild variant="outline">
-            <Link href={route('admin.reports.index')}>← Back to Reports</Link>
+          <Button variant="outline" className="gap-2">
+            <Download className="h-4 w-4" />
+            Export
           </Button>
         </div>
 
         {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">Total Tickets</CardTitle>
+          <Card className="border-2">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Tickets</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </div>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{summary.total}</p>
+              <p className="text-4xl font-bold">{summary.total}</p>
+              <p className="text-xs text-muted-foreground mt-2">All tickets in system</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">By Status</CardTitle>
+          <Card className="border-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">By Status</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {Object.entries(summary.by_status).map(([status, count]) => (
-                  <div key={status} className="flex items-center justify-between text-sm">
-                    <span className="capitalize">{status.replace('_', ' ')}</span>
-                    <Badge variant="outline">{count}</Badge>
+                  <div key={status} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-primary" />
+                      <span className="text-sm capitalize">{status.replace('_', ' ')}</span>
+                    </div>
+                    <Badge variant="secondary" className="font-semibold">{count}</Badge>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">By Priority</CardTitle>
+          <Card className="border-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">By Priority</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {Object.entries(summary.by_priority).map(([priority, count]) => (
-                  <div key={priority} className="flex items-center justify-between text-sm">
-                    <span className="capitalize">{priority}</span>
-                    <Badge variant="outline">{count}</Badge>
+                  <div key={priority} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "h-2 w-2 rounded-full",
+                        priorityColorMap[priority]?.includes('red') ? 'bg-red-500' :
+                        priorityColorMap[priority]?.includes('orange') ? 'bg-orange-500' :
+                        priorityColorMap[priority]?.includes('blue') ? 'bg-blue-500' : 'bg-slate-500'
+                      )} />
+                      <span className="text-sm capitalize">{priority}</span>
+                    </div>
+                    <Badge variant="secondary" className="font-semibold">{count}</Badge>
                   </div>
                 ))}
               </div>
@@ -146,9 +183,13 @@ export default function TicketsReport() {
         </div>
 
         {/* Filters */}
-        <Card>
+        <Card className="border-2">
           <CardHeader>
-            <CardTitle>Filters</CardTitle>
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>Filters</CardTitle>
+            </div>
+            <CardDescription>Refine your report by selecting specific criteria</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Input
@@ -263,9 +304,14 @@ export default function TicketsReport() {
         </Card>
 
         {/* Tickets Table */}
-        <Card>
+        <Card className="border-2">
           <CardHeader>
-            <CardTitle>Tickets ({tickets.total})</CardTitle>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Tickets</CardTitle>
+                <CardDescription className="mt-1">{tickets.total} total entries</CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {tickets.data.length === 0 ? (
@@ -274,59 +320,59 @@ export default function TicketsReport() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-muted text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Ticket</th>
-                      <th className="px-4 py-3 text-left">Subject</th>
-                      <th className="px-4 py-3 text-left">Requester</th>
-                      <th className="px-4 py-3 text-left">Assigned</th>
-                      <th className="px-4 py-3 text-left">Status</th>
-                      <th className="px-4 py-3 text-left">Priority</th>
-                      <th className="px-4 py-3 text-left">Created</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="font-semibold">Ticket</TableHead>
+                      <TableHead className="font-semibold">Subject</TableHead>
+                      <TableHead className="font-semibold">Requester</TableHead>
+                      <TableHead className="font-semibold">Assigned</TableHead>
+                      <TableHead className="font-semibold">Status</TableHead>
+                      <TableHead className="font-semibold">Priority</TableHead>
+                      <TableHead className="font-semibold">Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {tickets.data.map((ticket) => (
-                      <tr key={ticket.id} className="border-t hover:bg-muted/50 transition">
-                        <td className="px-4 py-3">
+                      <TableRow key={ticket.id} className="hover:bg-muted/50 transition-colors">
+                        <TableCell>
                           <Link
                             href={route('admin.tickets.show', ticket.id)}
-                            className="text-primary hover:underline"
+                            className="text-primary hover:underline font-medium"
                           >
                             {ticket.ticket_number}
                           </Link>
-                        </td>
-                        <td className="px-4 py-3">{ticket.subject}</td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">{ticket.subject}</TableCell>
+                        <TableCell className="text-muted-foreground">
                           {ticket.requester?.name ?? '—'}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
                           {ticket.assigned_agent?.name ?? ticket.assigned_team?.name ?? 'Unassigned'}
-                        </td>
-                        <td className="px-4 py-3">
+                        </TableCell>
+                        <TableCell>
                           <Badge
                             variant="outline"
-                            className={`capitalize ${statusColorMap[ticket.status] ?? ''}`}
+                            className={cn("capitalize", statusColorMap[ticket.status] ?? '')}
                           >
                             {ticket.status.replace('_', ' ')}
                           </Badge>
-                        </td>
-                        <td className="px-4 py-3">
+                        </TableCell>
+                        <TableCell>
                           <Badge
                             variant="outline"
-                            className={`capitalize ${priorityColorMap[ticket.priority] ?? ''}`}
+                            className={cn("capitalize", priorityColorMap[ticket.priority] ?? '')}
                           >
                             {ticket.priority}
                           </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
                           {new Date(ticket.created_at).toLocaleDateString()}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
 
