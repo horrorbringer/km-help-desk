@@ -51,8 +51,10 @@ interface CategoriesIndexProps extends PageProps {
     q?: string;
     parent_id?: string;
     is_active?: string;
+    default_team_id?: string;
   };
   rootCategories: Array<{ id: number; name: string }>;
+  departments: Array<{ id: number; name: string }>;
   flash?: {
     success?: string;
     error?: string;
@@ -61,12 +63,13 @@ interface CategoriesIndexProps extends PageProps {
 }
 
 export default function CategoriesIndex() {
-  const { categories, filters, rootCategories, flash } = usePage<CategoriesIndexProps>().props;
+  const { categories, filters, rootCategories, departments, flash } = usePage<CategoriesIndexProps>().props;
   const { toast: toastFromHook } = useToast(); // Handle flash messages
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
+  const [bulkDefaultTeamId, setBulkDefaultTeamId] = useState<string>('');
   const [togglingStatus, setTogglingStatus] = useState<number | null>(null);
  
   const handleFilter = (key: string, value: string) => {
@@ -102,6 +105,7 @@ export default function CategoriesIndex() {
     }
 
     setBulkDialogAction(action);
+    setBulkDefaultTeamId(''); // Reset team selection
     setBulkDialogOpen(true);
   };
 
@@ -184,12 +188,18 @@ export default function CategoriesIndex() {
         }
       );
     } else {
+      const payload: any = {
+        category_ids: selectedCategories,
+        action: bulkDialogAction,
+      };
+      
+      if (bulkDialogAction === 'update_default_team') {
+        payload.default_team_id = bulkDefaultTeamId && bulkDefaultTeamId !== '__none' ? bulkDefaultTeamId : null;
+      }
+      
       router.post(
         route('admin.categories.bulk-update'),
-        {
-          category_ids: selectedCategories,
-          action: bulkDialogAction,
-        },
+        payload,
         {
           preserveScroll: true,
           onSuccess: () => {
@@ -267,7 +277,7 @@ export default function CategoriesIndex() {
           <CardHeader>
             <CardTitle>Filters</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Input
               placeholder="Search by name, slug, or description..."
               value={filters.q ?? ''}
@@ -308,6 +318,23 @@ export default function CategoriesIndex() {
                 <SelectItem value="0">Inactive only</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={(filters.default_team_id as string) ?? '__all'}
+              onValueChange={(value) => handleFilter('default_team_id', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All teams" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">All teams</SelectItem>
+                <SelectItem value="__none">No team assigned</SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id.toString()}>
+                    {dept.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
@@ -346,6 +373,14 @@ export default function CategoriesIndex() {
                     className="text-xs"
                   >
                     Deactivate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkAction('update_default_team')}
+                    className="text-xs"
+                  >
+                    Update Team
                   </Button>
                   <Button
                     variant="destructive"
@@ -685,7 +720,8 @@ export default function CategoriesIndex() {
                     <AlertDialogTitle>
                       {bulkDialogAction === 'delete' ? 'Delete Categories' : 
                        bulkDialogAction === 'activate' ? 'Activate Categories' : 
-                       'Deactivate Categories'}
+                       bulkDialogAction === 'deactivate' ? 'Deactivate Categories' :
+                       'Update Default Team'}
                     </AlertDialogTitle>
                     <AlertDialogDescription>
                       {bulkDialogAction === 'delete' ? (
@@ -697,11 +733,34 @@ export default function CategoriesIndex() {
                         <>
                           Are you sure you want to activate {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'}?
                         </>
-                      ) : (
+                      ) : bulkDialogAction === 'deactivate' ? (
                         <>
                           Are you sure you want to deactivate {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'}?
                         </>
-                      )}
+                      ) : bulkDialogAction === 'update_default_team' ? (
+                        <div className="space-y-3">
+                          <p>
+                            Select the default team for {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'}. 
+                            Tickets in these categories will be routed to the selected team.
+                          </p>
+                          <Select
+                            value={bulkDefaultTeamId}
+                            onValueChange={setBulkDefaultTeamId}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select team..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none">No team (unassign)</SelectItem>
+                              {departments.map((dept) => (
+                                <SelectItem key={dept.id} value={dept.id.toString()}>
+                                  {dept.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ) : null}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -710,11 +769,13 @@ export default function CategoriesIndex() {
                     </AlertDialogCancel>
                     <AlertDialogAction
                       onClick={handleBulkSubmit}
+                      disabled={bulkDialogAction === 'update_default_team' && !bulkDefaultTeamId}
                       className={bulkDialogAction === 'delete' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
                     >
                       {bulkDialogAction === 'delete' ? 'Delete' : 
                        bulkDialogAction === 'activate' ? 'Activate' : 
-                       'Deactivate'}
+                       bulkDialogAction === 'deactivate' ? 'Deactivate' :
+                       'Update Team'}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

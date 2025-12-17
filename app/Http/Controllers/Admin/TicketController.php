@@ -275,7 +275,7 @@ class TicketController extends Controller
 
         return Inertia::render('Admin/Tickets/Show', [
             'ticket' => TicketResource::make($ticket),
-            'departments' => Department::select('id', 'name')->orderBy('name')->get(),
+            'departments' => Department::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
             'agents' => $agents,
         ]);
     }
@@ -354,7 +354,14 @@ class TicketController extends Controller
         
         // Check if user is trying to change status and has permission
         if (isset($data['status']) && $data['status'] !== $originalData['status']) {
-            if (!$this->canUserChangeStatus($user, $ticket)) {
+            if (!$this->canUserChangeStatus($user, $ticket, $data['status'])) {
+                // Check if user is the requester
+                if ($ticket->requester_id === $user->id) {
+                    return redirect()
+                        ->back()
+                        ->withInput()
+                        ->with('error', 'As the requester, you can only close or cancel your tickets, or reopen closed/cancelled tickets. Please contact an agent to change the status to other values.');
+                }
                 return redirect()
                     ->back()
                     ->withInput()
@@ -628,16 +635,23 @@ class TicketController extends Controller
             switch ($action) {
                 case 'status':
                     // Check if user can change status for this ticket
-                    if (!$this->canUserChangeStatus(Auth::user(), $ticket)) {
+                    if (!$this->canUserChangeStatus(Auth::user(), $ticket, $value)) {
                         \Log::warning('TicketController::bulkUpdate - User attempted to change status without permission', [
                             'ticket_id' => $ticket->id,
                             'ticket_number' => $ticket->ticket_number,
                             'user_id' => Auth::id(),
                             'assigned_agent_id' => $ticket->assigned_agent_id,
                             'assigned_team_id' => $ticket->assigned_team_id,
+                            'requester_id' => $ticket->requester_id,
+                            'new_status' => $value,
                         ]);
                         $failedCount++;
-                        $failedMessages[] = "Ticket #{$ticket->ticket_number}: You can only change the status of tickets assigned to you or your team. Managers and admins can change any ticket status.";
+                        // Check if user is the requester
+                        if ($ticket->requester_id === Auth::id()) {
+                            $failedMessages[] = "Ticket #{$ticket->ticket_number}: As the requester, you can only close or cancel your tickets, or reopen closed/cancelled tickets.";
+                        } else {
+                            $failedMessages[] = "Ticket #{$ticket->ticket_number}: You can only change the status of tickets assigned to you or your team. Managers and admins can change any ticket status.";
+                        }
                         continue 2; // Skip this ticket (continue outer foreach loop)
                     }
                     
@@ -1227,21 +1241,35 @@ class TicketController extends Controller
      * Check if user can change the status of a ticket
      * 
      * Rules:
-     * 1. If ticket is assigned to an agent: only that agent OR managers/admins can change status
-     * 2. If ticket is assigned to a team: any agent in that team OR managers/admins can change status
-     * 3. If unassigned: anyone with tickets.edit can change status
-     * 4. Managers/admins with tickets.assign permission can always change status
+     * 1. Managers/admins with tickets.assign permission can always change status
+     * 2. If ticket is assigned to an agent: only that agent OR managers/admins can change status
+     * 3. If ticket is assigned to a team: any agent in that team OR managers/admins can change status
+     * 4. Requesters can only change status to "closed" or "cancelled" for their own tickets
+     * 5. If unassigned: agents can change status, requesters can only close/cancel
      */
-    protected function canUserChangeStatus(User $user, Ticket $ticket): bool
+    protected function canUserChangeStatus(User $user, Ticket $ticket, ?string $newStatus = null): bool
     {
         // Managers/admins with assign permission can always change status
         if ($user->can('tickets.assign')) {
             return true;
         }
         
+        // Check if user is the requester
+        $isRequester = $ticket->requester_id === $user->id;
+        
+        // If user is the requester, they can only change status to "closed" or "cancelled"
+        if ($isRequester && $newStatus) {
+            $requesterAllowedStatuses = ['closed', 'cancelled'];
+            // Also allow reopening closed/cancelled tickets (changing back to open)
+            if (in_array($ticket->status, ['closed', 'cancelled']) && $newStatus === 'open') {
+                return true;
+            }
+            return in_array($newStatus, $requesterAllowedStatuses);
+        }
+        
         // If ticket is assigned to an agent
         if ($ticket->assigned_agent_id) {
-            // Only the assigned agent can change status
+            // Only the assigned agent can change status (not requesters)
             return $ticket->assigned_agent_id === $user->id;
         }
         
@@ -1250,13 +1278,26 @@ class TicketController extends Controller
             // Check if user is in the assigned team
             if ($user->department_id === $ticket->assigned_team_id) {
                 // Check if user is an agent (has Agent or Senior Agent role)
+                // Requesters cannot change status of tickets assigned to teams
                 return $user->hasAnyRole(RoleConstants::getAgentRoles());
             }
             return false;
         }
         
-        // If ticket is unassigned, anyone with tickets.edit can change status
-        // (This check is already done at the controller level, so return true)
+        // If ticket is unassigned:
+        // - Agents can change to any status
+        // - Requesters can only close/cancel or reopen
+        if ($isRequester && $newStatus) {
+            $requesterAllowedStatuses = ['closed', 'cancelled'];
+            // Allow reopening closed/cancelled tickets
+            if (in_array($ticket->status, ['closed', 'cancelled']) && $newStatus === 'open') {
+                return true;
+            }
+            return in_array($newStatus, $requesterAllowedStatuses);
+        }
+        
+        // For agents on unassigned tickets, allow status change
+        // (This check is already done at the controller level for tickets.edit permission)
         return true;
     }
 
@@ -1305,7 +1346,7 @@ class TicketController extends Controller
             // - HOD: Manages entire department (multiple teams)
             // - Line Manager: Manages small team (5-20 people) within department
             // - IT Manager, Finance Manager, HR Manager, etc.: Manage their specific department
-            $requesters = User::select('id', 'name')
+            $requesters = User::select('id', 'name', 'avatar')
                 ->where('department_id', $user->department_id)
                 ->orderBy('name')
                 ->get();
@@ -1314,28 +1355,41 @@ class TicketController extends Controller
             // Executives (CEO, Director) and Project Managers can select ALL users
             // - Executives: Oversee entire organization, may need to create tickets for anyone
             // - Project Manager: Works across departments on projects, may need to create tickets for cross-functional teams
-            $requesters = User::select('id', 'name')->orderBy('name')->get();
+            $requesters = User::select('id', 'name', 'avatar')->orderBy('name')->get();
             $canCreateOnBehalf = true;
         } elseif ($hasCreateOnBehalfPermission) {
             // Fallback: Any other role with permission (shouldn't happen, but just in case)
-            $requesters = User::select('id', 'name')->orderBy('name')->get();
+            $requesters = User::select('id', 'name', 'avatar')->orderBy('name')->get();
             $canCreateOnBehalf = true;
         } else {
             // Regular users (Requesters, Agents) can only select themselves
-            $requesters = collect([$user]);
+            // Ensure avatar is included even for single user
+            $requesters = collect([$user->only(['id', 'name', 'avatar'])]);
             $canCreateOnBehalf = false;
         }
         
         // Filter agents: Only show users with Agent or Senior Agent roles
         // Optimize: Use eager loading and cache role names
         $agentRoleNames = RoleConstants::getAgentRoles();
-        $agents = User::select('users.id', 'users.name')
+        $agents = User::select('users.id', 'users.name', 'users.department_id', 'users.avatar')
+            ->with(['department:id,name', 'roles:id,name'])
             ->where('users.is_active', true)
             ->whereHas('roles', function ($roleQuery) use ($agentRoleNames) {
                 $roleQuery->whereIn('name', $agentRoleNames);
             })
             ->orderBy('users.name')
-            ->get();
+            ->get()
+            ->map(function ($agent) {
+                // Get primary role (first agent role found)
+                $primaryRole = $agent->roles->first();
+                return [
+                    'id' => $agent->id,
+                    'name' => $agent->name,
+                    'avatar' => $agent->avatar,
+                    'role' => $primaryRole ? $primaryRole->name : null,
+                    'department' => $agent->department ? $agent->department->name : null,
+                ];
+            });
         
         // Optimize: Cache settings to avoid multiple queries
         $canAssign = $user->can('tickets.assign');
@@ -1349,7 +1403,7 @@ class TicketController extends Controller
             'statuses' => Ticket::STATUSES,
             'priorities' => Ticket::PRIORITIES,
             'sources' => Ticket::SOURCES,
-            'departments' => Department::select('id', 'name')->orderBy('name')->get(),
+            'departments' => Department::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
             'agents' => $agents,
             'categories' => TicketCategory::active()->select('id', 'name')->orderBy('name')->get(),
             'projects' => Project::select('id', 'name')->orderBy('name')->get(),

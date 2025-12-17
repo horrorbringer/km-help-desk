@@ -1,12 +1,16 @@
-import React from 'react';
-import { Head, Link, usePage } from '@inertiajs/react';
+import React, { useState } from 'react';
+import { Head, Link, usePage, router } from '@inertiajs/react';
 import ReactMarkdown from 'react-markdown';
-import { ArrowLeft, Edit, Eye, ThumbsUp, ThumbsDown, Calendar, User, Tag, Star } from 'lucide-react';
+import { ArrowLeft, Edit, Eye, ThumbsUp, ThumbsDown, Calendar, User, Tag, Star, Clock, FileText } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Card, CardContent } from '@/components/ui/card';
+import { UserAvatar } from '@/components/user-avatar';
+import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 interface Article {
   id: number;
@@ -40,6 +44,7 @@ const statusColorMap: Record<string, string> = {
 export default function ArticleShow(props: ArticleShowProps) {
   const page = usePage();
   const pageProps = page.props as { article?: Article };
+  const { toast } = useToast();
   
   // Get article from props or page props
   let article = props.article || pageProps.article;
@@ -60,11 +65,58 @@ export default function ArticleShow(props: ArticleShowProps) {
     );
   }
 
+  // State for feedback
+  const [feedbackState, setFeedbackState] = useState<{
+    helpful: number;
+    notHelpful: number;
+    userFeedback: 'helpful' | 'not_helpful' | null;
+    isSubmitting: boolean;
+  }>({
+    helpful: article.helpful_count || 0,
+    notHelpful: article.not_helpful_count || 0,
+    userFeedback: null, // Track if user has submitted feedback
+    isSubmitting: false,
+  });
+
+  const handleFeedback = async (type: 'helpful' | 'not_helpful') => {
+    if (feedbackState.isSubmitting || feedbackState.userFeedback !== null) {
+      return; // Prevent multiple submissions
+    }
+
+    setFeedbackState(prev => ({ ...prev, isSubmitting: true }));
+
+    router.post(
+      route('admin.knowledge-base.feedback', article.id),
+      { type },
+      {
+        preserveScroll: true,
+        onSuccess: () => {
+          setFeedbackState(prev => ({
+            ...prev,
+            helpful: type === 'helpful' ? prev.helpful + 1 : prev.helpful,
+            notHelpful: type === 'not_helpful' ? prev.notHelpful + 1 : prev.notHelpful,
+            userFeedback: type,
+            isSubmitting: false,
+          }));
+          toast.success('Thank you for your feedback!', {
+            description: `You marked this article as ${type === 'helpful' ? 'helpful' : 'not helpful'}.`,
+          });
+        },
+        onError: () => {
+          setFeedbackState(prev => ({ ...prev, isSubmitting: false }));
+          toast.error('Failed to submit feedback', {
+            description: 'Please try again later.',
+          });
+        },
+      }
+    );
+  };
+
   return (
     <AppLayout>
       <Head title={article.title} />
 
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         {/* Header Actions */}
         <div className="flex items-center justify-between">
           <Button asChild variant="ghost" size="sm">
@@ -83,127 +135,392 @@ export default function ArticleShow(props: ArticleShowProps) {
           )}
         </div>
 
-        {/* Article Header */}
-        <div className="space-y-4 pb-6 border-b">
-          <div className="flex items-start gap-3">
-            {article.is_featured && (
-              <Star className="h-5 w-5 text-amber-500 fill-amber-500 mt-1" />
-            )}
-            <div className="flex-1">
-              <h1 className="text-4xl font-bold tracking-tight mb-3">{article.title}</h1>
-              {article.excerpt && (
-                <p className="text-lg text-muted-foreground mb-4">{article.excerpt}</p>
+        {/* Article Header Card */}
+        <Card className="border-2 shadow-sm">
+          <CardContent className="p-6 space-y-6">
+            {/* Title Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                {article.is_featured && (
+                  <Star className="h-6 w-6 text-amber-500 fill-amber-500 mt-1 shrink-0" />
+                )}
+                <div className="flex-1">
+                  <h1 className="text-4xl font-bold tracking-tight mb-3 text-foreground">
+                    {article.title}
+                  </h1>
+                  {article.excerpt && (
+                    <p className="text-lg text-muted-foreground leading-relaxed mb-4">
+                      {article.excerpt}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Status Badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {article.is_featured && (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                    <Star className="h-3 w-3 mr-1.5 fill-amber-700" />
+                    Featured
+                  </Badge>
+                )}
+                <Badge
+                  variant="outline"
+                  className={cn('capitalize', statusColorMap[article.status] ?? '')}
+                >
+                  {article.status}
+                </Badge>
+                {article.category && (
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+                    <Tag className="h-3 w-3 mr-1.5" />
+                    {article.category.name}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Meta Information Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Author */}
+              {article.author && (
+                <div className="flex items-center gap-3">
+                  <UserAvatar 
+                    user={{ 
+                      id: article.author.id, 
+                      name: article.author.name, 
+                      avatar: article.author.avatar 
+                    }} 
+                    size="sm" 
+                    showTooltip={false}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+                      Author
+                    </p>
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {article.author.name}
+                    </p>
+                  </div>
+                </div>
               )}
-            </div>
-          </div>
 
-          {/* Meta Information */}
-          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-            {article.category && (
-              <div className="flex items-center gap-1.5">
-                <Tag className="h-4 w-4" />
-                <span>{article.category.name}</span>
-              </div>
-            )}
-            {article.author && (
-              <div className="flex items-center gap-1.5">
-                <User className="h-4 w-4" />
-                <span>{article.author.name}</span>
-              </div>
-            )}
-            {article.published_at && (
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
-                <span>{new Date(article.published_at).toLocaleDateString()}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-1.5">
-              <Eye className="h-4 w-4" />
-              <span>{article.views_count} views</span>
-            </div>
-            {(article.helpful_count > 0 || article.not_helpful_count > 0) && (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1">
-                  <ThumbsUp className="h-4 w-4 text-emerald-600" />
-                  <span className="text-emerald-600">{article.helpful_count}</span>
+              {/* Published Date */}
+              {article.published_at && (
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Calendar className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+                      Published
+                    </p>
+                    <p className="text-sm font-medium text-foreground">
+                      {new Date(article.published_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <ThumbsDown className="h-4 w-4 text-red-600" />
-                  <span className="text-red-600">{article.not_helpful_count}</span>
+              )}
+
+              {/* Views */}
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                  <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+                    Views
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    {article.views_count.toLocaleString()}
+                  </p>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Status Badges */}
-          <div className="flex items-center gap-2">
-            {article.is_featured && (
-              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
-                <Star className="h-3 w-3 mr-1 fill-amber-700" />
-                Featured
-              </Badge>
-            )}
-            <Badge
-              variant="outline"
-              className={`capitalize ${statusColorMap[article.status] ?? ''}`}
-            >
-              {article.status}
-            </Badge>
-          </div>
-        </div>
+              {/* Feedback */}
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                  <ThumbsUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                    Was this helpful?
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant={feedbackState.userFeedback === 'helpful' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handleFeedback('helpful')}
+                      disabled={feedbackState.isSubmitting || feedbackState.userFeedback !== null}
+                      className={cn(
+                        "h-8 gap-1.5",
+                        feedbackState.userFeedback === 'helpful' && "bg-emerald-600 hover:bg-emerald-700 text-white",
+                        feedbackState.userFeedback === 'not_helpful' && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <ThumbsUp className={cn(
+                        "h-3.5 w-3.5",
+                        feedbackState.userFeedback === 'helpful' ? "text-white" : "text-emerald-600"
+                      )} />
+                      <span className={cn(
+                        "text-sm font-medium",
+                        feedbackState.userFeedback === 'helpful' ? "text-white" : "text-emerald-600"
+                      )}>
+                        {feedbackState.helpful}
+                      </span>
+                    </Button>
+                    <Button
+                      variant={feedbackState.userFeedback === 'not_helpful' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handleFeedback('not_helpful')}
+                      disabled={feedbackState.isSubmitting || feedbackState.userFeedback !== null}
+                      className={cn(
+                        "h-8 gap-1.5",
+                        feedbackState.userFeedback === 'not_helpful' && "bg-red-600 hover:bg-red-700 text-white",
+                        feedbackState.userFeedback === 'helpful' && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <ThumbsDown className={cn(
+                        "h-3.5 w-3.5",
+                        feedbackState.userFeedback === 'not_helpful' ? "text-white" : "text-red-600"
+                      )} />
+                      <span className={cn(
+                        "text-sm font-medium",
+                        feedbackState.userFeedback === 'not_helpful' ? "text-white" : "text-red-600"
+                      )}>
+                        {feedbackState.notHelpful}
+                      </span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Article Content - GitHub README Style */}
-        <div className="bg-card rounded-lg border border-border p-8">
-          <article className="prose prose-slate dark:prose-invert max-w-none
-            prose-headings:font-semibold prose-headings:text-foreground
-            prose-headings:mt-8 prose-headings:mb-4 prose-headings:scroll-mt-20
-            prose-h1:text-3xl prose-h1:font-bold prose-h1:border-b prose-h1:border-border prose-h1:pb-3 prose-h1:mb-6 prose-h1:mt-0
-            prose-h2:text-2xl prose-h2:font-semibold prose-h2:mt-10 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h2:border-border
-            prose-h3:text-xl prose-h3:font-semibold prose-h3:mt-8 prose-h3:mb-3
-            prose-h4:text-lg prose-h4:font-semibold prose-h4:mt-6 prose-h4:mb-2
-            prose-p:text-[15px] prose-p:leading-7 prose-p:my-5 prose-p:text-foreground
-            prose-a:text-primary prose-a:font-medium prose-a:no-underline hover:prose-a:underline prose-a:decoration-2
-            prose-strong:font-semibold prose-strong:text-foreground
-            prose-code:text-[13px] prose-code:bg-muted prose-code:text-foreground prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono
-            prose-code:before:content-[''] prose-code:after:content-['']
-            prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg 
-            prose-pre:p-4 prose-pre:overflow-x-auto prose-pre:my-6
-            prose-pre-code:bg-transparent prose-pre-code:p-0 prose-pre-code:border-0
-            prose-ul:my-5 prose-ul:pl-6 prose-ul:list-disc
-            prose-ol:my-5 prose-ol:pl-6 prose-ol:list-decimal
-            prose-li:my-2 prose-li:text-[15px] prose-li:leading-7
-            prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-5 prose-blockquote:pr-4 
-            prose-blockquote:italic prose-blockquote:my-6 prose-blockquote:bg-muted/50 prose-blockquote:py-2 prose-blockquote:rounded-r
-            prose-table:w-full prose-table:my-6 prose-table:border-collapse
-            prose-th:border prose-th:border-border prose-th:px-4 prose-th:py-3 prose-th:bg-muted prose-th:text-left prose-th:font-semibold
-            prose-td:border prose-td:border-border prose-td:px-4 prose-td:py-3 prose-td:text-[15px]
-            prose-img:rounded-lg prose-img:border prose-img:border-border prose-img:my-6 prose-img:shadow-sm
-            prose-hr:my-8 prose-hr:border-border prose-hr:border-t-2">
-            <ReactMarkdown>{article.content}</ReactMarkdown>
-          </article>
-        </div>
+        {/* Article Content - Direct Plain Text Rendering with Formatting */}
+        <Card className="border-2 shadow-sm">
+          <CardContent className="p-8 md:p-10 lg:p-12">
+            <article className="max-w-none">
+              {(() => {
+                if (!article.content) return null;
+                
+                // Check if content has markdown syntax
+                const hasMarkdown = /^#{1,6}\s|^\*\s|^-\s|^\d+\.\s|^\*\*|^__|^`|^```|^\|/m.test(article.content);
+                
+                if (hasMarkdown) {
+                  // Render as markdown
+                  return (
+                    <div className="prose prose-slate dark:prose-invert max-w-none">
+                      <ReactMarkdown
+                        components={{
+                          h1: ({ children }) => (
+                            <h1 className="text-4xl font-extrabold border-b-2 border-border pb-4 mb-8 mt-0 pt-0 leading-tight text-foreground">
+                              {children}
+                            </h1>
+                          ),
+                          h2: ({ children }) => (
+                            <h2 className="text-3xl font-bold mt-12 mb-6 pt-2 pb-3 border-b border-border leading-tight text-foreground">
+                              {children}
+                            </h2>
+                          ),
+                          h3: ({ children }) => (
+                            <h3 className="text-2xl font-semibold mt-10 mb-4 pt-1 text-foreground">
+                              {children}
+                            </h3>
+                          ),
+                          p: ({ children }) => (
+                            <p className="text-base leading-8 my-6 text-foreground/90 first:mt-0 last:mb-0">
+                              {children}
+                            </p>
+                          ),
+                          ul: ({ children }) => (
+                            <ul className="my-6 pl-7 list-disc space-y-2">
+                              {children}
+                            </ul>
+                          ),
+                          ol: ({ children }) => (
+                            <ol className="my-6 pl-7 list-decimal space-y-2">
+                              {children}
+                            </ol>
+                          ),
+                          li: ({ children }) => (
+                            <li className="my-2 text-base leading-7 text-foreground/90">
+                              {children}
+                            </li>
+                          ),
+                        }}
+                      >
+                        {article.content}
+                      </ReactMarkdown>
+                    </div>
+                  );
+                }
+                
+                // Render plain text with smart formatting
+                const lines = article.content.split('\n');
+                const elements: React.ReactNode[] = [];
+                let currentList: string[] = [];
+                let listType: 'ul' | 'ol' | null = null;
+                let key = 0;
+                
+                const flushList = () => {
+                  if (currentList.length > 0) {
+                    if (listType === 'ul') {
+                      elements.push(
+                        <ul key={key++} className="my-6 pl-7 list-disc space-y-2">
+                          {currentList.map((item, idx) => (
+                            <li key={idx} className="my-2 text-base leading-7 text-foreground/90">
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    } else if (listType === 'ol') {
+                      elements.push(
+                        <ol key={key++} className="my-6 pl-7 list-decimal space-y-2">
+                          {currentList.map((item, idx) => (
+                            <li key={idx} className="my-2 text-base leading-7 text-foreground/90">
+                              {item}
+                            </li>
+                          ))}
+                        </ol>
+                      );
+                    }
+                    currentList = [];
+                    listType = null;
+                  }
+                };
+                
+                for (let i = 0; i < lines.length; i++) {
+                  const line = lines[i];
+                  const trimmed = line.trim();
+                  const nextLine = lines[i + 1]?.trim() || '';
+                  const prevLine = lines[i - 1]?.trim() || '';
+                  
+                  if (!trimmed) {
+                    flushList();
+                    if (elements.length > 0 && elements[elements.length - 1] !== null) {
+                      elements.push(null); // Add spacing
+                    }
+                    continue;
+                  }
+                  
+                  // Detect headings
+                  const isShort = trimmed.length < 100;
+                  const isAllCaps = trimmed === trimmed.toUpperCase() && trimmed.length > 3 && /^[A-Z\s]+$/.test(trimmed);
+                  const isTitleCase = /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*(\s+[a-z]+)*$/.test(trimmed) && trimmed.length < 80;
+                  const endsWithQuestion = trimmed.endsWith('?');
+                  const followedByEmpty = !nextLine;
+                  const precededByEmpty = !prevLine;
+                  
+                  if (isShort && (isAllCaps || isTitleCase || endsWithQuestion) && (followedByEmpty || precededByEmpty)) {
+                    flushList();
+                    elements.push(
+                      <h2 key={key++} className="text-3xl font-bold mt-12 mb-6 pt-2 pb-3 border-b border-border leading-tight text-foreground first:mt-0">
+                        {trimmed}
+                      </h2>
+                    );
+                    continue;
+                  }
+                  
+                  // Detect bullet points
+                  const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
+                  if (bulletMatch) {
+                    if (listType !== 'ul') {
+                      flushList();
+                      listType = 'ul';
+                    }
+                    currentList.push(bulletMatch[1]);
+                    continue;
+                  }
+                  
+                  // Detect numbered lists
+                  const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)$/);
+                  if (numberedMatch) {
+                    if (listType !== 'ol') {
+                      flushList();
+                      listType = 'ol';
+                    }
+                    currentList.push(numberedMatch[2]);
+                    continue;
+                  }
+                  
+                  // Regular paragraph
+                  flushList();
+                  if (trimmed) {
+                    elements.push(
+                      <p key={key++} className="text-base leading-8 my-6 text-foreground/90 first:mt-0 last:mb-0">
+                        {trimmed}
+                      </p>
+                    );
+                  }
+                }
+                
+                flushList();
+                
+                return <>{elements.filter(el => el !== null)}</>;
+              })()}
+            </article>
+          </CardContent>
+        </Card>
 
         {/* Footer Information */}
-        <Separator className="my-8" />
-        
-        <div className="grid gap-4 md:grid-cols-2 text-sm">
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Created
-            </p>
-            <p className="text-foreground">
-              {new Date(article.created_at).toLocaleString()}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Last Updated
-            </p>
-            <p className="text-foreground">
-              {new Date(article.updated_at).toLocaleString()}
-            </p>
-          </div>
-        </div>
+        <Card className="border bg-muted/30">
+          <CardContent className="p-6">
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="flex items-start gap-4">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <FileText className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                    Created
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm font-medium text-foreground">
+                      {new Date(article.created_at).toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                  <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                    Last Updated
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm font-medium text-foreground">
+                      {new Date(article.updated_at).toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );

@@ -212,5 +212,84 @@ class DepartmentController extends Controller
             ->route('admin.departments.index')
             ->with('success', 'Department deleted successfully.');
     }
+
+    public function toggleStatus(Department $department): RedirectResponse
+    {
+        abort_unless(auth()->user()->can('departments.edit'), 403, 'You do not have permission to edit departments.');
+        
+        $user = auth()->user();
+        
+        // Check if user can edit this department
+        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+            if ($user->department_id !== $department->id) {
+                abort(403, 'You can only edit your own department.');
+            }
+        }
+        
+        $newStatus = !$department->is_active;
+        $department->update(['is_active' => $newStatus]);
+        
+        // When disabling, users remain active but department won't receive new tickets
+        // When enabling, department can receive tickets again
+        $usersCount = $department->users()->count();
+        $message = $newStatus 
+            ? "Department activated successfully. It can now receive new tickets."
+            : "Department deactivated successfully. It will not receive new tickets.";
+        
+        if ($usersCount > 0) {
+            $message .= " Note: {$usersCount} user" . ($usersCount > 1 ? 's remain' : ' remains') . " assigned to this department and will stay active.";
+        }
+
+        return redirect()
+            ->route('admin.departments.index')
+            ->with('success', $message);
+    }
+
+    public function bulkUpdate(Request $request): RedirectResponse
+    {
+        abort_unless(auth()->user()->can('departments.edit'), 403, 'You do not have permission to edit departments.');
+        
+        $request->validate([
+            'department_ids' => ['required', 'array', 'min:1'],
+            'department_ids.*' => ['exists:departments,id'],
+            'action' => ['required', 'string', 'in:activate,deactivate'],
+        ]);
+
+        $departmentIds = $request->input('department_ids');
+        $action = $request->input('action');
+
+        $departments = Department::whereIn('id', $departmentIds)->get();
+
+        $updated = 0;
+        $skipped = 0;
+
+        $totalUsers = 0;
+        foreach ($departments as $department) {
+            if ($action === 'activate') {
+                $department->update(['is_active' => true]);
+                $updated++;
+            } elseif ($action === 'deactivate') {
+                $department->update(['is_active' => false]);
+                $totalUsers += $department->users()->count();
+                $updated++;
+            }
+        }
+
+        $departmentWord = $updated === 1 ? 'department' : 'departments';
+        $message = "Successfully {$action}d {$updated} {$departmentWord}.";
+        
+        if ($action === 'deactivate' && $totalUsers > 0) {
+            $message .= " Note: {$totalUsers} user" . ($totalUsers > 1 ? 's remain' : ' remains') . " assigned to these departments and will stay active.";
+        }
+        
+        if ($skipped > 0) {
+            $skippedWord = $skipped === 1 ? 'department was' : 'departments were';
+            $message .= " {$skipped} {$skippedWord} skipped.";
+        }
+
+        return redirect()
+            ->route('admin.departments.index')
+            ->with('success', $message);
+    }
 }
 

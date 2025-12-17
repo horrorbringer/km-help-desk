@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Jobs\SendTicketAssignedEmailJob;
+use App\Jobs\SendTicketCreatedEmailJob;
 use App\Models\HelpDeskNotification;
 use App\Models\Ticket;
 use App\Models\TicketComment;
@@ -99,98 +101,51 @@ class NotificationService
      */
     public function notifyTicketCreated(Ticket $ticket): void
     {
-        // Send email notifications
+        // Dispatch email notification job (non-blocking)
         try {
-            Log::info('NotificationService: Calling EmailService::sendTicketCreated', [
+            Log::info('NotificationService: Dispatching SendTicketCreatedEmailJob', [
                 'ticket_id' => $ticket->id,
                 'requester_email' => $ticket->requester?->email,
             ]);
-            $emailService = app(\App\Services\EmailService::class);
-            $result = $emailService->sendTicketCreated($ticket);
-            Log::info('NotificationService: EmailService::sendTicketCreated result', [
-                'ticket_id' => $ticket->id,
-                'result' => $result ? 'success' : 'failed',
-            ]);
+            SendTicketCreatedEmailJob::dispatch($ticket);
             
-            // Notify assigned agent via email
+            // Notify assigned agent via email (queued)
             if ($ticket->assigned_agent_id) {
-                Log::info('NotificationService: Calling EmailService::sendTicketAssigned for agent', [
+                Log::info('NotificationService: Dispatching SendTicketAssignedEmailJob for agent', [
                     'ticket_id' => $ticket->id,
                     'assigned_agent_id' => $ticket->assigned_agent_id,
                 ]);
-                $result = $emailService->sendTicketAssigned($ticket);
-                Log::info('NotificationService: EmailService::sendTicketAssigned result', [
-                    'ticket_id' => $ticket->id,
-                    'result' => $result ? 'success' : 'failed',
-                ]);
+                SendTicketAssignedEmailJob::dispatch($ticket, $ticket->assignedAgent);
             } elseif ($ticket->assigned_team_id) {
-                // Notify all active team members via email
+                // Dispatch jobs for all active team members (non-blocking)
                 $team = $ticket->assignedTeam;
                 if ($team) {
                     $teamMembers = $team->users()->where('is_active', true)->get();
-                    Log::info('NotificationService: Sending email notifications to team members', [
+                    Log::info('NotificationService: Dispatching email notification jobs to team members', [
                         'ticket_id' => $ticket->id,
                         'team_id' => $ticket->assigned_team_id,
                         'team_name' => $team->name,
                         'team_member_count' => $teamMembers->count(),
                     ]);
                     
-                    $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500); // Default 500ms delay
+                    // Get delay setting for staggered job dispatch
+                    $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500);
                     $memberIndex = 0;
                     
                     foreach ($teamMembers as $user) {
-                        // Add delay between emails to prevent rate limiting (skip delay for first email)
-                        if ($memberIndex > 0) {
-                            usleep($delayBetweenEmails * 1000); // Convert ms to microseconds
-                        }
+                        // Dispatch job with a small delay to prevent rate limiting
+                        // Delay increases slightly for each subsequent email
+                        $delay = $memberIndex > 0 ? ($delayBetweenEmails * $memberIndex) / 1000 : 0; // Convert to seconds
                         
-                        try {
-                            $result = $emailService->sendTicketAssigned($ticket, $user);
-                            if ($result) {
-                                Log::info('NotificationService: Email sent to team member', [
-                                    'ticket_id' => $ticket->id,
-                                    'user_id' => $user->id,
-                                    'user_email' => $user->email,
-                                ]);
-                            } else {
-                                Log::warning('NotificationService: Failed to send email to team member', [
-                                    'ticket_id' => $ticket->id,
-                                    'user_id' => $user->id,
-                                    'user_email' => $user->email,
-                                ]);
-                            }
-                        } catch (\Exception $e) {
-                            $errorMessage = $e->getMessage();
-                            $isRateLimitError = str_contains($errorMessage, 'Too many emails') || 
-                                               str_contains($errorMessage, 'rate limit') ||
-                                               str_contains($errorMessage, '550 5.7.0');
-                            
-                            if ($isRateLimitError) {
-                                // If rate limited, wait longer before continuing
-                                Log::warning('NotificationService: Rate limit detected, waiting before continuing', [
-                                    'ticket_id' => $ticket->id,
-                                    'user_id' => $user->id,
-                                    'user_email' => $user->email,
-                                    'delay_ms' => $delayBetweenEmails * 2,
-                                ]);
-                                usleep($delayBetweenEmails * 2000); // Wait 2x longer on rate limit
-                            }
-                            
-                            Log::error('NotificationService: Exception sending email to team member', [
-                                'ticket_id' => $ticket->id,
-                                'user_id' => $user->id,
-                                'user_email' => $user->email,
-                                'error' => $errorMessage,
-                                'is_rate_limit' => $isRateLimitError,
-                            ]);
-                        }
+                        SendTicketAssignedEmailJob::dispatch($ticket, $user)
+                            ->delay(now()->addSeconds($delay));
                         
                         $memberIndex++;
                     }
                 }
             }
         } catch (\Exception $e) {
-            Log::error("Failed to send email notification: {$e->getMessage()}", [
+            Log::error("Failed to dispatch email notification jobs: {$e->getMessage()}", [
                 'ticket_id' => $ticket->id,
                 'exception' => get_class($e),
                 'trace' => $e->getTraceAsString(),
@@ -230,90 +185,47 @@ class NotificationService
      */
     public function notifyTicketAssigned(Ticket $ticket): void
     {
-        // Send email notifications
+        // Dispatch email notification jobs (non-blocking)
         try {
-            Log::info('NotificationService: Calling EmailService::sendTicketAssigned', [
+            Log::info('NotificationService: Dispatching SendTicketAssignedEmailJob', [
                 'ticket_id' => $ticket->id,
                 'assigned_agent_id' => $ticket->assigned_agent_id,
                 'assigned_team_id' => $ticket->assigned_team_id,
             ]);
-            $emailService = app(\App\Services\EmailService::class);
             
-            // Notify assigned agent via email
+            // Notify assigned agent via email (queued)
             if ($ticket->assigned_agent_id) {
-                $result = $emailService->sendTicketAssigned($ticket);
-                Log::info('NotificationService: EmailService::sendTicketAssigned result', [
-                    'ticket_id' => $ticket->id,
-                    'result' => $result ? 'success' : 'failed',
-                ]);
+                SendTicketAssignedEmailJob::dispatch($ticket, $ticket->assignedAgent);
             } elseif ($ticket->assigned_team_id) {
-                // Notify all active team members via email
+                // Dispatch jobs for all active team members (non-blocking)
                 $team = $ticket->assignedTeam;
                 if ($team) {
                     $teamMembers = $team->users()->where('is_active', true)->get();
-                    Log::info('NotificationService: Sending email notifications to team members', [
+                    Log::info('NotificationService: Dispatching email notification jobs to team members', [
                         'ticket_id' => $ticket->id,
                         'team_id' => $ticket->assigned_team_id,
                         'team_name' => $team->name,
                         'team_member_count' => $teamMembers->count(),
                     ]);
                     
-                    $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500); // Default 500ms delay
+                    // Get delay setting for staggered job dispatch
+                    $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500);
                     $memberIndex = 0;
                     
                     foreach ($teamMembers as $user) {
-                        // Add delay between emails to prevent rate limiting (skip delay for first email)
-                        if ($memberIndex > 0) {
-                            usleep($delayBetweenEmails * 1000); // Convert ms to microseconds
-                        }
+                        // Dispatch job with a small delay to prevent rate limiting
+                        // Delay increases slightly for each subsequent email
+                        $delay = $memberIndex > 0 ? ($delayBetweenEmails * $memberIndex) / 1000 : 0; // Convert to seconds
                         
-                        try {
-                            $result = $emailService->sendTicketAssigned($ticket, $user);
-                            if ($result) {
-                                Log::info('NotificationService: Email sent to team member', [
-                                    'ticket_id' => $ticket->id,
-                                    'user_id' => $user->id,
-                                    'user_email' => $user->email,
-                                ]);
-                            } else {
-                                Log::warning('NotificationService: Failed to send email to team member', [
-                                    'ticket_id' => $ticket->id,
-                                    'user_id' => $user->id,
-                                    'user_email' => $user->email,
-                                ]);
-                            }
-                        } catch (\Exception $e) {
-                            $errorMessage = $e->getMessage();
-                            $isRateLimitError = str_contains($errorMessage, 'Too many emails') || 
-                                               str_contains($errorMessage, 'rate limit') ||
-                                               str_contains($errorMessage, '550 5.7.0');
-                            
-                            if ($isRateLimitError) {
-                                // If rate limited, wait longer before continuing
-                                Log::warning('NotificationService: Rate limit detected, waiting before continuing', [
-                                    'ticket_id' => $ticket->id,
-                                    'user_id' => $user->id,
-                                    'user_email' => $user->email,
-                                    'delay_ms' => $delayBetweenEmails * 2,
-                                ]);
-                                usleep($delayBetweenEmails * 2000); // Wait 2x longer on rate limit
-                            }
-                            
-                            Log::error('NotificationService: Exception sending email to team member', [
-                                'ticket_id' => $ticket->id,
-                                'user_id' => $user->id,
-                                'user_email' => $user->email,
-                                'error' => $errorMessage,
-                                'is_rate_limit' => $isRateLimitError,
-                            ]);
-                        }
+                        SendTicketAssignedEmailJob::dispatch($ticket, $user)
+                            ->delay(now()->addSeconds($delay));
                         
                         $memberIndex++;
                     }
                 }
             }
         } catch (\Exception $e) {
-            Log::error("Failed to send ticket assigned email: {$e->getMessage()}", [
+            Log::error("Failed to dispatch ticket assigned email jobs: {$e->getMessage()}", [
                 'ticket_id' => $ticket->id,
                 'exception' => get_class($e),
                 'trace' => $e->getTraceAsString(),
@@ -823,12 +735,11 @@ class NotificationService
                     ]
                 );
 
-                // Send email notification
+                // Dispatch email notification job (non-blocking)
                 try {
-                    $emailService = app(\App\Services\EmailService::class);
-                    $emailService->sendTicketAssigned($ticket, $manager);
+                    SendTicketAssignedEmailJob::dispatch($ticket, $manager);
                 } catch (\Exception $e) {
-                    Log::error('Failed to send email notification to department manager', [
+                    Log::error('Failed to dispatch email notification job to department manager', [
                         'ticket_id' => $ticket->id,
                         'manager_id' => $manager->id,
                         'manager_email' => $manager->email,
