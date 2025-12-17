@@ -30,13 +30,16 @@ class CategoryRequest extends FormRequest
             'default_team_id' => ['required', 'exists:departments,id'],
             'is_active' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
+            'requires_approval' => ['boolean'],
+            'requires_hod_approval' => ['boolean'],
+            'hod_approval_threshold' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 
     protected function prepareForValidation(): void
     {
-        // Auto-generate slug if not provided
-        if (!$this->has('slug') && $this->has('name')) {
+        // Auto-generate slug if not provided or empty
+        if ((!$this->has('slug') || empty($this->slug)) && $this->has('name') && !empty($this->name)) {
             $this->merge([
                 'slug' => Str::slug($this->name),
             ]);

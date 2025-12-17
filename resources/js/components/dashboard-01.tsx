@@ -2,13 +2,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import {
   ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Link } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Users, Ticket, CheckCircle, Clock } from 'lucide-react';
@@ -107,25 +107,25 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
     count,
   }));
 
-  // Chart configurations
+  // Chart configurations using default shadcn colors
   const trendChartConfig = {
     tickets: {
       label: 'Tickets',
-      color: 'hsl(var(--chart-1))',
+      color: 'var(--chart-1)',
     },
   } satisfies ChartConfig;
 
   const statusChartConfig = {
     count: {
       label: 'Count',
-      color: 'hsl(var(--chart-2))',
+      color: 'var(--chart-2)',
     },
   } satisfies ChartConfig;
 
   const priorityChartConfig = {
     count: {
       label: 'Count',
-      color: 'hsl(var(--chart-3))',
+      color: 'var(--chart-3)',
     },
   } satisfies ChartConfig;
 
@@ -134,7 +134,7 @@ export function Dashboard01({ stats, period, onPeriodChange }: Dashboard01Props)
       {/* Period Selector */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Help Desk Dashboard</h2>
           <p className="text-muted-foreground">Here's an overview of your help desk system.</p>
         </div>
         <Select value={period} onValueChange={onPeriodChange}>

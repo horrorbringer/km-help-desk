@@ -19,6 +19,7 @@ return new class extends Migration
                 ->onDelete('cascade');
 
             $table->foreignId('assigned_team_id')
+                ->nullable()
                 ->constrained('departments')
                 ->onDelete('restrict');
 

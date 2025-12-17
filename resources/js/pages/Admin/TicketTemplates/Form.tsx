@@ -400,6 +400,25 @@ export default function TicketTemplateForm({ template, formOptions }: TicketTemp
                   </p>
                 </div>
                 <div>
+                  <p className="font-medium mb-1">Template Variables</p>
+                  <p className="text-muted-foreground mb-2">
+                    Use variables in subject and description that will be replaced when the template is used:
+                  </p>
+                  <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-2">
+                    <li><code className="bg-muted px-1 rounded">&#123;date&#125;</code> - Current date (Y-m-d)</li>
+                    <li><code className="bg-muted px-1 rounded">&#123;time&#125;</code> - Current time (H:i)</li>
+                    <li><code className="bg-muted px-1 rounded">&#123;datetime&#125;</code> - Current date and time</li>
+                    <li><code className="bg-muted px-1 rounded">&#123;user&#125;</code> - Current user name</li>
+                    <li><code className="bg-muted px-1 rounded">&#123;user_email&#125;</code> - Current user email</li>
+                    <li><code className="bg-muted px-1 rounded">&#123;year&#125;</code> - Current year</li>
+                    <li><code className="bg-muted px-1 rounded">&#123;month&#125;</code> - Current month name</li>
+                    <li><code className="bg-muted px-1 rounded">&#123;day&#125;</code> - Current day</li>
+                  </ul>
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    Example: "Equipment Repair Request - {date}" will become "Equipment Repair Request - 2024-01-15"
+                  </p>
+                </div>
+                <div>
                   <p className="font-medium mb-1">Public vs Private</p>
                   <p className="text-muted-foreground">
                     Public templates can be used by all users. Private templates are only visible to

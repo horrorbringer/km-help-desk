@@ -20,11 +20,17 @@ class TicketCategory extends Model
         'default_team_id',
         'is_active',
         'sort_order',
+        'requires_approval',
+        'requires_hod_approval',
+        'hod_approval_threshold',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'sort_order' => 'integer',
+        'requires_approval' => 'boolean',
+        'requires_hod_approval' => 'boolean',
+        'hod_approval_threshold' => 'decimal:2',
     ];
 
     public function parent(): BelongsTo
@@ -53,18 +59,26 @@ class TicketCategory extends Model
     }
 
     /**
+     * Scope to get only active categories
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    /**
      * Get all descendant categories (recursive)
      */
     public function descendants(): \Illuminate\Database\Eloquent\Collection
     {
-        $descendants = collect();
+        $allDescendants = [];
         
         foreach ($this->children as $child) {
-            $descendants->push($child);
-            $descendants = $descendants->merge($child->descendants());
+            $allDescendants[] = $child;
+            $allDescendants = array_merge($allDescendants, $child->descendants()->all());
         }
         
-        return $descendants;
+        return new \Illuminate\Database\Eloquent\Collection($allDescendants);
     }
 }
 

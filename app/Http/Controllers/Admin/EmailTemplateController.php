@@ -125,6 +125,10 @@ class EmailTemplateController extends Controller
             'resolved_by' => 'Name of user who resolved the ticket',
             'commenter' => 'Name of user who added a comment',
             'changes' => 'List of changed fields',
+            // Approval workflow variables
+            'approval_level' => 'Approval level: "Line Manager" or "Head of Department"',
+            'approver_name' => 'Name of the approver',
+            'comments' => 'Approval or rejection comments (if provided)',
         ];
     }
 }

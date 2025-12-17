@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Upload, X, Check, Search, Loader2, User, FolderKanban, Plus, Save, Sparkles } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { CustomFieldsForm } from '@/components/custom-fields-form';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +35,7 @@ type TicketFormProps = {
     sla_policy?: BaseOption;
     status: string;
     priority: string;
+    estimated_cost?: number | null;
     source: string;
     first_response_at?: string | null;
     first_response_due_at?: string | null;
@@ -68,6 +72,7 @@ type TicketFormProps = {
     categories: BaseOption[];
     projects: BaseOption[];
     requesters: BaseOption[];
+    can_create_on_behalf?: boolean;
     customFields?: {
       id: number;
       name: string;
@@ -81,6 +86,11 @@ type TicketFormProps = {
     }[];
     sla_policies: BaseOption[];
     tags: { id: number; name: string; color: string }[];
+    enable_advanced_options?: boolean;
+    enable_sla_options?: boolean;
+    enable_custom_fields?: boolean;
+    enable_tags?: boolean;
+    enable_watchers?: boolean;
   };
 };
 
@@ -93,12 +103,29 @@ const priorityColorMap: Record<string, string> = {
 
 const defaultDate = (value?: string | null) => (value ? value.substring(0, 16) : '');
 
-export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
+export default function TicketForm(props: TicketFormProps) {
+  const page = usePage();
+  const pageProps = page.props as { 
+    auth?: { user?: { id: number; department_id?: number | null } | null };
+    errors?: Record<string, string>;
+    ticket?: any;
+    formOptions?: any;
+  };
+  
+  // Get ticket and formOptions from props or page props, handling nested data structure
+  let ticket = props.ticket || pageProps.ticket;
+  const formOptions = props.formOptions || pageProps.formOptions;
+  
+  // Handle TicketResource wrapping - Inertia may wrap it in a data property
+  if (ticket && typeof ticket === 'object' && 'data' in ticket) {
+    ticket = (ticket as any).data;
+  }
+  
   const isEdit = Boolean(ticket?.id);
-  const pageProps = usePage().props as { auth?: { user?: { id: number; department_id?: number | null } | null } };
   const auth = pageProps.auth;
   const subjectInputRef = useRef<HTMLInputElement>(null);
-  useToast(); // Handle flash messages
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast: toastFromHook } = useToast(); // Handle flash messages
   
   // Auto-select current user as requester if creating new ticket
   const defaultRequesterId = useMemo(() => {
@@ -124,7 +151,7 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
   const initialCustomFields = useMemo(() => {
     const customFields: Record<number, any> = {};
     if (ticket?.custom_field_values) {
-      ticket.custom_field_values.forEach((cfv) => {
+      ticket.custom_field_values.forEach((cfv: any) => {
         let value = cfv.value;
         // Parse multiselect values
         if (cfv.custom_field.field_type === 'multiselect') {
@@ -144,7 +171,31 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     return customFields;
   }, [ticket?.custom_field_values]);
 
-  const { data, setData, post, put, processing, errors } = useForm({
+  const { data, setData, post, put, processing, errors: formErrors, transform } = useForm<{
+    ticket_number: string;
+    subject: string;
+    description: string;
+    requester_id: string | number;
+    assigned_team_id: string | number;
+    assigned_agent_id: string | number | null;
+    category_id: string | number;
+    project_id: string | number | null;
+    sla_policy_id: string | number | null;
+    status: string;
+    priority: string;
+    estimated_cost: number | null;
+    source: string;
+    first_response_at: string;
+    first_response_due_at: string;
+    resolution_due_at: string;
+    resolved_at: string;
+    closed_at: string;
+    response_sla_breached: boolean;
+    resolution_sla_breached: boolean;
+    tag_ids: number[];
+    watcher_ids: number[];
+    custom_fields: Record<number, any>;
+  }>({
     ticket_number: ticket?.ticket_number ?? '',
     subject: ticket?.subject ?? '',
     description: ticket?.description ?? '',
@@ -156,6 +207,7 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     sla_policy_id: ticket?.sla_policy?.id ?? '',
     status: ticket?.status ?? formOptions.statuses[0] ?? 'open',
     priority: ticket?.priority ?? formOptions.priorities[1] ?? 'medium',
+    estimated_cost: ticket?.estimated_cost ?? null,
     source: ticket?.source ?? formOptions.sources[0] ?? 'web',
     first_response_at: defaultDate(ticket?.first_response_at),
     first_response_due_at: defaultDate(ticket?.first_response_due_at),
@@ -164,32 +216,299 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     closed_at: defaultDate(ticket?.closed_at),
     response_sla_breached: ticket?.response_sla_breached ?? false,
     resolution_sla_breached: ticket?.resolution_sla_breached ?? false,
-    tag_ids: ticket?.tags?.map((tag) => tag.id) ?? [],
-    watcher_ids: ticket?.watchers?.map((user) => user.id) ?? [],
+    tag_ids: (ticket?.tags?.map((tag: any) => tag.id) ?? []) as number[],
+    watcher_ids: (ticket?.watchers?.map((user: any) => user.id) ?? []) as number[],
     custom_fields: initialCustomFields,
   });
 
-  const handleSubmit = (event: FormEvent) => {
+  // Transform data before submission: convert empty strings to null for optional fields
+  transform((data) => {
+    const transformed: any = { ...data };
+    
+    // Handle ticket_number - convert empty string to null (will be auto-generated)
+    if (transformed.ticket_number === '' || transformed.ticket_number === null) {
+      transformed.ticket_number = null;
+    }
+    
+    // Handle optional fields - convert empty strings to null
+    if (transformed.assigned_agent_id === '' || transformed.assigned_agent_id === null) {
+      transformed.assigned_agent_id = null;
+    } else {
+      transformed.assigned_agent_id = Number(transformed.assigned_agent_id) || null;
+    }
+    
+    if (transformed.project_id === '' || transformed.project_id === null) {
+      transformed.project_id = null;
+    } else {
+      transformed.project_id = Number(transformed.project_id) || null;
+    }
+    
+    if (transformed.sla_policy_id === '' || transformed.sla_policy_id === null) {
+      transformed.sla_policy_id = null;
+    } else {
+      transformed.sla_policy_id = Number(transformed.sla_policy_id) || null;
+    }
+    
+    // Handle estimated_cost - convert empty string to null, convert to number
+    if (transformed.estimated_cost === '' || transformed.estimated_cost === null) {
+      transformed.estimated_cost = null;
+    } else {
+      transformed.estimated_cost = Number(transformed.estimated_cost) || null;
+    }
+    
+    // Handle date fields
+    transformed.first_response_at = transformed.first_response_at || null;
+    transformed.first_response_due_at = transformed.first_response_due_at || null;
+    transformed.resolution_due_at = transformed.resolution_due_at || null;
+    transformed.resolved_at = transformed.resolved_at || null;
+    transformed.closed_at = transformed.closed_at || null;
+    
+    // Handle required fields - ensure they are numbers
+    transformed.requester_id = transformed.requester_id === '' || transformed.requester_id === null 
+      ? null 
+      : Number(transformed.requester_id);
+    transformed.assigned_team_id = transformed.assigned_team_id === '' || transformed.assigned_team_id === null 
+      ? null 
+      : Number(transformed.assigned_team_id);
+    transformed.category_id = transformed.category_id === '' || transformed.category_id === null 
+      ? null 
+      : Number(transformed.category_id);
+    
+    return transformed;
+  });
+
+  // Combine form errors with page props errors
+  const errors = { ...formErrors, ...(pageProps.errors || {}) };
+
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
-    // Convert empty strings to null for optional fields before submission
-    const submitData = {
-      ...data,
-      assigned_agent_id: data.assigned_agent_id === '' ? null : data.assigned_agent_id,
-      project_id: data.project_id === '' ? null : data.project_id,
-      sla_policy_id: data.sla_policy_id === '' ? null : data.sla_policy_id,
-      first_response_at: data.first_response_at || null,
-      first_response_due_at: data.first_response_due_at || null,
-      resolution_due_at: data.resolution_due_at || null,
-      resolved_at: data.resolved_at || null,
-      closed_at: data.closed_at || null,
-    };
-
-    // Use router directly to submit with transformed data
     if (isEdit && ticket) {
-      router.put(route('admin.tickets.update', ticket.id), submitData);
+      put(route('admin.tickets.update', ticket.id), {
+        onError: (errors) => {
+          console.error('Update errors:', errors);
+        },
+        onSuccess: () => {
+          // Upload files after ticket update if any are selected
+          if (selectedFiles.length > 0) {
+            handleFileUpload();
+          }
+        },
+      });
     } else {
-      router.post(route('admin.tickets.store'), submitData);
+      post(route('admin.tickets.store'), {
+        onError: (errors) => {
+          console.error('Create errors:', errors);
+          // Errors will be automatically displayed in the form
+        },
+        onSuccess: (page) => {
+          // Success message will be shown via toast from flash message
+          // Upload files after ticket creation if any are selected
+          if (selectedFiles.length > 0) {
+            // After redirect, Inertia will load the show page
+            // We need to wait for the page to load and get ticket ID from URL or page props
+            const getTicketId = () => {
+              // Try to get from page props first (after redirect)
+              const ticket = (page.props as any).ticket;
+              if (ticket) {
+                const ticketId = ticket.id || ticket.data?.id;
+                if (ticketId) return Number(ticketId);
+              }
+              
+              // Fallback: extract from URL
+              const match = window.location.pathname.match(/\/tickets\/(\d+)/);
+              if (match && match[1]) {
+                return Number(match[1]);
+              }
+              
+              return null;
+            };
+            
+            // Try immediately
+            let ticketId = getTicketId();
+            
+            // If not found, wait a bit for Inertia to finish the redirect
+            if (!ticketId) {
+              setTimeout(() => {
+                ticketId = getTicketId();
+                if (ticketId) {
+                  uploadFilesAfterCreate(ticketId);
+                } else {
+                  console.error('Could not get ticket ID for file upload');
+                }
+              }, 1000);
+            } else {
+              uploadFilesAfterCreate(ticketId);
+            }
+          }
+        },
+      });
+    }
+  };
+
+  // Helper function to get CSRF token from multiple sources
+  const getCsrfToken = (): string => {
+    // Try multiple methods to get CSRF token
+    // 1. From Inertia page props (most reliable, always fresh)
+    const pageProps = page.props as any;
+    if (pageProps?.csrf_token) {
+      return pageProps.csrf_token;
+    }
+    
+    // 2. From meta tag (fallback)
+    let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (token) return token;
+    
+    // 3. Try to get from cookies (Laravel stores it as XSRF-TOKEN)
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split('=');
+      if (name === 'XSRF-TOKEN') {
+        return decodeURIComponent(value);
+      }
+    }
+    
+    throw new Error('CSRF token not found. Please refresh the page and try again.');
+  };
+
+  const uploadFilesAfterCreate = async (ticketId: number) => {
+    if (selectedFiles.length === 0) return;
+
+    setUploadingFiles(true);
+    const formData = new FormData();
+    selectedFiles.forEach((file) => {
+      formData.append('files[]', file);
+    });
+
+    try {
+      // Wait a bit after redirect to ensure page is fully loaded
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Get fresh CSRF token
+      let csrfToken: string;
+      try {
+        csrfToken = getCsrfToken();
+      } catch (error) {
+        // If still not found, wait a bit more and try again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        csrfToken = getCsrfToken();
+      }
+
+      // Add CSRF token to form data
+      formData.append('_token', csrfToken);
+
+      const response = await fetch(route('admin.ticket-attachments.store', ticketId), {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+          // Don't set Content-Type - browser will set it automatically with boundary for FormData
+        },
+        credentials: 'same-origin', // Include cookies for CSRF
+        body: formData,
+      });
+
+      if (response.ok) {
+        const fileCount = selectedFiles.length;
+        setSelectedFiles([]);
+        toast.success('Files uploaded successfully', {
+          description: `${fileCount} file${fileCount === 1 ? '' : 's'} uploaded successfully`,
+          duration: 3000,
+          icon: <Check className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+          },
+        });
+        // Reload the page to show the new attachments
+        router.reload({ only: ['ticket'] });
+      } else {
+        let errorMessage = 'Failed to upload files.';
+        let errorDetails: string[] = [];
+        
+        if (response.status === 419) {
+          errorMessage = 'Session expired. Please refresh the page and try again.';
+          errorDetails.push('Your session may have expired. Refreshing the page will generate a new CSRF token.');
+        } else if (response.status === 413) {
+          errorMessage = 'File size is too large.';
+          errorDetails.push('Maximum allowed: 10MB per file.');
+          errorDetails.push('Please contact your administrator if you need to upload larger files.');
+        } else if (response.status === 422) {
+          errorMessage = 'Validation error.';
+          try {
+            const data = await response.json();
+            if (data.errors) {
+              Object.values(data.errors).forEach((err: any) => {
+                if (Array.isArray(err)) {
+                  errorDetails.push(...err);
+                } else {
+                  errorDetails.push(err);
+                }
+              });
+            } else if (data.message) {
+              errorDetails.push(data.message);
+            }
+          } catch {
+            errorDetails.push('Please check your files and try again.');
+          }
+        } else {
+          try {
+            const data = await response.json();
+            if (data.message) {
+              errorDetails.push(data.message);
+            } else {
+              errorDetails.push(`Server error (${response.status}). Please try again or contact support.`);
+            }
+          } catch {
+            errorDetails.push(`Server error (${response.status}). Please try again or contact support.`);
+          }
+        }
+        
+        console.error('Upload error:', response.status, errorMessage, errorDetails);
+        toast.error('Upload failed', {
+          description: errorDetails.length > 0 ? errorDetails.join(' ') : errorMessage,
+          duration: 6000,
+          icon: <X className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+            padding: '16px',
+          },
+          action: response.status === 419 ? {
+            label: 'Refresh Page',
+            onClick: () => window.location.reload(),
+          } : undefined,
+        });
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      const errorMessage = error.message || 'Failed to upload files. Please try again.';
+      toast.error('Upload failed', {
+        description: errorMessage,
+        duration: 6000,
+        icon: <X className="size-5 text-white" />,
+        style: {
+          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          padding: '16px',
+        },
+        action: errorMessage.includes('CSRF') || errorMessage.includes('refresh') ? {
+          label: 'Refresh Page',
+          onClick: () => window.location.reload(),
+        } : undefined,
+      });
+    } finally {
+      setUploadingFiles(false);
     }
   };
 
@@ -207,6 +526,275 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     });
   };
 
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    // Validate file sizes (10MB max)
+    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    const invalidFiles: File[] = [];
+    const validFiles = files.filter((file) => {
+      if (file.size > maxSize) {
+        invalidFiles.push(file);
+        return false;
+      }
+      return true;
+    });
+    
+    // Show error toast for invalid files
+    if (invalidFiles.length > 0) {
+      invalidFiles.forEach((file) => {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        toast.error('File too large', {
+          description: `"${file.name}" (${fileSizeMB}MB) exceeds the maximum size of 10MB per file.`,
+          duration: 5000,
+          icon: <X className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          },
+        });
+      });
+    }
+    
+    // Show success toast if files were added
+    if (validFiles.length > 0) {
+      toast.success(
+        validFiles.length === 1 ? 'File added' : `${validFiles.length} files added`,
+        {
+          description: validFiles.length === 1 
+            ? `"${validFiles[0].name}" is ready to upload`
+            : `${validFiles.length} files are ready to upload`,
+          duration: 3000,
+          icon: <Check className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+          },
+        }
+      );
+    }
+    
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
+    // Reset input to allow selecting the same file again
+    event.target.value = '';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(e.dataTransfer.files || []);
+    const maxSize = 10 * 1024 * 1024;
+    const invalidFiles: File[] = [];
+    const validFiles = files.filter((file) => {
+      if (file.size > maxSize) {
+        invalidFiles.push(file);
+        return false;
+      }
+      return true;
+    });
+    
+    // Show error toast for invalid files
+    if (invalidFiles.length > 0) {
+      invalidFiles.forEach((file) => {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        toast.error('File too large', {
+          description: `"${file.name}" (${fileSizeMB}MB) exceeds the maximum size of 10MB per file.`,
+          duration: 5000,
+          icon: <X className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          },
+        });
+      });
+    }
+    
+    // Show success toast if files were added
+    if (validFiles.length > 0) {
+      toast.success(
+        validFiles.length === 1 ? 'File added' : `${validFiles.length} files added`,
+        {
+          description: validFiles.length === 1 
+            ? `"${validFiles[0].name}" is ready to upload`
+            : `${validFiles.length} files are ready to upload`,
+          duration: 3000,
+          icon: <Check className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+          },
+        }
+      );
+    }
+    
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
+  };
+
+  const handleFileRemove = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const handleFileUpload = async () => {
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    // For create mode, we'll upload files after ticket is created
+    // For edit mode, upload immediately
+    if (!isEdit || !ticket?.id) {
+      // In create mode, files will be uploaded after ticket creation
+      return;
+    }
+
+    setUploadingFiles(true);
+    const formData = new FormData();
+    selectedFiles.forEach((file) => {
+      formData.append('files[]', file);
+    });
+
+    try {
+      // Get CSRF token using the helper function
+      const csrfToken = getCsrfToken();
+
+      // Add CSRF token to form data
+      formData.append('_token', csrfToken);
+
+      const response = await fetch(route('admin.ticket-attachments.store', ticket.id), {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+          // Don't set Content-Type - browser will set it automatically with boundary for FormData
+        },
+        credentials: 'same-origin', // Include cookies for CSRF
+        body: formData,
+      });
+
+      if (response.ok) {
+        const fileCount = selectedFiles.length;
+        setSelectedFiles([]);
+        toast.success('Files uploaded successfully', {
+          description: `${fileCount} file${fileCount === 1 ? '' : 's'} uploaded successfully`,
+          duration: 3000,
+          icon: <Check className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)',
+          },
+        });
+        router.reload({ only: ['ticket'] });
+      } else {
+        let errorMessage = 'Failed to upload files.';
+        let errorDetails: string[] = [];
+        
+        if (response.status === 419) {
+          errorMessage = 'Session expired. Please refresh the page and try again.';
+          errorDetails.push('Your session may have expired. Refreshing the page will generate a new CSRF token.');
+        } else if (response.status === 413) {
+          errorMessage = 'File size is too large.';
+          errorDetails.push('Maximum allowed: 10MB per file.');
+          errorDetails.push('Please contact your administrator if you need to upload larger files.');
+        } else if (response.status === 422) {
+          errorMessage = 'Validation error.';
+          try {
+            const data = await response.json();
+            if (data.errors) {
+              Object.values(data.errors).forEach((err: any) => {
+                if (Array.isArray(err)) {
+                  errorDetails.push(...err);
+                } else {
+                  errorDetails.push(err);
+                }
+              });
+            } else if (data.message) {
+              errorDetails.push(data.message);
+            }
+          } catch {
+            errorDetails.push('Please check your files and try again.');
+          }
+        } else {
+          try {
+            const data = await response.json();
+            if (data.message) {
+              errorDetails.push(data.message);
+            } else {
+              errorDetails.push(`Server error (${response.status}). Please try again or contact support.`);
+            }
+          } catch {
+            errorDetails.push(`Server error (${response.status}). Please try again or contact support.`);
+          }
+        }
+        
+        console.error('Upload error:', response.status, errorMessage, errorDetails);
+        toast.error('Upload failed', {
+          description: errorDetails.length > 0 ? errorDetails.join(' ') : errorMessage,
+          duration: 6000,
+          icon: <X className="size-5 text-white" />,
+          style: {
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+            padding: '16px',
+          },
+          action: response.status === 419 ? {
+            label: 'Refresh Page',
+            onClick: () => window.location.reload(),
+          } : undefined,
+        });
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      const errorMessage = error.message || 'Failed to upload files. Please try again.';
+      toast.error('Upload failed', {
+        description: errorMessage,
+        duration: 6000,
+        icon: <X className="size-5 text-white" />,
+        style: {
+          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.3)',
+          padding: '16px',
+        },
+        action: errorMessage.includes('CSRF') || errorMessage.includes('refresh') ? {
+          label: 'Refresh Page',
+          onClick: () => window.location.reload(),
+        } : undefined,
+      });
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
   const priority = useMemo(() => data.priority, [data.priority]);
 
   // Template selector
@@ -215,9 +803,14 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
   
   // Collapsible states for advanced sections
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showSLA, setShowSLA] = useState(false);
-  const [showTags, setShowTags] = useState(false);
-  const [showWatchers, setShowWatchers] = useState(false);
+  
+  // File upload state
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  
+  // Category search state
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categorySearch, setCategorySearch] = useState('');
   
   // Auto-focus subject field on mount for new tickets
   useEffect(() => {
@@ -226,6 +819,29 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
     }
   }, [isEdit]);
 
+  // Auto-detect source based on user agent and device
+  const detectSource = (): string => {
+    if (typeof window === 'undefined') return 'web';
+    
+    const userAgent = navigator.userAgent.toLowerCase();
+    
+    // Check for mobile app identifiers (custom headers or user agent patterns)
+    // This would typically be set by a mobile app making API calls
+    if (userAgent.includes('kimmix') || 
+        userAgent.includes('mobile-app') ||
+        (userAgent.includes('android') && userAgent.includes('wv')) ||
+        (userAgent.includes('ios') && !userAgent.includes('safari'))) {
+      return 'mobile_app';
+    }
+    
+    // Check if it's a mobile device (but accessed via browser, so still web)
+    const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    
+    // For now, mobile browsers are still considered 'web'
+    // Mobile app detection would typically come from custom headers set by the app
+    return 'web';
+  };
+
   useEffect(() => {
     if (!isEdit) {
       // Fetch active templates
@@ -233,7 +849,35 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
         .then((res) => res.json())
         .then((data) => setTemplates(data.templates || []))
         .catch(() => {});
+      
+      // Check for template data from flash (when creating from template)
+      const flash = (pageProps as any).flash;
+      if (flash?.template_data) {
+        const templateData = flash.template_data;
+        // Apply template data to form
+        if (templateData.subject) setData('subject', templateData.subject);
+        if (templateData.description) setData('description', templateData.description);
+        if (templateData.category_id) setData('category_id', templateData.category_id);
+        if (templateData.project_id) setData('project_id', templateData.project_id);
+        if (templateData.assigned_team_id) setData('assigned_team_id', templateData.assigned_team_id);
+        if (templateData.assigned_agent_id) setData('assigned_agent_id', templateData.assigned_agent_id);
+        if (templateData.priority) setData('priority', templateData.priority);
+        if (templateData.status) setData('status', templateData.status);
+        if (templateData.source) setData('source', templateData.source);
+        if (templateData.sla_policy_id) setData('sla_policy_id', templateData.sla_policy_id);
+        if (templateData.tag_ids) setData('tag_ids', templateData.tag_ids);
+        if (templateData.custom_fields) setData('custom_fields', templateData.custom_fields);
+      } else {
+        // Auto-detect source only if no template data and source is default
+        const defaultSource = formOptions.sources[0] ?? 'web';
+        const detectedSource = detectSource();
+        // Only set if detected source is available in form options and different from default
+        if (formOptions.sources.includes(detectedSource) && detectedSource !== defaultSource) {
+          setData('source', detectedSource);
+        }
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit]);
 
   const applyTemplate = async (templateId: number) => {
@@ -325,48 +969,196 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
         </Card>
       )}
 
-      <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-xl">Ticket Information</CardTitle>
-            <CardDescription>Subject, requester, routing, and SLA data.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="subject">Subject *</Label>
-              <Input
-                ref={subjectInputRef}
-                id="subject"
-                value={data.subject}
-                onChange={(e) => setData('subject', e.target.value)}
-                placeholder="Short summary of the issue"
-                className="text-base"
-              />
-              {errors.subject && <p className="text-xs text-red-500 mt-1">{errors.subject}</p>}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
+      <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-3" noValidate>
+        {/* Main Form Section */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Basic Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Basic Information</CardTitle>
+              <CardDescription>Essential details about the ticket</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
               <div>
-                <Label>Category *</Label>
-                <Select value={data.category_id?.toString()} onValueChange={(value) => setData('category_id', Number(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id.toString()}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.category_id && <p className="text-xs text-red-500 mt-1">{errors.category_id}</p>}
+                <Label htmlFor="subject" className="text-sm font-medium">
+                  Subject <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  ref={subjectInputRef}
+                  id="subject"
+                  value={data.subject}
+                  onChange={(e) => setData('subject', e.target.value)}
+                  placeholder="Brief summary of the issue or request"
+                  className="text-base mt-1.5"
+                />
+                {errors.subject && <p className="text-xs text-destructive mt-1.5">{errors.subject}</p>}
               </div>
 
               <div>
-                <Label>Requester *</Label>
-                <Select value={data.requester_id?.toString()} onValueChange={(value) => setData('requester_id', Number(value))}>
-                  <SelectTrigger>
+                <Label htmlFor="description" className="text-sm font-medium">
+                  Description <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="description"
+                  rows={6}
+                  value={data.description}
+                  onChange={(e) => setData('description', e.target.value)}
+                  placeholder="Provide detailed information about the issue, steps to reproduce, or what you need..."
+                  className="text-base mt-1.5 resize-none"
+                />
+                {errors.description && <p className="text-xs text-destructive mt-1.5">{errors.description}</p>}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Classification & Routing */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Classification & Routing</CardTitle>
+              <CardDescription>Category, team assignment, and classification</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <Label className="text-sm font-medium">
+                    Category <span className="text-destructive">*</span>
+                  </Label>
+                  <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={categoryOpen}
+                        className="w-full justify-between mt-1.5 h-10"
+                      >
+                        <span className="truncate">
+                          {data.category_id
+                            ? formOptions.categories.find((c) => c.id === data.category_id)?.name ||
+                              (isEdit && ticket?.category ? `${ticket.category.name}${!formOptions.categories.find((c) => c.id === ticket.category?.id) ? ' (Inactive)' : ''}` : 'Select category...')
+                            : 'Select category...'}
+                        </span>
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[320px] p-0" align="start">
+                      <div className="p-2 border-b">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search categories..."
+                            value={categorySearch}
+                            onChange={(e) => setCategorySearch(e.target.value)}
+                            className="pl-8"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                      <ScrollArea className="h-[280px]">
+                        <div className="p-1.5">
+                          {formOptions.categories
+                            .filter((category) =>
+                              category.name.toLowerCase().includes(categorySearch.toLowerCase())
+                            )
+                            .length === 0 &&
+                            (!isEdit ||
+                              !ticket?.category ||
+                              formOptions.categories.find((c) => c.id === ticket.category?.id) ||
+                              !ticket.category.name.toLowerCase().includes(categorySearch.toLowerCase())) ? (
+                            <div className="py-8 text-center text-sm text-muted-foreground">
+                              <p>No category found.</p>
+                              <p className="text-xs mt-1">Try a different search term</p>
+                            </div>
+                          ) : (
+                            <>
+                              {formOptions.categories
+                                .filter((category) =>
+                                  category.name.toLowerCase().includes(categorySearch.toLowerCase())
+                                )
+                                .map((category) => (
+                                  <button
+                                    key={category.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setData('category_id', category.id);
+                                      setCategoryOpen(false);
+                                      setCategorySearch('');
+                                    }}
+                                    className={cn(
+                                      'w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer',
+                                      data.category_id === category.id && 'bg-accent text-accent-foreground font-medium'
+                                    )}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        'h-4 w-4 shrink-0',
+                                        data.category_id === category.id ? 'opacity-100 text-primary' : 'opacity-0'
+                                      )}
+                                    />
+                                    <span className="truncate">{category.name}</span>
+                                  </button>
+                                ))}
+                              {isEdit &&
+                                ticket?.category &&
+                                !formOptions.categories.find((c) => c.id === ticket.category?.id) &&
+                                (categorySearch === '' ||
+                                  ticket.category.name.toLowerCase().includes(categorySearch.toLowerCase())) && (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-md opacity-50 cursor-not-allowed"
+                                  >
+                                    <Check className="h-4 w-4 shrink-0 opacity-0" />
+                                    <span className="truncate">{ticket.category.name} (Inactive)</span>
+                                  </button>
+                                )}
+                            </>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </PopoverContent>
+                  </Popover>
+                  {errors.category_id && <p className="text-xs text-destructive mt-1.5">{errors.category_id}</p>}
+                  {isEdit && ticket?.category && !formOptions.categories.find((c) => c.id === ticket.category?.id) && (
+                    <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                      <span>⚠️</span>
+                      <span>This category is inactive. Please select an active category.</span>
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">
+                    Team Department <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
+                    <SelectTrigger className="mt-1.5 h-10">
+                      <SelectValue placeholder="Select team" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formOptions.departments.map((team) => (
+                        <SelectItem key={team.id} value={team.id.toString()}>
+                          {team.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.assigned_team_id && <p className="text-xs text-destructive mt-1.5">{errors.assigned_team_id}</p>}
+                  {defaultTeamId && !isEdit && (
+                    <p className="text-xs text-muted-foreground mt-1.5">Auto-filled from your department</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">
+                  Requester <span className="text-destructive">*</span>
+                </Label>
+                <Select 
+                  value={data.requester_id?.toString()} 
+                  onValueChange={(value) => setData('requester_id', Number(value))}
+                  disabled={!isEdit && !formOptions.can_create_on_behalf && formOptions.requesters.length === 1}
+                >
+                  <SelectTrigger className="mt-1.5 h-10">
                     <SelectValue placeholder="Select requester" />
                   </SelectTrigger>
                   <SelectContent>
@@ -377,273 +1169,429 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.requester_id && <p className="text-xs text-red-500 mt-1">{errors.requester_id}</p>}
+                {errors.requester_id && <p className="text-xs text-destructive mt-1.5">{errors.requester_id}</p>}
+                {!isEdit && formOptions.can_create_on_behalf && data.requester_id && data.requester_id !== auth?.user?.id && (
+                  <p className="text-xs text-blue-600 mt-1.5 font-medium flex items-center gap-1">
+                    <span>ℹ️</span>
+                    <span>Creating on behalf of: {formOptions.requesters.find((r) => r.id === data.requester_id)?.name || 'Selected user'}</span>
+                  </p>
+                )}
+                {!isEdit && !formOptions.can_create_on_behalf && formOptions.requesters.length === 1 && (
+                  <p className="text-xs text-muted-foreground mt-1.5">You can only create tickets for yourself</p>
+                )}
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <div>
-              <Label>Team *</Label>
-              <Select value={data.assigned_team_id?.toString()} onValueChange={(value) => setData('assigned_team_id', Number(value))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select team" />
-                </SelectTrigger>
-                <SelectContent>
-                  {formOptions.departments.map((team) => (
-                    <SelectItem key={team.id} value={team.id.toString()}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.assigned_team_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_team_id}</p>}
-              {defaultTeamId && !isEdit && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Auto-filled from your department
+          {/* Status & Priority */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Status & Priority</CardTitle>
+              <CardDescription>Set ticket status, priority level, and source</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-3">
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <Select value={data.status} onValueChange={(value) => setData('status', value)}>
+                    <SelectTrigger className="mt-1.5 h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formOptions.statuses.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status.replace('_', ' ')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium">Priority</Label>
+                  <Select value={data.priority} onValueChange={(value) => setData('priority', value)}>
+                    <SelectTrigger className="mt-1.5 h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formOptions.priorities.map((priority) => (
+                        <SelectItem key={priority} value={priority}>
+                          <div className="flex items-center gap-2">
+                            <span>{priority}</span>
+                            <Badge className={cn('text-xs', priorityColorMap[priority] ?? '')}>{priority}</Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {isEdit && (
+                  <div>
+                    <Label className="text-sm font-medium">Source</Label>
+                    <Select value={data.source} onValueChange={(value) => setData('source', value)}>
+                      <SelectTrigger className="mt-1.5 h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formOptions.sources.map((source) => (
+                          <SelectItem key={source} value={source}>
+                            {source}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="estimated_cost" className="text-sm font-medium">
+                  Estimated Cost
+                </Label>
+                <Input
+                  id="estimated_cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={data.estimated_cost ?? ''}
+                  onChange={(e) => setData('estimated_cost', e.target.value === '' ? null : Number(e.target.value) || null)}
+                  className="mt-1.5"
+                />
+                {formErrors.estimated_cost && (
+                  <p className="text-xs text-destructive mt-1.5">{formErrors.estimated_cost}</p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  For purchase/expense tickets. HOD approval required if cost exceeds category threshold.
                 </p>
-              )}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-                <Label>Status</Label>
-                <Select value={data.status} onValueChange={(value) => setData('status', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.statuses.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status.replace('_', ' ')}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
-
-              <div>
-                <Label>Priority</Label>
-                <Select value={data.priority} onValueChange={(value) => setData('priority', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.priorities.map((priority) => (
-                      <SelectItem key={priority} value={priority}>
-                        {priority}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Badge className={cn('mt-2', priorityColorMap[priority] ?? '')}>{priority}</Badge>
-              </div>
-
-              <div>
-                <Label>Source</Label>
-                <Select value={data.source} onValueChange={(value) => setData('source', value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.sources.map((source) => (
-                      <SelectItem key={source} value={source}>
-                        {source}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="description">Description *</Label>
-              <Textarea
-                id="description"
-                rows={6}
-                value={data.description}
-                onChange={(e) => setData('description', e.target.value)}
-                placeholder="Describe what is happening... (be as detailed as possible)"
-                className="text-base"
-              />
-              {errors.description && <p className="text-xs text-red-500 mt-1">{errors.description}</p>}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="space-y-6">
-          {/* Advanced Options Collapsible */}
-          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-            <Card>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer hover:bg-muted/50 transition">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Advanced Options</CardTitle>
-                      <CardDescription>SLA, Tags, Watchers, and more</CardDescription>
-                    </div>
-                    {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </div>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="space-y-6">
-                  {/* Assignment Section */}
-                  <div className="space-y-4">
-                    <Label className="text-base font-semibold">Additional Assignment</Label>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <Label>Agent (optional)</Label>
-                        <Select
-                          value={data.assigned_agent_id ? data.assigned_agent_id.toString() : ''}
-                          onValueChange={(value) =>
-                            setData('assigned_agent_id', value === '__none' ? '' : Number(value))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Unassigned" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none">Unassigned</SelectItem>
-                            {formOptions.agents.map((agent) => (
-                              <SelectItem key={agent.id} value={agent.id.toString()}>
-                                {agent.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.assigned_agent_id && <p className="text-xs text-red-500 mt-1">{errors.assigned_agent_id}</p>}
-                      </div>
-
-                      <div>
-                        <Label>Project (optional)</Label>
-                        <Select
-                          value={data.project_id ? data.project_id.toString() : ''}
-                          onValueChange={(value) =>
-                            setData('project_id', value === '__none' ? '' : Number(value))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="No project" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none">No project</SelectItem>
-                            {formOptions.projects.map((project) => (
-                              <SelectItem key={project.id} value={project.id.toString()}>
-                                {project.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.project_id && <p className="text-xs text-red-500 mt-1">{errors.project_id}</p>}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* SLA Section */}
-                  <Collapsible open={showSLA} onOpenChange={setShowSLA}>
-                    <div>
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between cursor-pointer mb-2">
-                          <Label className="text-base font-semibold cursor-pointer">SLA & Timelines</Label>
-                          {showSLA ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="space-y-4 pt-2">
+          {/* Assignment Section */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <User className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Assignment</CardTitle>
+                  <CardDescription className="text-xs">Assign agent or project (optional)</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div>
-                <Label>SLA Policy</Label>
+                <Label className="text-sm font-medium">Agent</Label>
                 <Select
-                  value={data.sla_policy_id ? data.sla_policy_id.toString() : ''}
+                  value={data.assigned_agent_id ? data.assigned_agent_id.toString() : ''}
                   onValueChange={(value) =>
-                    setData('sla_policy_id', value === '__none' ? '' : Number(value))
+                    setData('assigned_agent_id', value === '__none' ? '' : Number(value))
                   }
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="No SLA" />
+                  <SelectTrigger className={cn(
+                    "h-10 mt-1.5",
+                    data.assigned_agent_id && "border-primary/50 bg-primary/5"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      {data.assigned_agent_id ? (
+                        <>
+                          <User className="h-4 w-4 text-primary" />
+                          <SelectValue>
+                            {formOptions.agents.find(a => a.id === data.assigned_agent_id)?.name || 'Unassigned'}
+                          </SelectValue>
+                        </>
+                      ) : (
+                        <SelectValue placeholder="Select an agent..." />
+                      )}
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none">No SLA</SelectItem>
-                    {formOptions.sla_policies.map((sla) => (
-                      <SelectItem key={sla.id} value={sla.id.toString()}>
-                        {sla.name}
+                    <SelectItem value="__none">Unassigned</SelectItem>
+                    {formOptions.agents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id.toString()}>
+                        {agent.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.sla_policy_id && <p className="text-xs text-red-500 mt-1">{errors.sla_policy_id}</p>}
+                {errors.assigned_agent_id && <p className="text-xs text-destructive mt-1.5">{errors.assigned_agent_id}</p>}
               </div>
 
-              <div className="space-y-2">
-                <Label>First Response</Label>
-                <div className="grid gap-2">
-                  <Input
-                    type="datetime-local"
-                    value={data.first_response_at}
-                    onChange={(e) => setData('first_response_at', e.target.value)}
-                    placeholder="First response time"
-                  />
-                  <Input
-                    type="datetime-local"
-                    value={data.first_response_due_at}
-                    onChange={(e) => setData('first_response_due_at', e.target.value)}
-                    placeholder="Response due"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Resolution</Label>
-                <div className="grid gap-2">
-                  <Input
-                    type="datetime-local"
-                    value={data.resolution_due_at}
-                    onChange={(e) => setData('resolution_due_at', e.target.value)}
-                    placeholder="Resolution due"
-                  />
-                  <Input
-                    type="datetime-local"
-                    value={data.resolved_at}
-                    onChange={(e) => setData('resolved_at', e.target.value)}
-                    placeholder="Resolved at"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Closure</Label>
-                <Input
-                  type="datetime-local"
-                  value={data.closed_at}
-                  onChange={(e) => setData('closed_at', e.target.value)}
-                  placeholder="Closed at"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="response_sla_breached"
-                    checked={data.response_sla_breached}
-                    onCheckedChange={(checked) => setData('response_sla_breached', Boolean(checked))}
-                  />
-                  <Label htmlFor="response_sla_breached">Response SLA breached</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="resolution_sla_breached"
-                    checked={data.resolution_sla_breached}
-                    onCheckedChange={(checked) => setData('resolution_sla_breached', Boolean(checked))}
-                  />
-                  <Label htmlFor="resolution_sla_breached">Resolution SLA breached</Label>
-                </div>
-              </div>
-                      </CollapsibleContent>
+              <div>
+                <Label className="text-sm font-medium">Project</Label>
+                <Select
+                  value={data.project_id ? data.project_id.toString() : ''}
+                  onValueChange={(value) =>
+                    setData('project_id', value === '__none' ? '' : Number(value))
+                  }
+                >
+                  <SelectTrigger className={cn(
+                    "h-10 mt-1.5",
+                    data.project_id && "border-primary/50 bg-primary/5"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      {data.project_id ? (
+                        <>
+                          <FolderKanban className="h-4 w-4 text-primary" />
+                          <SelectValue>
+                            {formOptions.projects.find(p => p.id === data.project_id)?.name || 'No project'}
+                          </SelectValue>
+                        </>
+                      ) : (
+                        <SelectValue placeholder="Select a project..." />
+                      )}
                     </div>
-                  </Collapsible>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No project</SelectItem>
+                    {formOptions.projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id.toString()}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.project_id && <p className="text-xs text-destructive mt-1.5">{errors.project_id}</p>}
+              </div>
+            </CardContent>
+          </Card>
 
-                  {/* Custom Fields */}
-                  {formOptions.customFields && formOptions.customFields.length > 0 && (
+          {/* Attachments Section */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <Upload className="h-4 w-4 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Attachments</CardTitle>
+                  <CardDescription className="text-xs">
+                    {isEdit 
+                      ? 'Upload files related to this ticket'
+                      : 'Files will be attached after ticket creation'}
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div 
+                className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer bg-muted/30"
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                <div className="cursor-pointer">
+                  <span className="text-sm font-medium text-primary hover:underline">
+                    Click to upload
+                  </span>
+                  <span className="text-sm text-muted-foreground"> or drag and drop</span>
+                </div>
+                <Input
+                  ref={fileInputRef}
+                  id="file-upload"
+                  type="file"
+                  multiple
+                  onChange={handleFileSelect}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.zip,.rar,.7z"
+                  className="hidden"
+                  disabled={uploadingFiles}
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  PDF, Office docs, images, archives (Max 10MB per file)
+                </p>
+              </div>
+
+              {selectedFiles.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      Selected Files ({selectedFiles.length})
+                    </Label>
+                    {isEdit && ticket?.id && (
+                      <Button
+                        type="button"
+                        onClick={handleFileUpload}
+                        disabled={uploadingFiles}
+                        size="sm"
+                        className="h-8"
+                      >
+                        {uploadingFiles ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-3 w-3 mr-2" />
+                            Upload All
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {!isEdit && (
+                      <span className="text-xs text-muted-foreground">
+                        Will upload after creation
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+                    {selectedFiles.map((file, index) => (
+                      <div 
+                        key={index} 
+                        className="flex items-center gap-3 p-2.5 rounded-md bg-background border hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{file.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{formatFileSize(file.size)}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleFileRemove(index)}
+                          disabled={uploadingFiles}
+                          className="h-8 w-8 p-0 shrink-0 hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Advanced Options Collapsible */}
+          {formOptions.enable_advanced_options !== false && (
+            <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer hover:bg-muted/50 transition">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Advanced Options</CardTitle>
+                        <CardDescription>SLA, Tags, Watchers, and more</CardDescription>
+                      </div>
+                      {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="space-y-6">
+                    {/* SLA & Timelines Section */}
+                    {formOptions.enable_sla_options !== false && (
+                      <div className="space-y-4">
                     <div>
-                      <Label className="text-base font-semibold mb-2 block">Custom Fields</Label>
-                      <CardDescription className="mb-3">Additional information specific to your organization.</CardDescription>
+                      <Label className="text-base font-semibold">SLA & Timelines</Label>
+                      <CardDescription className="text-xs mt-1">Service level agreements and timeline tracking</CardDescription>
+                    </div>
+                    
+                    <div>
+                      <Label>SLA Policy</Label>
+                      <Select
+                        value={data.sla_policy_id ? data.sla_policy_id.toString() : ''}
+                        onValueChange={(value) =>
+                          setData('sla_policy_id', value === '__none' ? '' : Number(value))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="No SLA" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">No SLA</SelectItem>
+                          {formOptions.sla_policies.map((sla) => (
+                            <SelectItem key={sla.id} value={sla.id.toString()}>
+                              {sla.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.sla_policy_id && <p className="text-xs text-red-500 mt-1">{errors.sla_policy_id}</p>}
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-sm">First Response</Label>
+                        <Input
+                          type="datetime-local"
+                          value={data.first_response_at}
+                          onChange={(e) => setData('first_response_at', e.target.value)}
+                          placeholder="First response time"
+                        />
+                        <Input
+                          type="datetime-local"
+                          value={data.first_response_due_at}
+                          onChange={(e) => setData('first_response_due_at', e.target.value)}
+                          placeholder="Response due"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm">Resolution</Label>
+                        <Input
+                          type="datetime-local"
+                          value={data.resolution_due_at}
+                          onChange={(e) => setData('resolution_due_at', e.target.value)}
+                          placeholder="Resolution due"
+                        />
+                        <Input
+                          type="datetime-local"
+                          value={data.resolved_at}
+                          onChange={(e) => setData('resolved_at', e.target.value)}
+                          placeholder="Resolved at"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm">Closure</Label>
+                      <Input
+                        type="datetime-local"
+                        value={data.closed_at}
+                        onChange={(e) => setData('closed_at', e.target.value)}
+                        placeholder="Closed at"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-4">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="response_sla_breached"
+                          checked={data.response_sla_breached}
+                          onCheckedChange={(checked) => setData('response_sla_breached', Boolean(checked))}
+                        />
+                        <Label htmlFor="response_sla_breached" className="text-sm font-normal cursor-pointer">
+                          Response SLA breached
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="resolution_sla_breached"
+                          checked={data.resolution_sla_breached}
+                          onCheckedChange={(checked) => setData('resolution_sla_breached', Boolean(checked))}
+                        />
+                        <Label htmlFor="resolution_sla_breached" className="text-sm font-normal cursor-pointer">
+                          Resolution SLA breached
+                        </Label>
+                      </div>
+                    </div>
+                    </div>
+                    )}
+
+                    {/* Custom Fields */}
+                    {formOptions.enable_custom_fields !== false && formOptions.customFields && formOptions.customFields.length > 0 && (
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-base font-semibold">Custom Fields</Label>
+                        <CardDescription className="text-xs mt-1">Additional information specific to your organization</CardDescription>
+                      </div>
                       <CustomFieldsForm
                         fields={formOptions.customFields}
                         values={data.custom_fields}
@@ -653,83 +1601,131 @@ export default function TicketForm({ ticket, formOptions }: TicketFormProps) {
                     </div>
                   )}
 
-                  {/* Tags Section */}
-                  <Collapsible open={showTags} onOpenChange={setShowTags}>
+                    {/* Tags Section */}
+                    {formOptions.enable_tags !== false && (
+                      <div className="space-y-3">
                     <div>
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between cursor-pointer mb-2">
-                          <div>
-                            <Label className="text-base font-semibold cursor-pointer">Tags</Label>
-                            <CardDescription className="text-xs">Helps classify tickets and trigger automations.</CardDescription>
-                          </div>
-                          {showTags ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-2">
-                        <div className="flex flex-wrap gap-2">
-                          {formOptions.tags.map((tag) => (
-                            <button
-                              type="button"
-                              key={tag.id}
-                              onClick={() => toggleArrayValue('tag_ids', tag.id)}
-                              className={cn(
-                                'px-3 py-1 rounded-full text-sm font-medium transition',
-                                data.tag_ids.includes(tag.id) ? 'ring-2 ring-offset-2' : 'opacity-70'
-                              )}
-                              style={{ backgroundColor: tag.color, color: '#fff' }}
-                            >
-                              {tag.name}
-                            </button>
-                          ))}
-                        </div>
-                      </CollapsibleContent>
+                      <Label className="text-base font-semibold">Tags</Label>
+                      <CardDescription className="text-xs mt-1">Helps classify tickets and trigger automations</CardDescription>
                     </div>
-                  </Collapsible>
+                    <div className="flex flex-wrap gap-2">
+                      {formOptions.tags.length > 0 ? (
+                        formOptions.tags.map((tag) => (
+                          <button
+                            type="button"
+                            key={tag.id}
+                            onClick={() => toggleArrayValue('tag_ids', tag.id)}
+                            className={cn(
+                              'px-3 py-1.5 rounded-full text-sm font-medium transition-all',
+                              data.tag_ids.includes(tag.id) 
+                                ? 'ring-2 ring-offset-2 ring-primary shadow-sm scale-105' 
+                                : 'opacity-70 hover:opacity-100'
+                            )}
+                            style={{ backgroundColor: tag.color, color: '#fff' }}
+                          >
+                            {tag.name}
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No tags available</p>
+                      )}
+                    </div>
+                    </div>
+                    )}
 
-                  {/* Watchers Section */}
-                  <Collapsible open={showWatchers} onOpenChange={setShowWatchers}>
+                    {/* Watchers Section */}
+                    {formOptions.enable_watchers !== false && (
+                      <div className="space-y-3">
                     <div>
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between cursor-pointer mb-2">
-                          <div>
-                            <Label className="text-base font-semibold cursor-pointer">Watchers</Label>
-                            <CardDescription className="text-xs">Users who should receive updates.</CardDescription>
-                          </div>
-                          {showWatchers ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-2">
-                        <div className="space-y-2">
-                          {formOptions.requesters.map((user) => (
-                            <label key={user.id} className="flex items-center gap-2 text-sm">
-                              <Checkbox checked={data.watcher_ids.includes(user.id)} onCheckedChange={() => toggleArrayValue('watcher_ids', user.id)} />
-                              {user.name}
-                            </label>
-                          ))}
-                        </div>
-                      </CollapsibleContent>
+                      <Label className="text-base font-semibold">Watchers</Label>
+                      <CardDescription className="text-xs mt-1">Users who should receive updates about this ticket</CardDescription>
                     </div>
-                  </Collapsible>
-                </CardContent>
-              </CollapsibleContent>
+                    <div className="max-h-48 overflow-y-auto border rounded-lg p-3 space-y-2">
+                      {formOptions.requesters.length > 0 ? (
+                        formOptions.requesters.map((user) => (
+                          <label key={user.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-2 rounded transition">
+                            <Checkbox 
+                              checked={data.watcher_ids.includes(user.id)} 
+                              onCheckedChange={() => toggleArrayValue('watcher_ids', user.id)} 
+                            />
+                            <span>{user.name}</span>
+                          </label>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No users available</p>
+                      )}
+                    </div>
+                    </div>
+                    )}
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          )}
+
+          {/* Submit Button Card - Sticky Footer */}
+          <div className="sticky bottom-0 z-10 bg-background pt-4 pb-2 -mx-6 px-6 border-t border-border shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] dark:shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)]">
+            <Card className="border-0 shadow-none">
+              <CardFooter className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 p-4">
+                {formOptions.enable_advanced_options !== false && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="w-full sm:w-auto"
+                  >
+                    <ChevronDown className={cn("h-4 w-4 mr-2 transition-transform", showAdvanced && "rotate-180")} />
+                    {showAdvanced ? 'Hide' : 'Show'} Advanced Options
+                  </Button>
+                )}
+                {formOptions.enable_advanced_options === false && <div className="hidden sm:block" />}
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto sm:ml-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    asChild
+                    className="w-full sm:w-auto"
+                  >
+                    <Link href={route('admin.tickets.index')}>
+                      Cancel
+                    </Link>
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    disabled={processing || uploadingFiles} 
+                    size="lg" 
+                    className={cn(
+                      "w-full sm:w-auto min-w-[160px] font-semibold shadow-lg hover:shadow-xl transition-all duration-200",
+                      isEdit 
+                        ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                        : "bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-white"
+                    )}
+                  >
+                    {processing || uploadingFiles ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        {uploadingFiles ? 'Uploading files...' : isEdit ? 'Updating Ticket...' : 'Creating Ticket...'}
+                      </>
+                    ) : (
+                      <>
+                        {isEdit ? (
+                          <>
+                            <Save className="h-4 w-4 mr-2" />
+                            Update Ticket
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Ticket
+                          </>
+                        )}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardFooter>
             </Card>
-          </Collapsible>
-
-          {/* Submit Button Card */}
-          <Card>
-            <CardFooter className="flex justify-between items-center">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                {showAdvanced ? 'Hide' : 'Show'} Advanced Options
-              </Button>
-              <Button type="submit" disabled={processing} size="lg" className="min-w-[140px]">
-                {processing ? 'Saving...' : isEdit ? 'Update Ticket' : 'Create Ticket'}
-              </Button>
-            </CardFooter>
-          </Card>
+          </div>
         </div>
       </form>
     </AppLayout>

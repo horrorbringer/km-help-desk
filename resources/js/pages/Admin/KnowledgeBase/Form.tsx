@@ -69,7 +69,7 @@ export default function ArticleForm({ article, categories }: ArticleFormProps) {
     e.preventDefault();
 
     if (isEdit && article) {
-      put(route('admin.knowledge-base.update', article.id));
+      put(route('admin.knowledge-base.update', { knowledge_base: article.id }));
     } else {
       post(route('admin.knowledge-base.store'));
     }

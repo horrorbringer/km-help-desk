@@ -29,6 +29,7 @@ class Ticket extends Model
         'sla_policy_id',
         'status',
         'priority',
+        'estimated_cost',
         'source',
         'first_response_at',
         'first_response_due_at',
@@ -47,6 +48,7 @@ class Ticket extends Model
         'closed_at' => 'datetime',
         'response_sla_breached' => 'boolean',
         'resolution_sla_breached' => 'boolean',
+        'estimated_cost' => 'decimal:2',
     ];
 
     public static function generateTicketNumber(): string
@@ -120,6 +122,31 @@ class Ticket extends Model
     public function histories(): HasMany
     {
         return $this->hasMany(TicketHistory::class);
+    }
+
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(TicketApproval::class)->orderBy('sequence');
+    }
+
+    public function pendingApprovals(): HasMany
+    {
+        return $this->hasMany(TicketApproval::class)->where('status', 'pending')->orderBy('sequence');
+    }
+
+    public function currentApproval(): ?TicketApproval
+    {
+        return $this->approvals()->pending()->orderBy('sequence')->first();
+    }
+
+    public function rejectedApproval(): ?TicketApproval
+    {
+        return $this->approvals()->where('status', 'rejected')->orderBy('rejected_at', 'desc')->first();
+    }
+
+    public function hasRejectedApproval(): bool
+    {
+        return $this->approvals()->where('status', 'rejected')->exists();
     }
 
     public function timeEntries(): HasMany

@@ -13,61 +13,64 @@ class TicketCategorySeeder extends Seeder
     {
         $teams = Department::pluck('id', 'code');
 
+        // Only IT Support categories
         $categories = [
             [
                 'name' => 'IT Support',
-                'description' => 'General IT issues covering hardware, software, and access.',
+                'description' => 'Information Technology support covering hardware, software, network, and access management.',
                 'team_code' => 'IT-SD',
+                'sort_order' => 10,
+                'requires_approval' => false,
                 'children' => [
-                    ['name' => 'Hardware', 'description' => 'Laptops, desktops, peripherals.'],
-                    ['name' => 'Network & VPN', 'description' => 'Connectivity, VPN, Wi-Fi'],
-                    ['name' => 'Application Access', 'description' => 'Login, MFA, permission problems.'],
+                    [
+                        'name' => 'Hardware Requests',
+                        'description' => 'New hardware purchases: laptops, desktops, monitors, printers, mobile devices, and peripherals.',
+                        'sort_order' => 11,
+                        'requires_approval' => true,
+                        'requires_hod_approval' => false,
+                        'hod_approval_threshold' => 1000.00,
+                    ],
+                    [
+                        'name' => 'Hardware Issues',
+                        'description' => 'Hardware problems: broken devices, repairs, replacements, warranty claims.',
+                        'sort_order' => 12,
+                        'requires_approval' => false,
+                    ],
+                    [
+                        'name' => 'Application Access',
+                        'description' => 'Request access to applications, systems, or shared resources. Password resets and MFA issues.',
+                        'sort_order' => 13,
+                        'requires_approval' => false,
+                    ],
+                    [
+                        'name' => 'Network & Connectivity',
+                        'description' => 'Network issues: VPN access, Wi-Fi problems, internet connectivity, network configuration.',
+                        'sort_order' => 14,
+                        'requires_approval' => false,
+                    ],
                 ],
-            ],
-            [
-                'name' => 'Site Operations',
-                'description' => 'On-site construction operations support.',
-                'team_code' => 'FIELD-ENG',
-                'children' => [
-                    ['name' => 'Equipment Failure', 'description' => 'Cranes, lifts, and heavy machinery.'],
-                    ['name' => 'Material Shortage', 'description' => 'Concrete, steel, finishing materials.'],
-                    ['name' => 'Site Logistics', 'description' => 'Deliveries, storage, coordination.'],
-                ],
-            ],
-            [
-                'name' => 'Safety & Compliance',
-                'description' => 'Incidents, audits, and compliance queries.',
-                'team_code' => 'HSE',
-                'children' => [
-                    ['name' => 'Incident Reporting'],
-                    ['name' => 'Inspection Follow-up'],
-                ],
-            ],
-            [
-                'name' => 'Procurement Requests',
-                'description' => 'Purchase orders, vendor management, RFQs.',
-                'team_code' => 'PROC',
-            ],
-            [
-                'name' => 'Finance Queries',
-                'description' => 'Invoices, payroll, reimbursements.',
-                'team_code' => 'FIN',
             ],
         ];
 
         foreach ($categories as $category) {
-            $parent = $this->createCategory($category, null, $teams);
+            $parent = $this->createCategory($category, null, $teams, $category['sort_order']);
 
-            foreach ($category['children'] ?? [] as $child) {
-                $child['team_code'] = $category['team_code'];
-                $this->createCategory($child, $parent->id, $teams);
+            if (isset($category['children'])) {
+                foreach ($category['children'] as $child) {
+                    $child['team_code'] = $category['team_code'];
+                    $this->createCategory($child, $parent->id, $teams, $child['sort_order']);
+                }
             }
         }
     }
 
-    private function createCategory(array $data, ?int $parentId, $teams): TicketCategory
+    private function createCategory(array $data, ?int $parentId, $teams, int $sortOrder = 0): TicketCategory
     {
         $slug = Str::slug($data['name']);
+
+        $requiresApproval = $data['requires_approval'] ?? false;
+        $requiresHODApproval = $data['requires_hod_approval'] ?? false;
+        $hodThreshold = $data['hod_approval_threshold'] ?? null;
 
         return TicketCategory::updateOrCreate(
             ['slug' => $slug],
@@ -77,11 +80,12 @@ class TicketCategorySeeder extends Seeder
                 'description' => $data['description'] ?? null,
                 'parent_id' => $parentId,
                 'default_team_id' => $teams[$data['team_code']] ?? null,
-                'sort_order' => $data['sort_order'] ?? 0,
+                'sort_order' => $sortOrder,
                 'is_active' => true,
+                'requires_approval' => $requiresApproval,
+                'requires_hod_approval' => $requiresHODApproval,
+                'hod_approval_threshold' => $hodThreshold,
             ]
         );
     }
 }
-
-

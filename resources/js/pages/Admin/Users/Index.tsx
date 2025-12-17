@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
-import { ChevronDown, ChevronUp, Download, Upload } from 'lucide-react';
+import { ChevronDown, ChevronUp, Download, Upload, Users, UserCheck, UserX, Building2 } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,16 +10,30 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useToast } from '@/hooks/use-toast';
 import { toast } from 'sonner';
+import { UserAvatar } from '@/components/user-avatar';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface User {
   id: number;
   name: string;
   email: string;
+  avatar?: string | null;
   phone?: string | null;
   employee_id?: string | null;
   department?: { id: number; name: string } | null;
@@ -60,6 +74,7 @@ export default function UsersIndex() {
   const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
   const [bulkDialogValue, setBulkDialogValue] = useState<string>('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(null);
   
   const { data: importData, setData: setImportData, post: importPost, processing: importProcessing, errors: importErrors } = useForm({
     file: null as File | null,
@@ -108,30 +123,34 @@ export default function UsersIndex() {
     }
 
     if (bulkDialogAction === 'delete') {
-      if (confirm(`Are you sure you want to delete ${selectedUsers.length} user(s)?`)) {
-        router.post(
-          route('admin.users.bulk-delete'),
-          { user_ids: selectedUsers },
-          {
-            onSuccess: () => {
-              toast.success(`Successfully deleted ${selectedUsers.length} user(s).`);
-              setSelectedUsers([]);
-              setBulkDialogOpen(false);
-            },
-            onError: () => {
-              toast.error('Failed to delete users.');
-            },
-          }
-        );
-      }
+      router.post(
+        route('admin.users.bulk-delete'),
+        { user_ids: selectedUsers },
+        {
+          onSuccess: () => {
+            toast.success(`Successfully deleted ${selectedUsers.length} user(s).`);
+            setSelectedUsers([]);
+            setBulkDialogOpen(false);
+          },
+          onError: () => {
+            toast.error('Failed to delete users.');
+          },
+        }
+      );
     } else {
+      const payload: any = {
+        user_ids: selectedUsers,
+        action: bulkDialogAction,
+      };
+
+      // Only include value if the action requires it
+      if (['assign_department', 'assign_role', 'remove_role'].includes(bulkDialogAction)) {
+        payload.value = bulkDialogValue;
+      }
+
       router.post(
         route('admin.users.bulk-update'),
-        {
-          user_ids: selectedUsers,
-          action: bulkDialogAction,
-          value: bulkDialogValue,
-        },
+        payload,
         {
           onSuccess: () => {
             toast.success(`Successfully updated ${selectedUsers.length} user(s).`);
@@ -139,7 +158,8 @@ export default function UsersIndex() {
             setBulkDialogOpen(false);
             setBulkDialogValue('');
           },
-          onError: () => {
+          onError: (errors) => {
+            console.error('Bulk update errors:', errors);
             toast.error('Failed to update users.');
           },
         }
@@ -202,28 +222,56 @@ export default function UsersIndex() {
 
         {/* Statistics Cards */}
         <div className="grid gap-4 md:grid-cols-4">
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{stats.total}</div>
-              <p className="text-xs text-muted-foreground">Total Users</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold">{stats.total}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Total Users</p>
+                </div>
+                <div className="p-3 rounded-full bg-primary/10">
+                  <Users className="h-5 w-5 text-primary" />
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-emerald-600">{stats.active}</div>
-              <p className="text-xs text-muted-foreground">Active Users</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-emerald-600">{stats.active}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Active Users</p>
+                </div>
+                <div className="p-3 rounded-full bg-emerald-100">
+                  <UserCheck className="h-5 w-5 text-emerald-600" />
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-orange-600">{stats.inactive}</div>
-              <p className="text-xs text-muted-foreground">Inactive Users</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-orange-600">{stats.inactive}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Inactive Users</p>
+                </div>
+                <div className="p-3 rounded-full bg-orange-100">
+                  <UserX className="h-5 w-5 text-orange-600" />
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-blue-600">{stats.with_department}</div>
-              <p className="text-xs text-muted-foreground">With Department</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-blue-600">{stats.with_department}</div>
+                  <p className="text-xs text-muted-foreground mt-1">With Department</p>
+                </div>
+                <div className="p-3 rounded-full bg-blue-100">
+                  <Building2 className="h-5 w-5 text-blue-600" />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -342,7 +390,7 @@ export default function UsersIndex() {
                           }}
                         />
                       </th>
-                      <th className="px-4 py-3 text-left">Name</th>
+                      <th className="px-4 py-3 text-left">User</th>
                       <th className="px-4 py-3 text-left">Email</th>
                       <th className="px-4 py-3 text-left">Employee ID</th>
                       <th className="px-4 py-3 text-left">Department</th>
@@ -354,14 +402,21 @@ export default function UsersIndex() {
                   </thead>
                   <tbody>
                     {users.data.map((user) => (
-                      <tr key={user.id} className="border-t hover:bg-muted/50 transition">
+                      <tr key={user.id} className="border-t hover:bg-muted/50 transition-colors">
                         <td className="px-4 py-3">
                           <Checkbox
                             checked={selectedUsers.includes(user.id)}
                             onCheckedChange={(checked) => handleSelectUser(user.id, checked as boolean)}
                           />
                         </td>
-                        <td className="px-4 py-3 font-medium">{user.name}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <UserAvatar user={user} size="sm" />
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">{user.name}</div>
+                            </div>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {user.employee_id ?? '—'}
@@ -415,24 +470,51 @@ export default function UsersIndex() {
                               </Button>
                             )}
                             {can('users.delete') && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to delete this user?')) {
-                                    router.delete(route('admin.users.destroy', { user: user.id }), {
-                                      onSuccess: () => {
-                                        toast.success(`User ${user.name} has been deleted.`);
-                                      },
-                                      onError: () => {
-                                        toast.error('Failed to delete user.');
-                                      },
-                                    });
+                              <AlertDialog
+                                open={deleteDialogOpen === user.id}
+                                onOpenChange={(open) => {
+                                  if (!open) {
+                                    setDeleteDialogOpen(null);
                                   }
                                 }}
                               >
-                                Delete
-                              </Button>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => setDeleteDialogOpen(user.id)}
+                                  >
+                                    Delete
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete User</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete "{user.name}"? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => {
+                                        router.delete(route('admin.users.destroy', { user: user.id }), {
+                                          onSuccess: () => {
+                                            toast.success(`User ${user.name} has been deleted.`);
+                                            setDeleteDialogOpen(null);
+                                          },
+                                          onError: () => {
+                                            toast.error('Failed to delete user.');
+                                          },
+                                        });
+                                      }}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             )}
                           </div>
                         </td>
@@ -553,6 +635,7 @@ export default function UsersIndex() {
                   bulkDialogAction !== 'deactivate' &&
                   !bulkDialogValue
                 }
+                variant={bulkDialogAction === 'delete' ? 'destructive' : 'default'}
               >
                 {bulkDialogAction === 'delete' ? 'Delete' : 'Apply'}
               </Button>

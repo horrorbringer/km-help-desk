@@ -31,6 +31,7 @@ class User extends Authenticatable
         'employee_id',
         'department_id',
         'is_active',
+        'avatar',
     ];
 
     /**

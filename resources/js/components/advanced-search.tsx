@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { router } from '@inertiajs/react';
-import { IconBookmark, IconBookmarkFilled, IconX, IconSearch } from '@tabler/icons-react';
+import { router, usePage } from '@inertiajs/react';
+import { IconBookmark, IconBookmarkFilled, IconX } from '@tabler/icons-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +46,10 @@ interface SavedSearch {
 }
 
 export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSearchProps) {
+  const page = usePage();
+  const pageProps = page.props as { auth?: { user?: { id: number } | null } | null };
+  const currentUserId = pageProps.auth?.user?.id;
+  
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [savingSearch, setSavingSearch] = useState(false);
@@ -122,38 +126,24 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
     }
   };
 
-  const activeFiltersCount = Object.keys(filters).filter(
-    (key) => filters[key] && filters[key] !== '__all'
-  ).length;
+  const activeFiltersCount = Object.keys(filters).filter((key) => {
+    const value = filters[key];
+    if (!value || value === '__all') return false;
+    if (Array.isArray(value) && value.length === 0) return false;
+    // Exclude sort fields from active filter count
+    if (key === 'order_by' || key === 'order_dir') return false;
+    return true;
+  }).length;
 
   return (
-    <div className="space-y-4">
-      {/* Quick Search Bar */}
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
-          <IconSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search tickets by number, subject, description, or requester..."
-            value={filters.q ?? ''}
-            onChange={(e) => handleFilter('q', e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                router.get(route('admin.tickets.index'), filters, {
-                  preserveState: true,
-                  replace: true,
-                });
-              }
-            }}
-            className="pl-10"
-          />
-        </div>
-        <Popover open={showAdvanced} onOpenChange={setShowAdvanced}>
-          <PopoverTrigger asChild>
-            <Button variant="outline">
-              Advanced {activeFiltersCount > 0 && `(${activeFiltersCount})`}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[600px] p-0" align="start">
+    <>
+      <Popover open={showAdvanced} onOpenChange={setShowAdvanced}>
+        <PopoverTrigger asChild>
+          <Button variant="outline">
+            Advanced {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[600px] p-0" align="start">
             <ScrollArea className="h-[500px]">
               <div className="p-4 space-y-4">
                 {/* Saved Searches */}
@@ -215,6 +205,102 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
 
                 <Separator />
 
+                {/* Quick Filter Presets */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Quick Filters</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (currentUserId) {
+                          handleFilter('agent', String(currentUserId));
+                        }
+                        setShowAdvanced(false);
+                      }}
+                      className="text-xs"
+                      disabled={!currentUserId}
+                    >
+                      My Tickets
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        handleFilter('agent', '__none');
+                        setShowAdvanced(false);
+                      }}
+                      className="text-xs"
+                    >
+                      Unassigned
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        handleFilter('sla_breached', 'any');
+                        setShowAdvanced(false);
+                      }}
+                      className="text-xs"
+                    >
+                      SLA Breached
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        handleFilter('status', ['open', 'assigned', 'in_progress']);
+                        setShowAdvanced(false);
+                      }}
+                      className="text-xs"
+                    >
+                      Active Tickets
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Sort Options */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Sort By</Label>
+                    <Select
+                      value={(filters.order_by as string) ?? 'created_at'}
+                      onValueChange={(value) => handleFilter('order_by', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="created_at">Created Date</SelectItem>
+                        <SelectItem value="updated_at">Updated Date</SelectItem>
+                        <SelectItem value="ticket_number">Ticket Number</SelectItem>
+                        <SelectItem value="subject">Subject</SelectItem>
+                        <SelectItem value="status">Status</SelectItem>
+                        <SelectItem value="priority">Priority</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Order</Label>
+                    <Select
+                      value={(filters.order_dir as string) ?? 'desc'}
+                      onValueChange={(value) => handleFilter('order_dir', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="desc">Descending</SelectItem>
+                        <SelectItem value="asc">Ascending</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Separator />
+
                 {/* Filters */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -226,46 +312,90 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
                     )}
                   </div>
 
-                  {/* Status */}
+                  {/* Status - Multi-select */}
                   <div className="space-y-2">
                     <Label className="text-xs">Status</Label>
-                    <Select
-                      value={(filters.status as string) ?? '__all'}
-                      onValueChange={(value) => handleFilter('status', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all">All statuses</SelectItem>
-                        {options.statuses.map((status) => (
-                          <SelectItem key={status} value={status}>
+                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded">
+                      {options.statuses.map((status) => {
+                        const statusArray = Array.isArray(filters.status) 
+                          ? filters.status 
+                          : filters.status 
+                            ? [String(filters.status)] 
+                            : [];
+                        const isSelected = statusArray.includes(status);
+                        return (
+                          <button
+                            key={status}
+                            type="button"
+                            onClick={() => {
+                              const newStatuses = isSelected
+                                ? statusArray.filter((s) => s !== status)
+                                : [...statusArray, status];
+                              handleFilter('status', newStatuses.length > 0 ? newStatuses : undefined);
+                            }}
+                            className={`px-2 py-1 rounded text-xs transition ${
+                              isSelected 
+                                ? 'bg-primary text-primary-foreground' 
+                                : 'bg-muted hover:bg-muted/80'
+                            }`}
+                          >
                             {status.replace('_', ' ')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                          </button>
+                        );
+                      })}
+                      {Array.isArray(filters.status) && filters.status.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleFilter('status', undefined)}
+                          className="px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Priority */}
+                  {/* Priority - Multi-select */}
                   <div className="space-y-2">
                     <Label className="text-xs">Priority</Label>
-                    <Select
-                      value={(filters.priority as string) ?? '__all'}
-                      onValueChange={(value) => handleFilter('priority', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All priorities" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all">All priorities</SelectItem>
-                        {options.priorities.map((priority) => (
-                          <SelectItem key={priority} value={priority}>
+                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border rounded">
+                      {options.priorities.map((priority) => {
+                        const priorityArray = Array.isArray(filters.priority) 
+                          ? filters.priority 
+                          : filters.priority 
+                            ? [String(filters.priority)] 
+                            : [];
+                        const isSelected = priorityArray.includes(priority);
+                        return (
+                          <button
+                            key={priority}
+                            type="button"
+                            onClick={() => {
+                              const newPriorities = isSelected
+                                ? priorityArray.filter((p) => p !== priority)
+                                : [...priorityArray, priority];
+                              handleFilter('priority', newPriorities.length > 0 ? newPriorities : undefined);
+                            }}
+                            className={`px-2 py-1 rounded text-xs transition capitalize ${
+                              isSelected 
+                                ? 'bg-primary text-primary-foreground' 
+                                : 'bg-muted hover:bg-muted/80'
+                            }`}
+                          >
                             {priority}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                          </button>
+                        );
+                      })}
+                      {Array.isArray(filters.priority) && filters.priority.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleFilter('priority', undefined)}
+                          className="px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Team */}
@@ -391,6 +521,26 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
                     </Select>
                   </div>
 
+                  {/* Approval Status */}
+                  <div className="space-y-2">
+                    <Label className="text-xs">Approval Status</Label>
+                    <Select
+                      value={(filters.approval_status as string) ?? '__all'}
+                      onValueChange={(value) => handleFilter('approval_status', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All approval statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all">All</SelectItem>
+                        <SelectItem value="pending">Pending Approval</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                        <SelectItem value="none">No Approval Required</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   {/* Tags */}
                   <div className="space-y-2">
                     <Label className="text-xs">Tags</Label>
@@ -429,28 +579,44 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
                 </div>
               </div>
             </ScrollArea>
-          </PopoverContent>
-        </Popover>
-      </div>
+        </PopoverContent>
+      </Popover>
 
       {/* Active Filters Display */}
       {activeFiltersCount > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 mt-2">
           {Object.entries(filters).map(([key, value]) => {
             if (!value || value === '__all') return null;
+            if (Array.isArray(value) && value.length === 0) return null;
+            // Exclude sort fields from display
+            if (key === 'order_by' || key === 'order_dir') return null;
 
             let label = key;
             let displayValue = String(value);
 
             // Format display value
             if (key === 'status') {
-              displayValue = String(value).replace('_', ' ');
+              if (Array.isArray(value)) {
+                displayValue = value.map((s: string) => String(s).replace('_', ' ')).join(', ');
+              } else {
+                displayValue = String(value).replace('_', ' ');
+              }
+            } else if (key === 'priority') {
+              if (Array.isArray(value)) {
+                displayValue = value.map((p: string) => String(p).charAt(0).toUpperCase() + String(p).slice(1)).join(', ');
+              } else {
+                displayValue = String(value).charAt(0).toUpperCase() + String(value).slice(1);
+              }
+            } else if (key === 'agent') {
+              if (value === '__none') {
+                displayValue = 'Unassigned';
+              } else {
+                const agent = options.agents.find((a) => a.id === Number(value));
+                displayValue = agent?.name || value;
+              }
             } else if (key === 'team') {
               const team = options.teams.find((t) => t.id === Number(value));
               displayValue = team?.name || value;
-            } else if (key === 'agent') {
-              const agent = options.agents.find((a) => a.id === Number(value));
-              displayValue = agent?.name || value;
             } else if (key === 'category') {
               const category = options.categories.find((c) => c.id === Number(value));
               displayValue = category?.name || value;
@@ -465,6 +631,14 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
                 })
                 .filter(Boolean)
                 .join(', ');
+            } else if (key === 'approval_status') {
+              const statusMap: Record<string, string> = {
+                pending: 'Pending Approval',
+                approved: 'Approved',
+                rejected: 'Rejected',
+                none: 'No Approval Required',
+              };
+              displayValue = statusMap[String(value)] || String(value);
             }
 
             return (
@@ -477,7 +651,14 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
                 <span className="text-xs">{displayValue}</span>
                 <button
                   type="button"
-                  onClick={() => handleFilter(key, '')}
+                  onClick={() => {
+                    // Clear the filter - handle arrays properly
+                    if (Array.isArray(filters[key])) {
+                      handleFilter(key, undefined);
+                    } else {
+                      handleFilter(key, '');
+                    }
+                  }}
                   className="ml-1 hover:text-destructive"
                 >
                   <IconX className="h-3 w-3" />
@@ -487,7 +668,7 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
           })}
         </div>
       )}
-    </div>
+    </>
   );
 }
 

@@ -71,6 +71,23 @@ class CustomFieldController extends Controller
 
     public function edit(CustomField $customField): Response
     {
+        // Transform options from associative array to array of objects
+        $options = [];
+        if ($customField->options && is_array($customField->options)) {
+            // Check if options is already in the correct format (array of objects)
+            if (isset($customField->options[0]) && is_array($customField->options[0]) && isset($customField->options[0]['label'])) {
+                $options = $customField->options;
+            } else {
+                // Transform associative array to array of objects
+                foreach ($customField->options as $key => $value) {
+                    $options[] = [
+                        'label' => $value,
+                        'value' => is_numeric($key) ? $value : $key,
+                    ];
+                }
+            }
+        }
+        
         return Inertia::render('Admin/CustomFields/Form', [
             'customField' => [
                 'id' => $customField->id,
@@ -79,7 +96,7 @@ class CustomFieldController extends Controller
                 'label' => $customField->label,
                 'description' => $customField->description,
                 'field_type' => $customField->field_type,
-                'options' => $customField->options ?? [],
+                'options' => $options,
                 'default_value' => $customField->default_value,
                 'is_required' => $customField->is_required,
                 'is_active' => $customField->is_active,
