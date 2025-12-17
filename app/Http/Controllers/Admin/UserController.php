@@ -75,12 +75,13 @@ class UserController extends Controller
             ]);
 
         // Get departments based on visibility
-        // Admins see all departments, others see only their department
+        // Admins see all active departments, others see only their department (even if inactive)
         if ($user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
-            $departments = Department::select('id', 'name')->orderBy('name')->get();
+            $departments = Department::where('is_active', true)->select('id', 'name')->orderBy('name')->get();
         } else {
+            // Users can see their own department even if inactive (for editing their profile)
             $departments = $user->department_id 
-                ? Department::where('id', $user->department_id)->select('id', 'name')->orderBy('name')->get()
+                ? Department::where('id', $user->department_id)->select('id', 'name', 'is_active')->orderBy('name')->get()
                 : collect([]);
         }
 
@@ -114,7 +115,7 @@ class UserController extends Controller
     {
         return Inertia::render('Admin/Users/Form', [
             'user' => null,
-            'departments' => Department::select('id', 'name')->orderBy('name')->get(),
+            'departments' => Department::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
             'roles' => Role::orderBy('name')->get(['id', 'name']),
         ]);
     }
@@ -173,7 +174,7 @@ class UserController extends Controller
 
     public function edit(User $user): Response
     {
-        $user->load('department:id,name');
+        $user->load('department:id,name,is_active');
 
         return Inertia::render('Admin/Users/Form', [
             'user' => [
@@ -185,8 +186,13 @@ class UserController extends Controller
                 'department_id' => $user->department_id,
                 'is_active' => $user->is_active,
                 'role_ids' => $user->roles->pluck('id')->toArray(),
+                'department' => $user->department ? [
+                    'id' => $user->department->id,
+                    'name' => $user->department->name,
+                    'is_active' => $user->department->is_active,
+                ] : null,
             ],
-            'departments' => Department::select('id', 'name')->orderBy('name')->get(),
+            'departments' => Department::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
             'roles' => Role::orderBy('name')->get(['id', 'name']),
         ]);
     }
@@ -275,11 +281,13 @@ class UserController extends Controller
                         $changed = true;
                     } else {
                         $department = Department::find($value);
-                        if ($department) {
+                        if ($department && $department->is_active) {
+                            // Only assign to active departments
                             $user->department_id = $value;
                             $user->save();
                             $changed = true;
                         }
+                        // Skip if department doesn't exist or is inactive
                     }
                     break;
 

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronUp, Upload, X, Check, Search, Loader2, User, FolderKanban, Plus, Save, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronUp, Upload, X, Check, Search, Loader2, User, FolderKanban, Plus, Save, Sparkles, Circle, AlertCircle, Clock, CheckCircle2, XCircle, AlertTriangle, Flag } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -17,9 +17,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CustomFieldsForm } from '@/components/custom-fields-form';
+import { UserAvatar } from '@/components/user-avatar';
 import { cn } from '@/lib/utils';
 
-type BaseOption = { id: number; name: string };
+type BaseOption = { id: number; name: string; avatar?: string | null };
+type AgentOption = { id: number; name: string; avatar?: string | null; role?: string | null; department?: string | null };
 
 type TicketFormProps = {
   ticket?: {
@@ -68,7 +70,7 @@ type TicketFormProps = {
     priorities: string[];
     sources: string[];
     departments: BaseOption[];
-    agents: BaseOption[];
+    agents: AgentOption[];
     categories: BaseOption[];
     projects: BaseOption[];
     requesters: BaseOption[];
@@ -94,11 +96,46 @@ type TicketFormProps = {
   };
 };
 
+const statusColorMap: Record<string, string> = {
+  open: 'bg-blue-100 text-blue-800 border-blue-200',
+  assigned: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+  in_progress: 'bg-amber-100 text-amber-800 border-amber-200',
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  resolved: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  closed: 'bg-slate-200 text-slate-800 border-slate-300',
+  cancelled: 'bg-gray-200 text-gray-700 border-gray-300',
+};
+
 const priorityColorMap: Record<string, string> = {
-  low: 'bg-slate-200 text-slate-800',
-  medium: 'bg-blue-100 text-blue-800',
-  high: 'bg-orange-100 text-orange-800',
-  critical: 'bg-red-100 text-red-800',
+  low: 'bg-slate-200 text-slate-800 border-slate-300',
+  medium: 'bg-blue-100 text-blue-800 border-blue-200',
+  high: 'bg-orange-100 text-orange-800 border-orange-200',
+  critical: 'bg-red-100 text-red-800 border-red-200',
+};
+
+const statusIconMap: Record<string, React.ReactNode> = {
+  open: <Circle className="h-3.5 w-3.5" />,
+  assigned: <User className="h-3.5 w-3.5" />,
+  in_progress: <Clock className="h-3.5 w-3.5" />,
+  pending: <AlertCircle className="h-3.5 w-3.5" />,
+  resolved: <CheckCircle2 className="h-3.5 w-3.5" />,
+  closed: <XCircle className="h-3.5 w-3.5" />,
+  cancelled: <XCircle className="h-3.5 w-3.5" />,
+};
+
+const priorityIconMap: Record<string, React.ReactNode> = {
+  low: <Flag className="h-3.5 w-3.5" />,
+  medium: <Flag className="h-3.5 w-3.5" />,
+  high: <AlertTriangle className="h-3.5 w-3.5" />,
+  critical: <AlertCircle className="h-3.5 w-3.5" />,
+};
+
+const formatStatus = (status: string) => {
+  return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
+const formatPriority = (priority: string) => {
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
 };
 
 const defaultDate = (value?: string | null) => (value ? value.substring(0, 16) : '');
@@ -1159,12 +1196,41 @@ export default function TicketForm(props: TicketFormProps) {
                   disabled={!isEdit && !formOptions.can_create_on_behalf && formOptions.requesters.length === 1}
                 >
                   <SelectTrigger className="mt-1.5 h-10">
-                    <SelectValue placeholder="Select requester" />
+                    <div className="flex items-center gap-2">
+                      {data.requester_id ? (
+                        <>
+                          {(() => {
+                            const selectedRequester = formOptions.requesters.find(r => r.id === data.requester_id);
+                            return selectedRequester ? (
+                              <UserAvatar 
+                                user={{ id: selectedRequester.id, name: selectedRequester.name, avatar: selectedRequester.avatar }} 
+                                size="sm" 
+                                showTooltip={false}
+                              />
+                            ) : (
+                              <User className="h-4 w-4 text-primary" />
+                            );
+                          })()}
+                          <SelectValue>
+                            {formOptions.requesters.find(r => r.id === data.requester_id)?.name || 'Select requester'}
+                          </SelectValue>
+                        </>
+                      ) : (
+                        <SelectValue placeholder="Select requester" />
+                      )}
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
                     {formOptions.requesters.map((user) => (
                       <SelectItem key={user.id} value={user.id.toString()}>
-                        {user.name}
+                        <div className="flex items-center gap-2.5 py-0.5">
+                          <UserAvatar 
+                            user={{ id: user.id, name: user.name, avatar: user.avatar }} 
+                            size="sm" 
+                            showTooltip={false}
+                          />
+                          <span className="font-medium">{user.name}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1194,13 +1260,54 @@ export default function TicketForm(props: TicketFormProps) {
                 <div>
                   <Label className="text-sm font-medium">Status</Label>
                   <Select value={data.status} onValueChange={(value) => setData('status', value)}>
-                    <SelectTrigger className="mt-1.5 h-10">
-                      <SelectValue />
+                    <SelectTrigger className={cn(
+                      "mt-1.5 h-10",
+                      data.status && statusColorMap[data.status] && "border-2"
+                    )}>
+                      <div className="flex items-center gap-2 w-full">
+                        {data.status && statusIconMap[data.status] && (
+                          <span className={cn(
+                            "shrink-0",
+                            statusColorMap[data.status]?.includes('blue') && "text-blue-600",
+                            statusColorMap[data.status]?.includes('indigo') && "text-indigo-600",
+                            statusColorMap[data.status]?.includes('amber') && "text-amber-600",
+                            statusColorMap[data.status]?.includes('yellow') && "text-yellow-600",
+                            statusColorMap[data.status]?.includes('emerald') && "text-emerald-600",
+                            statusColorMap[data.status]?.includes('slate') && "text-slate-600",
+                            statusColorMap[data.status]?.includes('gray') && "text-gray-600"
+                          )}>
+                            {statusIconMap[data.status]}
+                          </span>
+                        )}
+                        <SelectValue 
+                          placeholder="Select status" 
+                          className="[&_svg]:!hidden [&>span:first-of-type]:!hidden [&>span:last-of-type]:!hidden" 
+                        />
+                      </div>
                     </SelectTrigger>
                     <SelectContent>
                       {formOptions.statuses.map((status) => (
                         <SelectItem key={status} value={status}>
-                          {status.replace('_', ' ')}
+                          <div className="flex items-center gap-2.5 w-full">
+                            <span className={cn(
+                              statusColorMap[status]?.includes('blue') && "text-blue-600",
+                              statusColorMap[status]?.includes('indigo') && "text-indigo-600",
+                              statusColorMap[status]?.includes('amber') && "text-amber-600",
+                              statusColorMap[status]?.includes('yellow') && "text-yellow-600",
+                              statusColorMap[status]?.includes('emerald') && "text-emerald-600",
+                              statusColorMap[status]?.includes('slate') && "text-slate-600",
+                              statusColorMap[status]?.includes('gray') && "text-gray-600"
+                            )}>
+                              {statusIconMap[status]}
+                            </span>
+                            <span className="font-medium flex-1">{formatStatus(status)}</span>
+                            <Badge 
+                              variant="outline" 
+                              className={cn('text-xs shrink-0', statusColorMap[status] ?? '')}
+                            >
+                              {formatStatus(status)}
+                            </Badge>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1210,15 +1317,47 @@ export default function TicketForm(props: TicketFormProps) {
                 <div>
                   <Label className="text-sm font-medium">Priority</Label>
                   <Select value={data.priority} onValueChange={(value) => setData('priority', value)}>
-                    <SelectTrigger className="mt-1.5 h-10">
-                      <SelectValue />
+                    <SelectTrigger className={cn(
+                      "mt-1.5 h-10",
+                      data.priority && priorityColorMap[data.priority] && "border-2"
+                    )}>
+                      <div className="flex items-center gap-2 w-full">
+                        {data.priority && priorityIconMap[data.priority] && (
+                          <span className={cn(
+                            "shrink-0",
+                            priorityColorMap[data.priority]?.includes('slate') && "text-slate-600",
+                            priorityColorMap[data.priority]?.includes('blue') && "text-blue-600",
+                            priorityColorMap[data.priority]?.includes('orange') && "text-orange-600",
+                            priorityColorMap[data.priority]?.includes('red') && "text-red-600"
+                          )}>
+                            {priorityIconMap[data.priority]}
+                          </span>
+                        )}
+                        <SelectValue 
+                          placeholder="Select priority" 
+                          className="[&_svg]:!hidden [&>span:first-of-type]:!hidden [&>span:last-of-type]:!hidden" 
+                        />
+                      </div>
                     </SelectTrigger>
                     <SelectContent>
                       {formOptions.priorities.map((priority) => (
                         <SelectItem key={priority} value={priority}>
-                          <div className="flex items-center gap-2">
-                            <span>{priority}</span>
-                            <Badge className={cn('text-xs', priorityColorMap[priority] ?? '')}>{priority}</Badge>
+                          <div className="flex items-center gap-2.5 w-full">
+                            <span className={cn(
+                              priorityColorMap[priority]?.includes('slate') && "text-slate-600",
+                              priorityColorMap[priority]?.includes('blue') && "text-blue-600",
+                              priorityColorMap[priority]?.includes('orange') && "text-orange-600",
+                              priorityColorMap[priority]?.includes('red') && "text-red-600"
+                            )}>
+                              {priorityIconMap[priority]}
+                            </span>
+                            <span className="font-medium flex-1">{formatPriority(priority)}</span>
+                            <Badge 
+                              variant="outline" 
+                              className={cn('text-xs shrink-0', priorityColorMap[priority] ?? '')}
+                            >
+                              {formatPriority(priority)}
+                            </Badge>
                           </div>
                         </SelectItem>
                       ))}
@@ -1300,7 +1439,18 @@ export default function TicketForm(props: TicketFormProps) {
                     <div className="flex items-center gap-2">
                       {data.assigned_agent_id ? (
                         <>
-                          <User className="h-4 w-4 text-primary" />
+                          {(() => {
+                            const selectedAgent = formOptions.agents.find(a => a.id === data.assigned_agent_id);
+                            return selectedAgent ? (
+                              <UserAvatar 
+                                user={{ id: selectedAgent.id, name: selectedAgent.name, avatar: selectedAgent.avatar }} 
+                                size="sm" 
+                                showTooltip={false}
+                              />
+                            ) : (
+                              <User className="h-4 w-4 text-primary" />
+                            );
+                          })()}
                           <SelectValue>
                             {formOptions.agents.find(a => a.id === data.assigned_agent_id)?.name || 'Unassigned'}
                           </SelectValue>
@@ -1314,7 +1464,21 @@ export default function TicketForm(props: TicketFormProps) {
                     <SelectItem value="__none">Unassigned</SelectItem>
                     {formOptions.agents.map((agent) => (
                       <SelectItem key={agent.id} value={agent.id.toString()}>
-                        {agent.name}
+                        <div className="flex items-center gap-2.5 py-0.5">
+                          <UserAvatar 
+                            user={{ id: agent.id, name: agent.name, avatar: agent.avatar }} 
+                            size="sm" 
+                            showTooltip={false}
+                          />
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="font-medium leading-tight truncate">{agent.name}</span>
+                            {(agent.role || agent.department) && (
+                              <span className="text-xs text-muted-foreground leading-tight mt-0.5 truncate">
+                                {[agent.role, agent.department].filter(Boolean).join(' • ')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>

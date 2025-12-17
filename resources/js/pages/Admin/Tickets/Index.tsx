@@ -1,7 +1,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import React from 'react';
-import { Download, Clock, CheckCircle2, XCircle, Plus, Ticket, User, Users, Calendar, Tag, Edit, Trash2, MoreVertical, UserPlus, Search, UserCircle, List } from 'lucide-react';
+import { Download, Clock, CheckCircle2, XCircle, Plus, Ticket, User, Users, Calendar, Tag, Edit, Trash2, MoreVertical, UserPlus, Search, UserCircle, List, FolderKanban, Radio, ArrowUpDown, X } from 'lucide-react';
 
 import AppLayout from '@/layouts/app-layout';
 import { useToast } from '@/hooks/use-toast';
@@ -140,7 +140,8 @@ export default function TicketIndex({ tickets, filters, options, counts, flash }
 
   // Tab state - determine active tab based on filters
   const getActiveViewTab = () => {
-    if (filters.agent === String(currentUserId)) {
+    // Check if "My Tickets" is active by looking for requester filter or agent filter matching current user
+    if (filters.requester === String(currentUserId) || filters.agent === String(currentUserId)) {
       return 'my-tickets';
     }
     return 'all-tickets';
@@ -154,8 +155,15 @@ export default function TicketIndex({ tickets, filters, options, counts, flash }
     const newFilters = { ...filters };
     
     if (value === 'my-tickets') {
-      newFilters.agent = String(currentUserId);
+      // Filter by requester to show tickets the user created
+      // This allows requesters to see their own tickets
+      newFilters.requester = String(currentUserId);
+      // Also include agent filter in case user wants to see tickets assigned to them
+      // But prioritize requester filter
+      delete newFilters.agent;
     } else {
+      // Clear both filters when switching to "All Tickets"
+      delete newFilters.requester;
       delete newFilters.agent;
     }
     
@@ -523,56 +531,118 @@ export default function TicketIndex({ tickets, filters, options, counts, flash }
               )}
             </div>
             {selectedTickets.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                  <span className="text-sm font-medium text-primary">
+              <div className="flex flex-wrap items-center gap-2 p-4 rounded-lg bg-primary/5 border-2 border-primary/30 shadow-sm">
+                <div className="flex items-center gap-2 mr-2">
+                  <div className="h-2.5 w-2.5 rounded-full bg-primary animate-pulse" />
+                  <span className="text-sm font-semibold text-primary">
                     {selectedTickets.length} {selectedTickets.length === 1 ? 'ticket' : 'tickets'} selected
                   </span>
                 </div>
-                <div className="h-4 w-px bg-border mx-1" />
-                {(can('tickets.edit') || can('tickets.assign')) && (
-                  <Select value={bulkAction} onValueChange={handleBulkAction}>
-                    <SelectTrigger className="w-[160px] h-8 text-xs">
-                      <SelectValue placeholder="Bulk Actions" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {can('tickets.edit') && (
-                        <>
-                          <SelectItem value="status">Change Status</SelectItem>
-                          <SelectItem value="priority">Change Priority</SelectItem>
-                          <SelectItem value="add_tags">Add Tags</SelectItem>
-                          <SelectItem value="remove_tags">Remove Tags</SelectItem>
-                        </>
-                      )}
-                      {can('tickets.assign') && (
-                        <>
-                          <SelectItem value="assign_agent">Assign Agent</SelectItem>
-                          <SelectItem value="assign_team">Assign Team</SelectItem>
-                        </>
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
-                {can('tickets.delete') && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleBulkAction('delete')}
-                    className="h-8"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                    Delete
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedTickets([])}
-                  className="h-8"
-                >
-                  Clear
-                </Button>
+                
+                <div className="h-5 w-px bg-border mx-1" />
+                
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                  {/* Status & Priority Actions */}
+                  {can('tickets.edit') && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('status')}
+                        className="h-8 text-xs"
+                      >
+                        <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
+                        Status
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('priority')}
+                        className="h-8 text-xs"
+                      >
+                        <Radio className="h-3.5 w-3.5 mr-1.5" />
+                        Priority
+                      </Button>
+                    </>
+                  )}
+                  
+                  {/* Assignment Actions */}
+                  {can('tickets.assign') && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('assign_agent')}
+                        className="h-8 text-xs"
+                      >
+                        <User className="h-3.5 w-3.5 mr-1.5" />
+                        Agent
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('assign_team')}
+                        className="h-8 text-xs"
+                      >
+                        <Users className="h-3.5 w-3.5 mr-1.5" />
+                        Team
+                      </Button>
+                    </>
+                  )}
+                  
+                  {/* Tag Actions */}
+                  {can('tickets.edit') && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('add_tags')}
+                        className="h-8 text-xs"
+                      >
+                        <Tag className="h-3.5 w-3.5 mr-1.5" />
+                        Add Tags
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('remove_tags')}
+                        className="h-8 text-xs"
+                      >
+                        <X className="h-3.5 w-3.5 mr-1.5" />
+                        Remove Tags
+                      </Button>
+                    </>
+                  )}
+                  
+                  {/* Destructive Action */}
+                  {can('tickets.delete') && (
+                    <>
+                      <div className="h-5 w-px bg-border mx-1" />
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleBulkAction('delete')}
+                        className="h-8 text-xs"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                  
+                  {/* Clear Selection */}
+                  <div className="ml-auto">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedTickets([])}
+                      className="h-8 text-xs"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1.5" />
+                      Clear
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

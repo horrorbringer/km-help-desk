@@ -103,7 +103,7 @@ class KnowledgeBaseArticleController extends Controller
 
     public function show(KnowledgeBaseArticle $article): Response
     {
-        $article->load(['category:id,name', 'author:id,name,email']);
+        $article->load(['category:id,name', 'author:id,name,email,avatar']);
 
         return Inertia::render('Admin/KnowledgeBase/Show', [
             'article' => [
@@ -120,6 +120,7 @@ class KnowledgeBaseArticleController extends Controller
                     'id' => $article->author->id,
                     'name' => $article->author->name,
                     'email' => $article->author->email,
+                    'avatar' => $article->author->avatar,
                 ] : null,
                 'status' => $article->status,
                 'is_featured' => $article->is_featured,
@@ -185,6 +186,25 @@ class KnowledgeBaseArticleController extends Controller
         return redirect()
             ->route('admin.knowledge-base.index')
             ->with('success', 'Article deleted successfully.');
+    }
+
+    public function submitFeedback(Request $request, KnowledgeBaseArticle $article): RedirectResponse
+    {
+        $request->validate([
+            'type' => ['required', 'in:helpful,not_helpful'],
+        ]);
+
+        $type = $request->input('type');
+        
+        if ($type === 'helpful') {
+            $article->markHelpful();
+        } else {
+            $article->markNotHelpful();
+        }
+
+        return redirect()
+            ->route('admin.knowledge-base.show', $article)
+            ->with('success', 'Thank you for your feedback!');
     }
 }
 

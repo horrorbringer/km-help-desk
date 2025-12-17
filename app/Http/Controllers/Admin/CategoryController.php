@@ -15,7 +15,7 @@ class CategoryController extends Controller
 {
     public function index(Request $request): Response
     {
-        $filters = $request->only(['q', 'parent_id', 'is_active']);
+        $filters = $request->only(['q', 'parent_id', 'is_active', 'default_team_id']);
 
         $categories = TicketCategory::query()
             ->with(['parent:id,name', 'defaultTeam:id,name'])
@@ -36,6 +36,13 @@ class CategoryController extends Controller
             })
             ->when(isset($filters['is_active']), function ($query) use ($filters) {
                 $query->where('is_active', $filters['is_active'] === '1');
+            })
+            ->when(isset($filters['default_team_id']) && $filters['default_team_id'] !== '__all', function ($query) use ($filters) {
+                if ($filters['default_team_id'] === '__none') {
+                    $query->whereNull('default_team_id');
+                } else {
+                    $query->where('default_team_id', $filters['default_team_id']);
+                }
             })
             ->orderBy('sort_order')
             ->orderBy('name')
@@ -68,10 +75,19 @@ class CategoryController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
+        $departments = Department::where('is_active', true)
+            ->where(function ($query) {
+                $query->where('is_support_team', true)
+                    ->orWhere('is_active', true);
+            })
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         return Inertia::render('Admin/Categories/Index', [
             'categories' => $categories,
             'filters' => $filters,
             'rootCategories' => $rootCategories,
+            'departments' => $departments,
         ]);
     }
 
@@ -82,8 +98,7 @@ class CategoryController extends Controller
             'parentCategories' => TicketCategory::whereNull('parent_id')
                 ->orderBy('name')
                 ->get(['id', 'name']),
-            'departments' => Department::where('is_support_team', true)
-                ->orWhere('is_active', true)
+            'departments' => Department::where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name']),
         ]);
@@ -151,8 +166,7 @@ class CategoryController extends Controller
                 ->where('id', '!=', $category->id)
                 ->orderBy('name')
                 ->get(['id', 'name']),
-            'departments' => Department::where('is_support_team', true)
-                ->orWhere('is_active', true)
+            'departments' => Department::where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name']),
         ]);
@@ -221,7 +235,8 @@ class CategoryController extends Controller
         $request->validate([
             'category_ids' => ['required', 'array', 'min:1'],
             'category_ids.*' => ['exists:ticket_categories,id'],
-            'action' => ['required', 'string', 'in:activate,deactivate'],
+            'action' => ['required', 'string', 'in:activate,deactivate,update_default_team'],
+            'default_team_id' => ['nullable', 'required_if:action,update_default_team', 'exists:departments,id'],
         ]);
 
         $categoryIds = $request->input('category_ids');
@@ -239,11 +254,21 @@ class CategoryController extends Controller
             } elseif ($action === 'deactivate') {
                 $category->update(['is_active' => false]);
                 $updated++;
+            } elseif ($action === 'update_default_team') {
+                $defaultTeamId = $request->input('default_team_id');
+                $category->update(['default_team_id' => $defaultTeamId ?: null]);
+                $updated++;
             }
         }
 
         $categoryWord = $updated === 1 ? 'category' : 'categories';
-        $message = "Successfully {$action}d {$updated} {$categoryWord}.";
+        $message = match($action) {
+            'activate' => "Successfully activated {$updated} {$categoryWord}.",
+            'deactivate' => "Successfully deactivated {$updated} {$categoryWord}.",
+            'update_default_team' => "Successfully updated default team for {$updated} {$categoryWord}.",
+            default => "Successfully updated {$updated} {$categoryWord}.",
+        };
+        
         if ($skipped > 0) {
             $skippedWord = $skipped === 1 ? 'category was' : 'categories were';
             $message .= " {$skipped} {$skippedWord} skipped.";

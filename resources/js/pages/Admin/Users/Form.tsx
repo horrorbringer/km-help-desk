@@ -34,6 +34,7 @@ interface User {
   employee_id?: string | null;
   department_id?: number | null;
   is_active: boolean;
+  department?: { id: number; name: string; is_active?: boolean } | null;
 }
 
 interface UserFormProps {
@@ -243,6 +244,12 @@ export default function UserForm({ user, departments, roles }: UserFormProps) {
                       </Select>
                       {errors.department_id && (
                         <p className="text-xs text-red-500">{errors.department_id}</p>
+                      )}
+                      {isEdit && user?.department && !user.department.is_active && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                          <p className="font-medium">⚠️ Warning: User's current department "{user.department.name}" is inactive.</p>
+                          <p className="text-xs mt-1">The user will remain active, but the department cannot receive new tickets. Consider assigning them to an active department.</p>
+                        </div>
                       )}
                     </div>
 

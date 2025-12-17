@@ -83,6 +83,10 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
 
     Route::resource('departments', DepartmentController::class)
         ->names('admin.departments');
+    Route::post('departments/{department}/toggle-status', [DepartmentController::class, 'toggleStatus'])
+        ->name('admin.departments.toggle-status');
+    Route::post('departments/bulk-update', [DepartmentController::class, 'bulkUpdate'])
+        ->name('admin.departments.bulk-update');
 
     Route::resource('categories', CategoryController::class)
         ->names('admin.categories');
@@ -107,6 +111,8 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
 
     Route::resource('knowledge-base', KnowledgeBaseArticleController::class)
         ->names('admin.knowledge-base');
+    Route::post('knowledge-base/{article}/feedback', [KnowledgeBaseArticleController::class, 'submitFeedback'])
+        ->name('admin.knowledge-base.feedback');
 
     Route::resource('email-templates', EmailTemplateController::class)
         ->names('admin.email-templates');

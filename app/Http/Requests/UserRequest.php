@@ -38,7 +38,18 @@ class UserRequest extends FormRequest
                 'max:50',
                 Rule::unique('users')->ignore($userId),
             ],
-            'department_id' => ['nullable', 'exists:departments,id'],
+            'department_id' => [
+                'nullable', 
+                'exists:departments,id',
+                function ($attribute, $value, $fail) {
+                    if ($value) {
+                        $department = \App\Models\Department::find($value);
+                        if ($department && !$department->is_active) {
+                            $fail('Cannot assign user to an inactive department. Please activate the department first.');
+                        }
+                    }
+                },
+            ],
             'is_active' => ['boolean'],
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['exists:roles,id'],
