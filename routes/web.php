@@ -22,8 +22,36 @@ use App\Http\Controllers\Admin\TicketTemplateController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Frontend\ProjectFrontendController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
+
+// Health check endpoint for production monitoring
+Route::get('/health', function () {
+    try {
+        // Check database connection
+        DB::connection()->getPdo();
+        
+        // Check Redis connection
+        Redis::connection()->ping();
+        
+        return response()->json([
+            'status' => 'healthy',
+            'timestamp' => now()->toIso8601String(),
+            'services' => [
+                'database' => 'connected',
+                'redis' => 'connected',
+            ],
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'unhealthy',
+            'timestamp' => now()->toIso8601String(),
+            'error' => $e->getMessage(),
+        ], 503);
+    }
+})->name('health');
 
 Route::get('/', function () {
     return Inertia::render('welcome', [

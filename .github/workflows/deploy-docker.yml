@@ -1,9 +1,12 @@
-name: Deploy to Production
+name: Deploy to Production (Docker)
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'docker-compose.prod.yml'
+      - 'Dockerfile'
 
 jobs:
   deploy:
@@ -16,9 +19,8 @@ jobs:
       - name: Run tests (optional)
         run: |
           echo "Add your test commands here if needed"
-          # docker-compose exec app php artisan test
 
-      - name: Deploy to Production Server
+      - name: Deploy to Production Server (Docker)
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -26,6 +28,5 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            # Traditional server deployment (non-Docker)
-            cd /var/www/km-help-desk
-            sudo -u www-data bash deploy-server.sh
+            cd /home/makara/km-help-desk
+            bash deploy.sh

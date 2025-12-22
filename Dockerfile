@@ -1,4 +1,4 @@
-FROM php:8.2-fpm
+FROM php:8.3-fpm
 
 # Set working directory
 WORKDIR /var/www/html
@@ -13,9 +13,12 @@ RUN apt-get update && apt-get install -y \
     zip \
     unzip \
     libzip-dev \
-    nodejs \
-    npm \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js from NodeSource (more reliable than Debian packages)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
@@ -45,8 +48,20 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html/storage \
     && chmod -R 755 /var/www/html/bootstrap/cache
 
+# Remove unnecessary files for production
+RUN rm -rf /var/www/html/tests \
+    && rm -rf /var/www/html/.git \
+    && rm -rf /var/www/html/.github \
+    && rm -rf /var/www/html/node_modules \
+    && rm -rf /var/www/html/.env.example \
+    && find /var/www/html -name "*.md" -type f -delete || true
+
 # Expose port 9000 for PHP-FPM
 EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD php -r "echo 'OK';" || exit 1
 
 # Start PHP-FPM
 CMD ["php-fpm"]

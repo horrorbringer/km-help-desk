@@ -1,0 +1,21 @@
+[Unit]
+Description=KM Help Desk Queue Worker
+After=network.target redis.service mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/km-help-desk
+ExecStart=/usr/bin/php /var/www/km-help-desk/artisan queue:work redis --tries=3 --timeout=90 --sleep=3 --max-jobs=1000 --max-time=3600
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

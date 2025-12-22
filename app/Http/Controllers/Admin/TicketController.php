@@ -1403,7 +1403,7 @@ class TicketController extends Controller
             'statuses' => Ticket::STATUSES,
             'priorities' => Ticket::PRIORITIES,
             'sources' => Ticket::SOURCES,
-            'departments' => Department::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
+            'departments' => Department::where('is_active', true)->select('id', 'name')->where('code','IT-SD')->orderBy('name')->get(),
             'agents' => $agents,
             'categories' => TicketCategory::active()->select('id', 'name')->orderBy('name')->get(),
             'projects' => Project::select('id', 'name')->orderBy('name')->get(),
