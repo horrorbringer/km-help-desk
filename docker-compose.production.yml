@@ -88,7 +88,11 @@ services:
     environment:
       - APP_ENV=production
       - DB_HOST=db
+      - DB_DATABASE=${DB_DATABASE:-kimmix_cms}
+      - DB_USERNAME=${DB_USERNAME:-kimmix_user}
+      - DB_PASSWORD=${DB_PASSWORD:-kimmix_password}
       - REDIS_HOST=redis
+      - QUEUE_CONNECTION=redis
 
   # Scheduler (Cron)
   scheduler:
@@ -107,6 +111,9 @@ services:
     environment:
       - APP_ENV=production
       - DB_HOST=db
+      - DB_DATABASE=${DB_DATABASE:-kimmix_cms}
+      - DB_USERNAME=${DB_USERNAME:-kimmix_user}
+      - DB_PASSWORD=${DB_PASSWORD:-kimmix_password}
       - REDIS_HOST=redis
     command: >
       sh -c "while true; do
