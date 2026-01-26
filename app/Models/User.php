@@ -105,4 +105,9 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Ticket::class, 'ticket_watchers')->withPivot('created_at');
     }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
+    }
 }

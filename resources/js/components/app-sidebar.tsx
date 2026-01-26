@@ -1,5 +1,6 @@
 import {
     IconBell,
+    IconCalendar,
     IconCamera,
     IconChartBar,
     IconDashboard,
@@ -60,6 +61,11 @@ const getNavMain = (
             url: route('admin.tickets.index'),
             icon: IconTicket,
             permission: 'tickets.view',
+        },
+        {
+            title: 'Bookings',
+            url: route('admin.bookings.index'),
+            icon: IconCalendar,
         },
         {
             title: 'Ticket Templates',

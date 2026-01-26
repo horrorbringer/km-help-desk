@@ -259,6 +259,13 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
         Route::post('/unsubscribe', [\App\Http\Controllers\PushSubscriptionController::class, 'unsubscribe'])->name('unsubscribe');
         Route::get('/vapid-public-key', [\App\Http\Controllers\PushSubscriptionController::class, 'vapidPublicKey'])->name('vapid-public-key');
     });
+    // Meeting Rooms & Bookings
+    Route::resource('bookings', \App\Http\Controllers\BookingController::class)
+        ->names('admin.bookings');
+    Route::post('bookings/{booking}/cancel', [\App\Http\Controllers\BookingController::class, 'cancel'])
+        ->name('admin.bookings.cancel');
+    Route::resource('rooms', \App\Http\Controllers\RoomController::class)
+        ->names('admin.rooms');
 });
 
 // Route::get('/test-email', function () {
@@ -273,4 +280,4 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
 //     }
 // })->middleware('auth');
 
-require __DIR__.'/settings.php';
+require __DIR__ . '/settings.php';
