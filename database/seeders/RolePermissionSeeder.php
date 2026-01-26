@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Role;
+use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 
 class RolePermissionSeeder extends Seeder
@@ -34,58 +34,61 @@ class RolePermissionSeeder extends Seeder
         $permissionGroups = [
             // Tickets
             'tickets' => ['view', 'create', 'edit', 'delete', 'assign', 'resolve', 'close', 'auto-approve', 'create-on-behalf'],
-            
+
+            // Approvals (dedicated approval permissions)
+            'approvals' => ['view', 'approve', 'approve-any', 'reject'],
+
             // Users
             'users' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Departments
             'departments' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Categories
             'categories' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Projects
             'projects' => ['view', 'create', 'edit', 'delete'],
-            
+
             // SLA Policies
             'sla-policies' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Tags
             'tags' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Canned Responses
             'canned-responses' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Email Templates
             'email-templates' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Automation Rules
             'automation-rules' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Escalation Rules
             'escalation-rules' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Custom Fields
             'custom-fields' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Ticket Templates
             'ticket-templates' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Time Entries
             'time-entries' => ['view', 'create', 'edit', 'delete', 'approve'],
-            
+
             // Knowledge Base
             'knowledge-base' => ['view', 'create', 'edit', 'delete'],
-            
+
             // Reports
             'reports' => ['view'],
-            
+
             // Notifications
             'notifications' => ['view'],
-            
+
             // Settings
             'settings' => ['view', 'edit'],
-            
+
             // Roles & Permissions
             'roles' => ['view', 'create', 'edit', 'delete'],
         ];
@@ -156,7 +159,7 @@ class RolePermissionSeeder extends Seeder
                 ],
                 'is_system_role' => true,
             ],
-            
+
             // Management Level (Level 6-4)
             [
                 'name' => 'IT Manager',
@@ -258,7 +261,7 @@ class RolePermissionSeeder extends Seeder
                 ],
                 'is_system_role' => true,
             ],
-            
+
             // Operations Level (Level 3-2)
             [
                 'name' => 'IT Administrator',
@@ -290,7 +293,7 @@ class RolePermissionSeeder extends Seeder
                 ],
                 'is_system_role' => true,
             ],
-            
+
             // User Level (Level 1-0)
             [
                 'name' => 'Requester',
@@ -351,7 +354,7 @@ class RolePermissionSeeder extends Seeder
         foreach ($parentMappings as $childName => $parentName) {
             if (isset($createdRoles[$childName]) && isset($createdRoles[$parentName])) {
                 $createdRoles[$childName]->update([
-                    'parent_role_id' => $createdRoles[$parentName]->id
+                    'parent_role_id' => $createdRoles[$parentName]->id,
                 ]);
             }
         }
@@ -416,22 +419,28 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',
             'tickets.auto-approve',
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions (CEO can approve any level)
+            'approvals.view',
+            'approvals.approve',
+            'approvals.approve-any',
+            'approvals.reject',
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
-            
+
             // Settings (view only)
             'settings.view',
         ]);
@@ -453,18 +462,24 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',
             'tickets.auto-approve',
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions (Director can approve any level)
+            'approvals.view',
+            'approvals.approve',
+            'approvals.approve-any',
+            'approvals.reject',
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -487,18 +502,23 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',
             'tickets.auto-approve', // Can bypass approval workflow
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+            'approvals.reject',
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -511,10 +531,10 @@ class RolePermissionSeeder extends Seeder
     protected function assignDHODPermissions(): void
     {
         $role = Role::where('name', 'Deputy Head of Department')->first();
-        if (!$role) {
+        if (! $role) {
             return;
         }
-        
+
         // DHOD has similar permissions to HOD but slightly reduced approval limit
         $role->givePermissionTo([
             // Ticket Management
@@ -526,18 +546,23 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',
             'tickets.auto-approve', // Can bypass approval workflow (when HOD unavailable)
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+            'approvals.reject',
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -558,8 +583,13 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.auto-approve', // Can approve IT-related requests
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+
             // IT Resources Management
             'users.view',
             'users.create',
@@ -569,7 +599,7 @@ class RolePermissionSeeder extends Seeder
             'categories.edit',
             'projects.view',
             'tags.view',
-            
+
             // IT-Specific
             'custom-fields.view',
             'custom-fields.create',
@@ -586,11 +616,11 @@ class RolePermissionSeeder extends Seeder
             'sla-policies.view',
             'sla-policies.create',
             'sla-policies.edit',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'knowledge-base.create',
@@ -613,8 +643,13 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.auto-approve', // Can approve operations-related requests
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+
             // Resource Viewing
             'users.view',
             'departments.view',
@@ -622,11 +657,11 @@ class RolePermissionSeeder extends Seeder
             'projects.view',
             'projects.edit',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -649,18 +684,22 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',
             'tickets.auto-approve', // Can approve finance-related requests
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -681,8 +720,13 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.auto-approve', // Can approve HR-related requests
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+
             // User Management
             'users.view',
             'users.create',
@@ -691,11 +735,11 @@ class RolePermissionSeeder extends Seeder
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'knowledge-base.create',
@@ -720,18 +764,22 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',
             'tickets.auto-approve', // Can approve procurement requests
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -752,19 +800,24 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.auto-approve', // Can approve safety-related requests
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'knowledge-base.create',
@@ -789,18 +842,18 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',
             'tickets.auto-approve', // Can approve team member requests
             'tickets.create-on-behalf',
-            
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -813,10 +866,10 @@ class RolePermissionSeeder extends Seeder
     protected function assignDLMPermissions(): void
     {
         $role = Role::where('name', 'Deputy Line Manager')->first();
-        if (!$role) {
+        if (! $role) {
             return;
         }
-        
+
         // DLM has similar permissions to LM but slightly reduced approval limit
         $role->givePermissionTo([
             // Ticket Management
@@ -828,18 +881,18 @@ class RolePermissionSeeder extends Seeder
             'tickets.close',
             'tickets.auto-approve', // Can approve team member requests (when LM unavailable)
             'tickets.create-on-behalf',
-            
+
             // Resource Viewing
             'users.view',
             'departments.view',
             'categories.view',
             'projects.view',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -860,8 +913,13 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
+            'tickets.auto-approve', // Can approve project-related requests
             'tickets.create-on-behalf',
-            
+
+            // Approval Permissions
+            'approvals.view',
+            'approvals.approve',
+
             // Resource Viewing
             'users.view',
             'departments.view',
@@ -869,11 +927,11 @@ class RolePermissionSeeder extends Seeder
             'projects.view',
             'projects.edit',
             'tags.view',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.approve',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -894,7 +952,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign',
             'tickets.resolve',
             'tickets.close',
-            
+
             // IT Configuration
             'users.view',
             'users.create',
@@ -927,12 +985,12 @@ class RolePermissionSeeder extends Seeder
             'ticket-templates.view',
             'ticket-templates.create',
             'ticket-templates.edit',
-            
+
             // Time Management
             'time-entries.view',
             'time-entries.create',
             'time-entries.edit',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'knowledge-base.create',
@@ -955,7 +1013,7 @@ class RolePermissionSeeder extends Seeder
             'tickets.assign', // Can assign tickets
             'tickets.resolve',
             'tickets.close',
-            
+
             // Resource Viewing
             'users.view',
             'departments.view',
@@ -968,12 +1026,12 @@ class RolePermissionSeeder extends Seeder
             'ticket-templates.view',
             'ticket-templates.create',
             'ticket-templates.edit',
-            
+
             // Time Tracking
             'time-entries.view',
             'time-entries.create',
             'time-entries.edit',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'knowledge-base.create',
@@ -996,15 +1054,15 @@ class RolePermissionSeeder extends Seeder
             'tickets.resolve',   // Can resolve tickets
             'tickets.close',     // Can close tickets
             // Note: Agents do NOT have 'tickets.assign' - they can only see tickets assigned to them or their team
-            
+
             // Resource Viewing (own department)
             'departments.view',   // Can view their own department
-            
+
             // Time Tracking
             'time-entries.view',
             'time-entries.create',
             'time-entries.edit',
-            
+
             // Knowledge & Reports
             'knowledge-base.view',
             'reports.view',
@@ -1022,10 +1080,10 @@ class RolePermissionSeeder extends Seeder
             'tickets.view',      // Can view their own tickets
             'tickets.create',    // Can create tickets
             'tickets.edit',      // Can edit their own open tickets
-            
+
             // Resource Viewing (own department)
             'departments.view',   // Can view their own department
-            
+
             // Knowledge Base
             'knowledge-base.view',
         ]);
@@ -1043,15 +1101,15 @@ class RolePermissionSeeder extends Seeder
             'tickets.create',    // Can create tickets
             'tickets.edit',      // Can edit tickets assigned to them
             'tickets.resolve',   // Can resolve tickets assigned to them
-            
+
             // Resource Viewing (own department)
             'departments.view',   // Can view their own department
-            
+
             // Time Tracking
             'time-entries.view',
             'time-entries.create',
             'time-entries.edit',
-            
+
             // Knowledge Base
             'knowledge-base.view',
         ]);

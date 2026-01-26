@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Constants\ApprovalLevelConstants;
 use App\Constants\RoleConstants;
 
 use App\Models\Ticket;
@@ -97,9 +98,10 @@ class ApprovalWorkflowService
         }
 
         // Create Line Manager approval
+        $approvalLevel = ApprovalLevelConstants::LINE_MANAGER;
         $lmApproval = TicketApproval::create([
             'ticket_id' => $ticket->id,
-            'approval_level' => 'lm',
+            'approval_level' => $approvalLevel,
             'status' => 'pending',
             'sequence' => 1,
         ]);
@@ -110,14 +112,15 @@ class ApprovalWorkflowService
             $lmApproval->update(['approver_id' => $lmApprover->id]);
         }
 
+        $levelLabel = ApprovalLevelConstants::getLabel($approvalLevel);
         // Record in ticket history
         $ticket->histories()->create([
             'user_id' => Auth::id(),
             'action' => 'approval_requested',
             'field_name' => 'approval',
             'old_value' => null,
-            'new_value' => 'Line Manager Approval',
-            'description' => 'Ticket submitted for Line Manager approval',
+            'new_value' => "{$levelLabel} Approval",
+            'description' => "Ticket submitted for {$levelLabel} approval",
             'created_at' => now(),
         ]);
 
@@ -125,11 +128,11 @@ class ApprovalWorkflowService
         try {
             $notificationService = app(NotificationService::class);
             if ($lmApprover) {
-                $notificationService->notifyApprovalRequested($ticket, $lmApprover, 'lm');
+                $notificationService->notifyApprovalRequested($ticket, $lmApprover, $approvalLevel);
                 // Single log after operation completes (reduces redundant logging)
                 LogHelper::workflow('Approval workflow initialized', [
                     'ticket_id' => $ticket->id,
-                    'approval_level' => 'lm',
+                    'approval_level' => $approvalLevel,
                     'approver_id' => $lmApprover->id,
                 ]);
             } else {
@@ -172,7 +175,7 @@ class ApprovalWorkflowService
             'field_name' => 'approval',
             'old_value' => 'pending',
             'new_value' => 'approved',
-            'description' => ucfirst($approval->approval_level) . ' approved the ticket' . ($comments ? ': ' . $comments : ''),
+            'description' => ApprovalLevelConstants::getLabel($approval->approval_level) . ' approved the ticket' . ($comments ? ': ' . $comments : ''),
             'created_at' => now(),
         ]);
 
@@ -195,41 +198,20 @@ class ApprovalWorkflowService
             ], includeTrace: true);
         }
 
-        // Route ticket based on approval level
-        if ($approval->approval_level === 'lm') {
-            // After LM approval, check if HOD approval is needed
-            $needsHODApproval = $this->requiresHODApproval($ticket);
-            
-            if ($needsHODApproval) {
-                // HOD approval is still needed - don't route yet, just check and create HOD approval
-                $this->checkNextApproval($ticket);
-                // Keep ticket in pending state until HOD approves
-                // Don't route yet - wait for final approval
-            } else {
-                // No HOD approval needed - check if CEO approval is needed
-                $needsCEOApproval = $this->requiresCEOApproval($ticket);
-                
-                if ($needsCEOApproval) {
-                    $this->checkNextApproval($ticket);
-                } else {
-                    // No further approval needed - route immediately after LM approval
-                    $this->routeAfterLMApproval($ticket, $routedToTeamId);
-                }
-            }
-        } elseif ($approval->approval_level === 'hod') {
-            // After HOD approval, check if CEO approval is needed
-            $needsCEOApproval = $this->requiresCEOApproval($ticket);
-            
-            if ($needsCEOApproval) {
-                // CEO approval is still needed - don't route yet
-                $this->checkNextApproval($ticket);
-            } else {
-                // No CEO approval needed - route now
-                $this->routeAfterHODApproval($ticket, $routedToTeamId);
-            }
-        } elseif ($approval->approval_level === 'ceo') {
-            // After CEO approval, this is the final approval - route now
-            $this->routeAfterCEOApproval($ticket, $routedToTeamId);
+        // Route ticket based on approval level (dynamic approach)
+        $approvalLevel = $approval->approval_level;
+        $currentLevelOrder = ApprovalLevelConstants::getHierarchyOrder($approvalLevel);
+        
+        // Check if there are higher-level approvals needed (for default workflow)
+        // Note: If using workflow templates, the WorkflowEngine handles sequence
+        $hasHigherLevelApproval = $this->hasPendingHigherLevelApproval($ticket, $currentLevelOrder);
+        
+        if ($hasHigherLevelApproval) {
+            // Higher level approval is still needed - check and create it
+            $this->checkNextApproval($ticket, $approvalLevel);
+        } else {
+            // No further approval needed - route ticket
+            $this->routeAfterApproval($ticket, $approvalLevel, $routedToTeamId);
         }
     }
 
@@ -265,7 +247,7 @@ class ApprovalWorkflowService
             'field_name' => 'approval',
             'old_value' => 'pending',
             'new_value' => 'rejected',
-            'description' => ucfirst($approval->approval_level) . ' rejected the ticket' . ($comments ? ': ' . $comments : ''),
+            'description' => ApprovalLevelConstants::getLabel($approval->approval_level) . ' rejected the ticket' . ($comments ? ': ' . $comments : ''),
             'created_at' => now(),
         ]);
 
@@ -364,10 +346,14 @@ class ApprovalWorkflowService
     }
 
     /**
-     * Route ticket after LM approval
+     * Route ticket after LM approval (kept for backward compatibility and special routing logic)
      * Real-world improvement: Route based on category's default team, not always ITD
+     * 
+     * @param Ticket $ticket
+     * @param int|null $routedToTeamId
+     * @param string|null $levelLabel Optional label for history description
      */
-    protected function routeAfterLMApproval(Ticket $ticket, ?int $routedToTeamId = null): void
+    protected function routeAfterLMApproval(Ticket $ticket, ?int $routedToTeamId = null, ?string $levelLabel = null): void
     {
         // Real-world routing: Use category's default team
         // This ensures Finance tickets go to Finance, HR tickets go to HR, etc.
@@ -394,13 +380,14 @@ class ApprovalWorkflowService
             ]);
 
             $team = Department::find($targetTeamId);
+            $levelLabel = $levelLabel ?? ApprovalLevelConstants::getLabel(ApprovalLevelConstants::LINE_MANAGER);
             $ticket->histories()->create([
                 'user_id' => Auth::id(),
                 'action' => 'routed',
                 'field_name' => 'assigned_team_id',
                 'old_value' => null,
                 'new_value' => $targetTeamId,
-                'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . ' after LM approval',
+                'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . " after {$levelLabel} approval",
                 'created_at' => now(),
             ]);
 
@@ -419,75 +406,101 @@ class ApprovalWorkflowService
     }
 
     /**
-     * Route ticket after HOD approval
+     * Route ticket after HOD approval (deprecated - use routeAfterApproval instead)
+     * @deprecated Use routeAfterApproval() for dynamic approval level handling
      */
     protected function routeAfterHODApproval(Ticket $ticket, ?int $routedToTeamId = null): void
     {
-        // HOD can route to different destinations, or use category's default team
-        $teamId = $routedToTeamId ?? $ticket->category?->default_team_id;
-        
-        if ($teamId) {
-            $ticket->update([
-                'assigned_team_id' => $teamId,
-                'status' => 'assigned',
-            ]);
-
-            $team = Department::find($teamId);
-            $ticket->histories()->create([
-                'user_id' => Auth::id(),
-                'action' => 'routed',
-                'field_name' => 'assigned_team_id',
-                'old_value' => null,
-                'new_value' => $teamId,
-                'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . ' after HOD approval',
-                'created_at' => now(),
-            ]);
-
-            // Notify department managers when ticket is routed to their team
-            try {
-                $notificationService = app(NotificationService::class);
-                $notificationService->notifyDepartmentManagers($ticket);
-            } catch (\Exception $e) {
-                Log::warning('Failed to notify department managers after HOD routing', [
-                    'ticket_id' => $ticket->id,
-                    'team_id' => $teamId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        } else {
-            // Fallback: If no team specified and category has no default team, mark as resolved
-            // This should rarely happen if categories are properly configured
-            Log::warning('HOD approval completed but no team to route to', [
-                'ticket_id' => $ticket->id,
-                'category_id' => $ticket->category_id,
-            ]);
-            $ticket->update(['status' => 'resolved']);
-        }
+        $this->routeAfterApproval($ticket, ApprovalLevelConstants::HEAD_OF_DEPARTMENT, $routedToTeamId);
     }
 
     /**
-     * Check if next approval is needed
-     * Creates HOD or CEO approval based on requirements
+     * Check if there are pending higher-level approvals
+     * Returns true if a higher level approval is needed and not yet approved
+     * 
+     * @param Ticket $ticket
+     * @param int $currentLevelOrder Current approval level hierarchy order
+     * @return bool
      */
-    protected function checkNextApproval(Ticket $ticket): void
+    protected function hasPendingHigherLevelApproval(Ticket $ticket, int $currentLevelOrder): bool
     {
-        // Check if HOD approval is needed (and not already approved)
+        // For default workflow: check if HOD/CEO approval is needed based on ticket requirements
+        // This is a simplified check - workflow templates handle this more comprehensively
+        
+        // Custom levels (order 99) from workflow templates should be handled by WorkflowEngine
+        // If we see order 99, assume no higher approvals needed (workflow template handles sequence)
+        if ($currentLevelOrder >= 99) {
+            return false;
+        }
+        
+        // Check HOD approval (order 2) - only if we're at a lower level
+        if ($currentLevelOrder < 2 && $this->requiresHODApproval($ticket)) {
+            // Return true if HOD approval is needed but not yet approved
+            $hasApprovedHOD = $ticket->approvals()
+                ->whereIn('approval_level', [ApprovalLevelConstants::HEAD_OF_DEPARTMENT, ApprovalLevelConstants::DEPUTY_HEAD_OF_DEPARTMENT])
+                ->where('status', 'approved')
+                ->exists();
+            
+            if (!$hasApprovedHOD) {
+                return true; // Still waiting for HOD approval
+            }
+        }
+        
+        // Check CEO approval (order 3) - only if we're below CEO level
+        // AND if HOD is not needed OR already approved
+        if ($currentLevelOrder < 3 && $this->requiresCEOApproval($ticket)) {
+            // First check if HOD approval is required and approved (or not needed)
+            $needsHOD = $this->requiresHODApproval($ticket);
+            $hasApprovedHOD = !$needsHOD || $ticket->approvals()
+                ->whereIn('approval_level', [ApprovalLevelConstants::HEAD_OF_DEPARTMENT, ApprovalLevelConstants::DEPUTY_HEAD_OF_DEPARTMENT])
+                ->where('status', 'approved')
+                ->exists();
+            
+            // Only check CEO if HOD requirement is satisfied
+            if ($hasApprovedHOD) {
+                // Return true if CEO approval is needed but not yet approved
+                $hasApprovedCEO = $ticket->approvals()
+                    ->whereIn('approval_level', [ApprovalLevelConstants::CEO, ApprovalLevelConstants::DEPUTY_CEO, ApprovalLevelConstants::DIRECTOR])
+                    ->where('status', 'approved')
+                    ->exists();
+                
+                if (!$hasApprovedCEO) {
+                    return true; // Still waiting for CEO approval
+                }
+            }
+        }
+        
+        return false; // No higher level approvals needed or all are approved
+    }
+
+    /**
+     * Check if next approval is needed and create it
+     * Creates next approval based on requirements (for default workflow)
+     * 
+     * @param Ticket $ticket
+     * @param string|null $currentLevel Current approval level that was just approved
+     */
+    protected function checkNextApproval(Ticket $ticket, ?string $currentLevel = null): void
+    {
+        // For default workflow: check if HOD approval is needed (and not already approved)
+        // This maintains backward compatibility with existing default workflow logic
         $needsHODApproval = $this->requiresHODApproval($ticket);
+        $hodLevels = [ApprovalLevelConstants::HEAD_OF_DEPARTMENT, ApprovalLevelConstants::DEPUTY_HEAD_OF_DEPARTMENT];
         $hasApprovedHOD = $ticket->approvals()
-            ->where('approval_level', 'hod')
+            ->whereIn('approval_level', $hodLevels)
             ->where('status', 'approved')
             ->exists();
 
         if ($needsHODApproval && !$hasApprovedHOD) {
             // Check if there's already a pending HOD approval
             $existingPendingHOD = $ticket->approvals()
-                ->where('approval_level', 'hod')
+                ->whereIn('approval_level', $hodLevels)
                 ->where('status', 'pending')
                 ->exists();
 
             // Check if there's already an approved HOD approval (don't create another)
             $existingApprovedHOD = $ticket->approvals()
-                ->where('approval_level', 'hod')
+                ->whereIn('approval_level', $hodLevels)
                 ->where('status', 'approved')
                 ->exists();
 
@@ -495,60 +508,95 @@ class ApprovalWorkflowService
             // 1. No pending HOD approval exists
             // 2. No approved HOD approval exists (to prevent duplicates)
             if (!$existingPendingHOD && !$existingApprovedHOD) {
-                // Get the highest sequence number to ensure proper ordering
-                $maxSequence = $ticket->approvals()->max('sequence') ?? 0;
-                
-                $hodApproval = TicketApproval::create([
-                    'ticket_id' => $ticket->id,
-                    'approval_level' => 'hod',
-                    'status' => 'pending',
-                    'sequence' => $maxSequence + 1,
-                ]);
+                $this->createApprovalForLevel($ticket, ApprovalLevelConstants::HEAD_OF_DEPARTMENT);
+            }
+        }
+        
+        // Check if CEO approval is needed (if HOD already approved or not needed)
+        if (!$needsHODApproval || $hasApprovedHOD) {
+            $needsCEOApproval = $this->requiresCEOApproval($ticket);
+            $ceoLevels = [ApprovalLevelConstants::CEO, ApprovalLevelConstants::DEPUTY_CEO, ApprovalLevelConstants::DIRECTOR];
+            $hasApprovedCEO = $ticket->approvals()
+                ->whereIn('approval_level', $ceoLevels)
+                ->where('status', 'approved')
+                ->exists();
 
-                // Find HOD (Head of Department)
-                $hodApprover = $this->findHOD($ticket);
-                if ($hodApprover) {
-                    $hodApproval->update(['approver_id' => $hodApprover->id]);
-                }
+            if ($needsCEOApproval && !$hasApprovedCEO) {
+                $existingPendingCEO = $ticket->approvals()
+                    ->whereIn('approval_level', $ceoLevels)
+                    ->where('status', 'pending')
+                    ->exists();
 
-                $ticket->histories()->create([
-                    'user_id' => Auth::id(),
-                    'action' => 'approval_requested',
-                    'field_name' => 'approval',
-                    'old_value' => null,
-                    'new_value' => 'HOD Approval',
-                    'description' => 'Ticket submitted for Head of Department approval',
-                    'created_at' => now(),
-                ]);
-
-                // Send notification to HOD
-                try {
-                    $notificationService = app(NotificationService::class);
-                    if ($hodApprover) {
-                        Log::info('Sending HOD approval requested notification', [
-                            'ticket_id' => $ticket->id,
-                            'approval_level' => 'hod',
-                            'approver_id' => $hodApprover->id,
-                            'approver_email' => $hodApprover->email,
-                        ]);
-                        $notificationService->notifyApprovalRequested($ticket, $hodApprover, 'hod');
-                        Log::info('HOD approval requested notification sent successfully', [
-                            'ticket_id' => $ticket->id,
-                        ]);
-                    } else {
-                        Log::warning('No HOD approver found for ticket', [
-                            'ticket_id' => $ticket->id,
-                        ]);
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Failed to send HOD approval notification', [
-                        'ticket_id' => $ticket->id,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
+                if (!$existingPendingCEO) {
+                    $this->createApprovalForLevel($ticket, ApprovalLevelConstants::CEO);
                 }
             }
         }
+    }
+
+    /**
+     * Create approval for a specific level (dynamic helper method)
+     * 
+     * @param Ticket $ticket
+     * @param string $approvalLevel
+     * @return TicketApproval|null
+     */
+    protected function createApprovalForLevel(Ticket $ticket, string $approvalLevel): ?TicketApproval
+    {
+        // Get the highest sequence number to ensure proper ordering
+        $maxSequence = $ticket->approvals()->max('sequence') ?? 0;
+        
+        $approval = TicketApproval::create([
+            'ticket_id' => $ticket->id,
+            'approval_level' => $approvalLevel,
+            'status' => 'pending',
+            'sequence' => $maxSequence + 1,
+        ]);
+
+        // Find approver dynamically based on approval level
+        $approver = $this->findApproverForLevel($ticket, $approvalLevel);
+        if ($approver) {
+            $approval->update(['approver_id' => $approver->id]);
+        }
+
+        $levelLabel = ApprovalLevelConstants::getLabel($approvalLevel);
+        $ticket->histories()->create([
+            'user_id' => Auth::id(),
+            'action' => 'approval_requested',
+            'field_name' => 'approval',
+            'old_value' => null,
+            'new_value' => "{$levelLabel} Approval",
+            'description' => "Ticket submitted for {$levelLabel} approval",
+            'created_at' => now(),
+        ]);
+
+        // Send notification
+        try {
+            $notificationService = app(NotificationService::class);
+            if ($approver) {
+                Log::info('Sending approval requested notification', [
+                    'ticket_id' => $ticket->id,
+                    'approval_level' => $approvalLevel,
+                    'approver_id' => $approver->id,
+                    'approver_email' => $approver->email,
+                ]);
+                $notificationService->notifyApprovalRequested($ticket, $approver, $approvalLevel);
+            } else {
+                Log::warning('No approver found for approval level', [
+                    'ticket_id' => $ticket->id,
+                    'approval_level' => $approvalLevel,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to send approval notification', [
+                'ticket_id' => $ticket->id,
+                'approval_level' => $approvalLevel,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+        
+        return $approval;
     }
 
     /**
@@ -829,7 +877,7 @@ class ApprovalWorkflowService
         }
 
         return User::whereHas('roles', function ($query) {
-            $query->whereIn('name', ['Manager', 'Super Admin']);
+            $query->whereIn('name', [RoleConstants::MANAGER, RoleConstants::SUPER_ADMIN]);
         })
         ->where('is_active', true)
         ->first();
@@ -996,7 +1044,7 @@ class ApprovalWorkflowService
         
         // Priority 4: Fallback to Director
         $director = User::whereHas('roles', function ($query) {
-            $query->where('name', 'Director');
+            $query->where('name', RoleConstants::DIRECTOR);
         })
         ->where('is_active', true)
         ->first();
@@ -1063,11 +1111,31 @@ class ApprovalWorkflowService
     }
 
     /**
-     * Route ticket after CEO approval
+     * Route ticket after CEO approval (deprecated - use routeAfterApproval instead)
+     * @deprecated Use routeAfterApproval() for dynamic approval level handling
      */
     protected function routeAfterCEOApproval(Ticket $ticket, ?int $routedToTeamId = null): void
     {
-        // CEO can route to different destinations, or use category's default team
+        $this->routeAfterApproval($ticket, ApprovalLevelConstants::CEO, $routedToTeamId);
+    }
+
+    /**
+     * Route ticket after approval (generic method for any approval level)
+     * Replaces level-specific routing methods (routeAfterLMApproval, routeAfterHODApproval, routeAfterCEOApproval)
+     */
+    protected function routeAfterApproval(Ticket $ticket, string $approvalLevel, ?int $routedToTeamId = null): void
+    {
+        // Use the level label for history description
+        $levelLabel = ApprovalLevelConstants::getLabel($approvalLevel);
+        
+        // For backward compatibility, keep specific routing logic for LM level
+        if ($approvalLevel === ApprovalLevelConstants::LINE_MANAGER || 
+            $approvalLevel === ApprovalLevelConstants::DEPUTY_LINE_MANAGER) {
+            $this->routeAfterLMApproval($ticket, $routedToTeamId, $levelLabel);
+            return;
+        }
+        
+        // Generic routing for other levels
         $teamId = $routedToTeamId ?? $ticket->category?->default_team_id;
         
         if ($teamId) {
@@ -1083,16 +1151,90 @@ class ApprovalWorkflowService
                 'field_name' => 'assigned_team_id',
                 'old_value' => null,
                 'new_value' => $teamId,
-                'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . ' after CEO approval',
+                'description' => "Ticket routed to " . ($team ? $team->name : 'team') . " after {$levelLabel} approval",
                 'created_at' => now(),
             ]);
+
+            // Notify department managers when ticket is routed to their team
+            try {
+                $notificationService = app(NotificationService::class);
+                $notificationService->notifyDepartmentManagers($ticket);
+            } catch (\Exception $e) {
+                Log::warning('Failed to notify department managers after routing', [
+                    'ticket_id' => $ticket->id,
+                    'team_id' => $teamId,
+                    'approval_level' => $approvalLevel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         } else {
-            Log::warning('CEO approval completed but no team to route to', [
+            // Fallback: If no team specified, mark as resolved
+            Log::warning('Approval completed but no team to route to', [
                 'ticket_id' => $ticket->id,
                 'category_id' => $ticket->category_id,
+                'approval_level' => $approvalLevel,
             ]);
             $ticket->update(['status' => 'resolved']);
         }
+    }
+
+    /**
+     * Find approver for a specific approval level (dynamic method)
+     * 
+     * @param Ticket $ticket
+     * @param string $approvalLevel
+     * @return User|null
+     */
+    public function findApproverForLevel(Ticket $ticket, string $approvalLevel): ?User
+    {
+        return match ($approvalLevel) {
+            ApprovalLevelConstants::LINE_MANAGER,
+            ApprovalLevelConstants::DEPUTY_LINE_MANAGER => $this->findLineManager($ticket),
+            ApprovalLevelConstants::HEAD_OF_DEPARTMENT,
+            ApprovalLevelConstants::DEPUTY_HEAD_OF_DEPARTMENT => $this->findHOD($ticket),
+            ApprovalLevelConstants::CEO,
+            ApprovalLevelConstants::DEPUTY_CEO,
+            ApprovalLevelConstants::DIRECTOR => $this->findCEO($ticket),
+            ApprovalLevelConstants::FINANCE_MANAGER => $this->findRoleBasedApprover($ticket, RoleConstants::FINANCE_MANAGER),
+            ApprovalLevelConstants::PROCUREMENT_MANAGER => $this->findRoleBasedApprover($ticket, RoleConstants::PROCUREMENT_MANAGER),
+            ApprovalLevelConstants::IT_MANAGER => $this->findRoleBasedApprover($ticket, RoleConstants::IT_MANAGER),
+            default => $this->findRoleBasedApprover($ticket, ApprovalLevelConstants::getRolesForLevel($approvalLevel)[0] ?? null),
+        };
+    }
+
+    /**
+     * Find approver based on role name (generic helper)
+     * 
+     * @param Ticket $ticket
+     * @param string|null $roleName
+     * @return User|null
+     */
+    protected function findRoleBasedApprover(Ticket $ticket, ?string $roleName): ?User
+    {
+        if (!$roleName) {
+            return null;
+        }
+
+        // Try to find approver in ticket's assigned team/department first
+        if ($ticket->assigned_team_id) {
+            $approver = User::where('department_id', $ticket->assigned_team_id)
+                ->whereHas('roles', function ($query) use ($roleName) {
+                    $query->where('name', $roleName);
+                })
+                ->where('is_active', true)
+                ->first();
+
+            if ($approver) {
+                return $approver;
+            }
+        }
+
+        // Fallback: Find any user with this role
+        return User::whereHas('roles', function ($query) use ($roleName) {
+            $query->where('name', $roleName);
+        })
+        ->where('is_active', true)
+        ->first();
     }
 
     /**
@@ -1103,7 +1245,7 @@ class ApprovalWorkflowService
     {
         // Priority 1: Find CEO role
         $ceo = User::whereHas('roles', function ($query) {
-            $query->where('name', 'CEO');
+            $query->where('name', RoleConstants::CEO);
         })
         ->where('is_active', true)
         ->first();
@@ -1119,7 +1261,7 @@ class ApprovalWorkflowService
         
         // Priority 2: Fallback to Director
         $director = User::whereHas('roles', function ($query) {
-            $query->where('name', 'Director');
+            $query->where('name', RoleConstants::DIRECTOR);
         })
         ->where('is_active', true)
         ->first();

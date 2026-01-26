@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Constants\ApprovalLevelConstants;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,8 +28,35 @@ class TicketApproval extends Model
         'rejected_at' => 'datetime',
     ];
 
-    public const LEVELS = ['lm', 'hod', 'ceo'];
+    /**
+     * Default approval levels (backward compatible)
+     * 
+     * @deprecated Use ApprovalLevelConstants::getDefaultLevels() instead
+     * @var array<string>
+     */
+    public const LEVELS = [
+        ApprovalLevelConstants::LINE_MANAGER,
+        ApprovalLevelConstants::HEAD_OF_DEPARTMENT,
+        ApprovalLevelConstants::CEO,
+    ];
+
     public const STATUSES = ['pending', 'approved', 'rejected'];
+
+    /**
+     * Get approval level label for display
+     */
+    public function getLevelLabelAttribute(): string
+    {
+        return ApprovalLevelConstants::getLabel($this->approval_level);
+    }
+
+    /**
+     * Get roles that can approve at this level
+     */
+    public function getApproverRoles(): array
+    {
+        return ApprovalLevelConstants::getRolesForLevel($this->approval_level);
+    }
 
     /**
      * Relationships

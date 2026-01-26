@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Constants\ApprovalLevelConstants;
+use App\Constants\RoleConstants;
 use App\Http\Controllers\Controller;
 use App\Models\Ticket;
 use App\Models\TicketApproval;
@@ -47,7 +49,15 @@ class TicketApprovalController extends Controller
      */
     public function approve(Request $request, TicketApproval $approval): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403);
+        $user = Auth::user();
+        abort_unless($user->can('tickets.edit'), 403);
+
+        // Check if approval is still pending
+        if ($approval->status !== 'pending') {
+            return redirect()
+                ->route('admin.tickets.show', $approval->ticket)
+                ->with('error', 'This approval has already been ' . $approval->status . '.');
+        }
 
         // Prevent approving tickets that are already resolved, closed, or cancelled
         $ticket = $approval->ticket;
@@ -57,11 +67,16 @@ class TicketApprovalController extends Controller
                 ->with('error', 'Cannot approve a ticket that is already ' . $ticket->status . '.');
         }
 
-        // Check if user is the approver or has admin rights
-        if ($approval->approver_id && $approval->approver_id !== Auth::id()) {
-            if (!Auth::user()->can('tickets.assign')) {
-                abort(403, 'You are not authorized to approve this ticket.');
-            }
+        // Validate authorization: user must be authorized to approve at this level
+        if (!$this->authorizeApproval($approval, $user)) {
+            abort(403, 'You are not authorized to approve this ticket at the ' . ApprovalLevelConstants::getLabel($approval->approval_level) . ' level.');
+        }
+
+        // Check if previous approvals in sequence are approved (prevent out-of-order approval)
+        if (!$this->validateApprovalSequence($ticket, $approval)) {
+            return redirect()
+                ->route('admin.tickets.show', $ticket)
+                ->with('error', 'Cannot approve: previous approvals in the workflow must be completed first.');
         }
 
         $validated = $request->validate([
@@ -85,7 +100,15 @@ class TicketApprovalController extends Controller
      */
     public function reject(Request $request, TicketApproval $approval): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403);
+        $user = Auth::user();
+        abort_unless($user->can('tickets.edit'), 403);
+
+        // Check if approval is still pending
+        if ($approval->status !== 'pending') {
+            return redirect()
+                ->route('admin.tickets.show', $approval->ticket)
+                ->with('error', 'This approval has already been ' . $approval->status . '.');
+        }
 
         // Prevent rejecting tickets that are already resolved, closed, or cancelled
         $ticket = $approval->ticket;
@@ -95,11 +118,9 @@ class TicketApprovalController extends Controller
                 ->with('error', 'Cannot reject a ticket that is already ' . $ticket->status . '.');
         }
 
-        // Check if user is the approver or has admin rights
-        if ($approval->approver_id && $approval->approver_id !== Auth::id()) {
-            if (!Auth::user()->can('tickets.assign')) {
-                abort(403, 'You are not authorized to reject this ticket.');
-            }
+        // Validate authorization: user must be authorized to reject at this level
+        if (!$this->authorizeApproval($approval, $user)) {
+            abort(403, 'You are not authorized to reject this ticket at the ' . ApprovalLevelConstants::getLabel($approval->approval_level) . ' level.');
         }
 
         $validated = $request->validate([
@@ -140,5 +161,67 @@ class TicketApprovalController extends Controller
         return Inertia::render('Admin/Tickets/PendingApprovals', [
             'approvals' => $pendingApprovals,
         ]);
+    }
+
+    /**
+     * Authorize user to approve/reject at the approval level
+     * 
+     * @param TicketApproval $approval
+     * @param \App\Models\User $user
+     * @return bool
+     */
+    protected function authorizeApproval(TicketApproval $approval, $user): bool
+    {
+        // Super Admin can always approve/reject
+        if ($user->hasRole(RoleConstants::SUPER_ADMIN)) {
+            return true;
+        }
+
+        // Check if user is the assigned approver
+        if ($approval->approver_id && $approval->approver_id === $user->id) {
+            return true;
+        }
+
+        // Check if user has admin/assign permission (can override)
+        if ($user->can('tickets.assign')) {
+            return true;
+        }
+
+        // Check if user has the required role for this approval level
+        $requiredRoles = ApprovalLevelConstants::getRolesForLevel($approval->approval_level);
+        foreach ($requiredRoles as $role) {
+            if ($user->hasRole($role)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Validate that previous approvals in sequence are approved
+     * Prevents approving out of order (e.g., approving HOD before LM)
+     * 
+     * @param Ticket $ticket
+     * @param TicketApproval $approval
+     * @return bool
+     */
+    protected function validateApprovalSequence(Ticket $ticket, TicketApproval $approval): bool
+    {
+        // Get current approval's sequence number
+        $currentSequence = $approval->sequence;
+
+        // Check if there are any previous approvals in sequence that are not approved
+        $previousApprovals = $ticket->approvals()
+            ->where('sequence', '<', $currentSequence)
+            ->where('status', '!=', 'approved')
+            ->exists();
+
+        // If there are unapproved previous approvals, sequence is invalid
+        if ($previousApprovals) {
+            return false;
+        }
+
+        return true;
     }
 }

@@ -591,7 +591,7 @@ export function AdvancedSearch({ filters, options, onFiltersChange }: AdvancedSe
             // Exclude sort fields from display
             if (key === 'order_by' || key === 'order_dir') return null;
 
-            let label = key;
+            const label = key;
             let displayValue = String(value);
 
             // Format display value

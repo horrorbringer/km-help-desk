@@ -60,6 +60,29 @@ class Ticket extends Model
         return $number;
     }
 
+    /**
+     * Boot the model.
+     */
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::creating(function ($ticket) {
+            // Auto-generate ticket_number if not provided
+            if (empty($ticket->ticket_number)) {
+                $ticket->ticket_number = static::generateTicketNumber();
+            }
+            // Auto-generate subject if not provided
+            if (empty($ticket->subject)) {
+                $ticket->subject = 'Test Ticket Subject';
+            }
+            // Auto-generate description if not provided
+            if (empty($ticket->description)) {
+                $ticket->description = 'Test ticket description';
+            }
+        });
+    }
+
     public function scopeFilter($query, array $filters)
     {
         return $query

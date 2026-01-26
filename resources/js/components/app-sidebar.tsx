@@ -1,387 +1,413 @@
-import * as React from "react"
 import {
-  IconBell,
-  IconCamera,
-  IconChartBar,
-  IconDashboard,
-  IconDatabase,
-  IconFileAi,
-  IconFileDescription,
-  IconFileWord,
-  IconFolder,
-  IconHelp,
-  IconInnerShadowTop,
-  IconMail,
-  IconReport,
-  IconSearch,
-  IconSettings,
-  IconTicket,
-  IconUsers,
-  IconRoute,
-} from "@tabler/icons-react"
-import { LINE_MANAGER } from "@/constants/roles"
+    IconBell,
+    IconCamera,
+    IconChartBar,
+    IconDashboard,
+    IconDatabase,
+    IconFileAi,
+    IconFileDescription,
+    IconFileWord,
+    IconFolder,
+    IconHelp,
+    IconInnerShadowTop,
+    IconMail,
+    IconReport,
+    IconRoute,
+    IconSettings,
+    IconTicket,
+    IconUsers,
+} from '@tabler/icons-react';
+import * as React from 'react';
 
-import { NavDocuments } from "@/components/nav-documents"
-import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
-import { NavUser } from "@/components/nav-user"
-import { usePermissions } from "@/hooks/use-permissions"
-import { usePage } from "@inertiajs/react"
+import { NavMain } from '@/components/nav-main';
+import { NavSecondary } from '@/components/nav-secondary';
+import { NavUser } from '@/components/nav-user';
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar"
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
+import { usePermissions } from '@/hooks/use-permissions';
+import { usePage } from '@inertiajs/react';
 
 type NavItem = {
-  title: string
-  url?: string
-  icon?: React.ComponentType<{ className?: string }>
-  items?: NavItem[]
-  permission?: string
-  permissions?: string[]
-}
+    title: string;
+    url?: string;
+    icon?: React.ComponentType<{ className?: string }>;
+    items?: NavItem[];
+    permission?: string;
+    permissions?: string[];
+};
 
-const getNavMain = (can: (permission: string) => boolean, enableAdvancedOptions: boolean = true, userDepartmentId: number | null = null, userRoles: string[] = []): NavItem[] => {
-  const navItems: NavItem[] = [
-    {
-      title: "Dashboard",
-      url: route("dashboard"),
-      icon: IconDashboard,
-    },
-    {
-      title: "Tickets",
-      url: route("admin.tickets.index"),
-      icon: IconTicket,
-      permission: "tickets.view",
-    },
-    {
-      title: "Ticket Templates",
-      url: route("admin.ticket-templates.index"),
-      icon: IconFileWord,
-      permission: "ticket-templates.view",
-    },
-    {
-      title: "Management",
-      icon: IconUsers,
-      items: [
+const getNavMain = (
+    can: (permission: string) => boolean,
+    enableAdvancedOptions: boolean = true,
+    userDepartmentId: number | null = null,
+    userRoles: string[] = [],
+): NavItem[] => {
+    const navItems: NavItem[] = [
         {
-          title: "Users",
-          url: route("admin.users.index"),
-          icon: IconUsers,
-          permission: "users.view",
+            title: 'Dashboard',
+            url: route('dashboard'),
+            icon: IconDashboard,
         },
         {
-          title: "Roles & Permissions",
-          url: route("admin.roles.index"),
-          icon: IconUsers,
-          permission: "roles.view",
-        },
-        // All users can see their own department
-        {
-          title: "Departments",
-          url: route("admin.departments.index"),
-          icon: IconFolder,
-          permission: "departments.view",
+            title: 'Tickets',
+            url: route('admin.tickets.index'),
+            icon: IconTicket,
+            permission: 'tickets.view',
         },
         {
-          title: "Projects",
-          url: route("admin.projects.index"),
-          icon: IconFolder,
-          permission: "projects.view",
+            title: 'Ticket Templates',
+            url: route('admin.ticket-templates.index'),
+            icon: IconFileWord,
+            permission: 'ticket-templates.view',
         },
-      ],
-    },
-  ];
+        {
+            title: 'Management',
+            icon: IconUsers,
+            items: [
+                {
+                    title: 'Users',
+                    url: route('admin.users.index'),
+                    icon: IconUsers,
+                    permission: 'users.view',
+                },
+                {
+                    title: 'Roles & Permissions',
+                    url: route('admin.roles.index'),
+                    icon: IconUsers,
+                    permission: 'roles.view',
+                },
+                // All users can see their own department
+                {
+                    title: 'Departments',
+                    url: route('admin.departments.index'),
+                    icon: IconFolder,
+                    permission: 'departments.view',
+                },
+                {
+                    title: 'Projects',
+                    url: route('admin.projects.index'),
+                    icon: IconFolder,
+                    permission: 'projects.view',
+                },
+            ],
+        },
+    ];
 
-  // Configuration menu - always visible, but filter advanced items based on setting
-  const configurationItems: NavItem[] = [
-    {
-      title: "Categories",
-      url: route("admin.categories.index"),
-      icon: IconFileDescription,
-      permission: "categories.view",
-    },
-    {
-      title: "Canned Responses",
-      url: route("admin.canned-responses.index"),
-      icon: IconMail,
-      permission: "canned-responses.view",
-    },
-    {
-      title: "Email Templates",
-      url: route("admin.email-templates.index"),
-      icon: IconMail,
-      permission: "email-templates.view",
-    },
-    {
-      title: "Workflow Templates",
-      url: route("admin.workflow-templates.index"),
-      icon: IconRoute,
-      permission: "categories.view", // Use categories permission for now
-    },
-    // {
-    //   title: "Automation Rules",
-    //   url: route("admin.automation-rules.index"),
-    //   icon: IconSettings,
-    //   permission: "automation-rules.view",
-    // },
-    // {
-    //   title: "Escalation Rules",
-    //   url: route("admin.escalation-rules.index"),
-    //   icon: IconReport,
-    //   permission: "escalation-rules.view",
-    // },
-  ];
-
-  // Only add advanced items if advanced options are enabled
-  // if (enableAdvancedOptions) {
-  //   configurationItems.push(
-  //     {
-  //       title: "Tags",
-  //       url: route("admin.tags.index"),
-  //       icon: IconSearch,
-  //       permission: "tags.view",
-  //     },
-  //     {
-  //       title: "SLA Policies",
-  //       url: route("admin.sla-policies.index"),
-  //       icon: IconReport,
-  //       permission: "sla-policies.view",
-  //     },
-  //     {
-  //       title: "Custom Fields",
-  //       url: route("admin.custom-fields.index"),
-  //       icon: IconFileDescription,
-  //       permission: "custom-fields.view",
-  //     }
-  //   );
-  // }
-
-  navItems.push({
-    title: "Configuration",
-    icon: IconSettings,
-    items: configurationItems,
-  });
-
-  navItems.push(
-    {
-      title: "Content",
-      icon: IconHelp,
-      items: [
+    // Configuration menu - always visible, but filter advanced items based on setting
+    const configurationItems: NavItem[] = [
         {
-          title: "Knowledge Base",
-          url: route("admin.knowledge-base.index"),
-          icon: IconHelp,
-          permission: "knowledge-base.view",
-        },
-      ],
-    },
-    {
-      title: "Analytics",
-      icon: IconChartBar,
-      items: [
-        {
-          title: "Reports",
-          url: route("admin.reports.index"),
-          icon: IconReport,
-          permission: "reports.view",
+            title: 'Categories',
+            url: route('admin.categories.index'),
+            icon: IconFileDescription,
+            permission: 'categories.view',
         },
         {
-          title: "Time Entries",
-          url: route("admin.time-entries.index"),
-          icon: IconChartBar,
-          permission: "time-entries.view",
+            title: 'Canned Responses',
+            url: route('admin.canned-responses.index'),
+            icon: IconMail,
+            permission: 'canned-responses.view',
         },
         {
-          title: "Notifications",
-          url: route("admin.notifications.index"),
-          icon: IconBell,
-          // Notifications are accessible to all authenticated users
+            title: 'Email Templates',
+            url: route('admin.email-templates.index'),
+            icon: IconMail,
+            permission: 'email-templates.view',
         },
-      ],
-    }
-  );
+        {
+            title: 'Workflow Templates',
+            url: route('admin.workflow-templates.index'),
+            icon: IconRoute,
+            permission: 'categories.view', // Use categories permission for now
+        },
+        {
+            title: 'Approval Levels',
+            url: route('admin.approval-levels.index'),
+            icon: IconSettings,
+            permission: 'categories.view', // Use categories permission for now
+        },
+        // {
+        //   title: "Automation Rules",
+        //   url: route("admin.automation-rules.index"),
+        //   icon: IconSettings,
+        //   permission: "automation-rules.view",
+        // },
+        // {
+        //   title: "Escalation Rules",
+        //   url: route("admin.escalation-rules.index"),
+        //   icon: IconReport,
+        //   permission: "escalation-rules.view",
+        // },
+    ];
 
-  return navItems.filter((item) => {
-    // Filter items based on permissions
-    if (item.permission && !can(item.permission)) {
-      return false;
-    }
-    
-    // Filter nested items
-    if (item.items) {
-      item.items = item.items.filter((subItem) => {
-        if (subItem.permission && !can(subItem.permission)) {
-          return false;
+    // Only add advanced items if advanced options are enabled
+    // if (enableAdvancedOptions) {
+    //   configurationItems.push(
+    //     {
+    //       title: "Tags",
+    //       url: route("admin.tags.index"),
+    //       icon: IconSearch,
+    //       permission: "tags.view",
+    //     },
+    //     {
+    //       title: "SLA Policies",
+    //       url: route("admin.sla-policies.index"),
+    //       icon: IconReport,
+    //       permission: "sla-policies.view",
+    //     },
+    //     {
+    //       title: "Custom Fields",
+    //       url: route("admin.custom-fields.index"),
+    //       icon: IconFileDescription,
+    //       permission: "custom-fields.view",
+    //     }
+    //   );
+    // }
+
+    navItems.push({
+        title: 'Configuration',
+        icon: IconSettings,
+        items: configurationItems,
+    });
+
+    navItems.push(
+        {
+            title: 'Content',
+            icon: IconHelp,
+            items: [
+                {
+                    title: 'Knowledge Base',
+                    url: route('admin.knowledge-base.index'),
+                    icon: IconHelp,
+                    permission: 'knowledge-base.view',
+                },
+            ],
+        },
+        {
+            title: 'Analytics',
+            icon: IconChartBar,
+            items: [
+                {
+                    title: 'Reports',
+                    url: route('admin.reports.index'),
+                    icon: IconReport,
+                    permission: 'reports.view',
+                },
+                {
+                    title: 'System Monitor',
+                    url: route('admin.system-monitor'),
+                    icon: IconChartBar,
+                    permission: 'reports.view', // Use reports permission for now
+                },
+                {
+                    title: 'Time Entries',
+                    url: route('admin.time-entries.index'),
+                    icon: IconChartBar,
+                    permission: 'time-entries.view',
+                },
+                {
+                    title: 'Notifications',
+                    url: route('admin.notifications.index'),
+                    icon: IconBell,
+                    // Notifications are accessible to all authenticated users
+                },
+            ],
+        },
+    );
+
+    return navItems.filter((item) => {
+        // Filter items based on permissions
+        if (item.permission && !can(item.permission)) {
+            return false;
         }
+
+        // Filter nested items
+        if (item.items) {
+            item.items = item.items.filter((subItem) => {
+                if (subItem.permission && !can(subItem.permission)) {
+                    return false;
+                }
+                return true;
+            });
+
+            // Hide parent if no children remain
+            if (item.items.length === 0) {
+                return false;
+            }
+        }
+
         return true;
-      });
-      
-      // Hide parent if no children remain
-      if (item.items.length === 0) {
-        return false;
-      }
-    }
-    
-    return true;
-  });
+    });
 };
 
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
-  navClouds: [
-    {
-      title: "Capture",
-      icon: IconCamera,
-      isActive: true,
-      url: "#",
-      items: [
+    user: {
+        name: 'shadcn',
+        email: 'm@example.com',
+        avatar: '/avatars/shadcn.jpg',
+    },
+    navClouds: [
         {
-          title: "Active Proposals",
-          url: "#",
+            title: 'Capture',
+            icon: IconCamera,
+            isActive: true,
+            url: '#',
+            items: [
+                {
+                    title: 'Active Proposals',
+                    url: '#',
+                },
+                {
+                    title: 'Archived',
+                    url: '#',
+                },
+            ],
         },
         {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Proposal",
-      icon: IconFileDescription,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Prompts",
-      icon: IconFileAi,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
+            title: 'Proposal',
+            icon: IconFileDescription,
+            url: '#',
+            items: [
+                {
+                    title: 'Active Proposals',
+                    url: '#',
+                },
+                {
+                    title: 'Archived',
+                    url: '#',
+                },
+            ],
         },
         {
-          title: "Archived",
-          url: "#",
+            title: 'Prompts',
+            icon: IconFileAi,
+            url: '#',
+            items: [
+                {
+                    title: 'Active Proposals',
+                    url: '#',
+                },
+                {
+                    title: 'Archived',
+                    url: '#',
+                },
+            ],
         },
-      ],
-    },
-  ],
-  navSecondary: [
-    // Settings moved to user menu dropdown
-    // {
-    //   title: "Get Help",
-    //   url: "#",
-    //   icon: IconHelp,
-    // },
-    // {
-    //   title: "Search",
-    //   url: "#",
-    //   icon: IconSearch,
-    // },
-  ],
-  documents: [
-    {
-      name: "Data Library",
-      url: "#",
-      icon: IconDatabase,
-    },
-    {
-      name: "Reports",
-      url: "#",
-      icon: IconReport,
-    },
-    {
-      name: "Word Assistant",
-      url: "#",
-      icon: IconFileWord,
-    },
-  ],
-}
+    ],
+    navSecondary: [
+        // Settings moved to user menu dropdown
+        // {
+        //   title: "Get Help",
+        //   url: "#",
+        //   icon: IconHelp,
+        // },
+        // {
+        //   title: "Search",
+        //   url: "#",
+        //   icon: IconSearch,
+        // },
+    ],
+    documents: [
+        {
+            name: 'Data Library',
+            url: '#',
+            icon: IconDatabase,
+        },
+        {
+            name: 'Reports',
+            url: '#',
+            icon: IconReport,
+        },
+        {
+            name: 'Word Assistant',
+            url: '#',
+            icon: IconFileWord,
+        },
+    ],
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { can } = usePermissions();
-  const page = usePage();
-  const pageProps = page.props as any;
-  // Get user's department ID and roles
-  const userDepartmentId = pageProps.auth?.user?.department_id ?? null;
-  const userRoles = pageProps.auth?.user?.roles ?? [];
-  // Get enable_advanced_options setting, default to true if not set
-  // Convert to boolean to handle string values like "0" or "false"
-  const enableAdvancedOptions = (() => {
-    const value = pageProps.settings?.enable_advanced_options;
-    
-    if (value === undefined || value === null) {
-      return true; // Default to true if not set
-    }
-    // Handle boolean
-    if (typeof value === 'boolean') {
-      return value;
-    }
-    // Handle string values
-    if (typeof value === 'string') {
-      const lowerValue = value.toLowerCase().trim();
-      if (['1', 'true', 'yes', 'on'].includes(lowerValue)) {
+    const { can } = usePermissions();
+    const page = usePage();
+    const pageProps = page.props as any;
+    // Get user's department ID and roles
+    const userDepartmentId = pageProps.auth?.user?.department_id ?? null;
+    const userRoles = pageProps.auth?.user?.roles ?? [];
+    // Get enable_advanced_options setting, default to true if not set
+    // Convert to boolean to handle string values like "0" or "false"
+    const enableAdvancedOptions = (() => {
+        const value = pageProps.settings?.enable_advanced_options;
+
+        if (value === undefined || value === null) {
+            return true; // Default to true if not set
+        }
+        // Handle boolean
+        if (typeof value === 'boolean') {
+            return value;
+        }
+        // Handle string values
+        if (typeof value === 'string') {
+            const lowerValue = value.toLowerCase().trim();
+            if (['1', 'true', 'yes', 'on'].includes(lowerValue)) {
+                return true;
+            }
+            if (['0', 'false', 'no', 'off', ''].includes(lowerValue)) {
+                return false;
+            }
+        }
+        // Handle numeric values
+        if (typeof value === 'number') {
+            return value !== 0;
+        }
+        // Default to true for any other value
         return true;
-      }
-      if (['0', 'false', 'no', 'off', ''].includes(lowerValue)) {
-        return false;
-      }
-    }
-    // Handle numeric values
-    if (typeof value === 'number') {
-      return value !== 0;
-    }
-    // Default to true for any other value
-    return true;
-  })();
-  
-  return (
-    <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <a href="#">
-                <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">Acme Inc.</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={getNavMain(can, enableAdvancedOptions, userDepartmentId, userRoles)} />
-        {/* <NavDocuments items={data.documents} /> */}
-        {data.navSecondary.length > 0 && (
-          <NavSecondary items={data.navSecondary} className="mt-auto" />
-        )}
-      </SidebarContent>
-      <SidebarFooter>
-        <NavUser />
-      </SidebarFooter>
-    </Sidebar>
-  )
+    })();
+
+    return (
+        <Sidebar collapsible="offcanvas" {...props}>
+            <SidebarHeader>
+                <SidebarMenu>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton
+                            asChild
+                            className="data-[slot=sidebar-menu-button]:!p-1.5"
+                        >
+                            <a href="#">
+                                <IconInnerShadowTop className="!size-5" />
+                                <span className="text-base font-semibold">
+                                    Acme Inc.
+                                </span>
+                            </a>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                </SidebarMenu>
+            </SidebarHeader>
+            <SidebarContent>
+                <NavMain
+                    items={getNavMain(
+                        can,
+                        enableAdvancedOptions,
+                        userDepartmentId,
+                        userRoles,
+                    )}
+                />
+                {/* <NavDocuments items={data.documents} /> */}
+                {data.navSecondary.length > 0 && (
+                    <NavSecondary
+                        items={data.navSecondary}
+                        className="mt-auto"
+                    />
+                )}
+            </SidebarContent>
+            <SidebarFooter>
+                <NavUser />
+            </SidebarFooter>
+        </Sidebar>
+    );
 }

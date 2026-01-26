@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { SUPER_ADMIN } from '@/constants/roles';
 import type { PageProps } from '@/types';
 
 interface Role {
@@ -87,7 +88,7 @@ export default function RolesIndex() {
                       <TableCell>
                         <div>
                           <p className="font-medium">{role.name}</p>
-                          {role.name === 'Super Admin' && ( // TODO: Use role constants
+                          {role.name === SUPER_ADMIN && (
                             <Badge variant="default" className="mt-1 text-xs">
                               System Role
                             </Badge>

@@ -154,11 +154,7 @@ class WorkflowTemplateController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name'])
                 ->map(fn ($dept) => ['value' => $dept->id, 'label' => $dept->name]),
-            'approval_levels' => [
-                ['value' => 'lm', 'label' => 'Line Manager'],
-                ['value' => 'hod', 'label' => 'Head of Department'],
-                ['value' => 'ceo', 'label' => 'CEO'],
-            ],
+            'approval_levels' => \App\Constants\ApprovalLevelConstants::getOptions(),
             'approver_types' => [
                 ['value' => 'line_manager', 'label' => 'Line Manager'],
                 ['value' => 'head_of_department', 'label' => 'Head of Department'],

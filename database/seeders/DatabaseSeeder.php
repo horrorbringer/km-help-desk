@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             RolePermissionSeeder::class, // Must run first to create roles
+            ApprovalLevelSeeder::class, // Approval levels (after roles, before workflow templates)
             DepartmentSeeder::class,
             TicketCategorySeeder::class,
             WorkflowTemplateSeeder::class, // Workflow templates (after categories)
@@ -22,6 +23,7 @@ class DatabaseSeeder extends Seeder
             ProjectSeeder::class,
             CustomFieldSeeder::class,
             CannedResponseSeeder::class,
+            NotificationTemplateSeeder::class, // Notification templates
             KnowledgeBaseArticleSeeder::class,
             EmailTemplateSeeder::class, // Email templates for notifications
             TicketTemplateSeeder::class, // Must run before TicketSeeder

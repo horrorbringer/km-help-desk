@@ -76,7 +76,7 @@ class UserController extends Controller
 
         // Get departments based on visibility
         // Admins see all active departments, others see only their department (even if inactive)
-        if ($user->hasAnyRole(['Super Admin', 'Admin', 'CEO', 'Director', 'Project Manager'])) {
+        if ($user->hasAnyRole(array_merge(RoleConstants::getExecutiveRoles(), [RoleConstants::PROJECT_MANAGER, 'Admin']))) {
             $departments = Department::where('is_active', true)->select('id', 'name')->orderBy('name')->get();
         } else {
             // Users can see their own department even if inactive (for editing their profile)

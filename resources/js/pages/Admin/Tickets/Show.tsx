@@ -251,7 +251,7 @@ export default function TicketShow(props: TicketShowProps) {
       return pageProps.csrf_token;
     }
     
-    let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     if (token) return token;
     
     const cookies = document.cookie.split(';');
@@ -622,12 +622,12 @@ export default function TicketShow(props: TicketShowProps) {
         </div>
 
       {/* Main Content with Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="w-full justify-start h-auto p-1 bg-muted/50">
-          <TabsTrigger value="details" className="data-[state=active]:bg-background">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="w-full justify-start h-auto p-1 bg-muted/50 flex-wrap">
+          <TabsTrigger value="details" className="data-[state=active]:bg-background text-sm sm:text-base">
             Details
           </TabsTrigger>
-          <TabsTrigger value="comments" className="data-[state=active]:bg-background">
+          <TabsTrigger value="comments" className="data-[state=active]:bg-background text-sm sm:text-base">
             Comments
             {(ticket.comments?.length ?? 0) > 0 && (
               <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5 text-xs">
@@ -635,7 +635,7 @@ export default function TicketShow(props: TicketShowProps) {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="attachments" className="data-[state=active]:bg-background">
+          <TabsTrigger value="attachments" className="data-[state=active]:bg-background text-sm sm:text-base">
             Attachments
             {(ticket.attachments?.length ?? 0) > 0 && (
               <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1.5 text-xs">
@@ -643,13 +643,13 @@ export default function TicketShow(props: TicketShowProps) {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="activity" className="data-[state=active]:bg-background">
+          <TabsTrigger value="activity" className="data-[state=active]:bg-background text-sm sm:text-base">
             Activity
           </TabsTrigger>
         </TabsList>
 
         {/* Details Tab */}
-        <TabsContent value="details" className="space-y-4 mt-4">
+        <TabsContent value="details" className="space-y-6 mt-6">
           {/* Quick Info Cards - Cleaner Design */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <Card className="p-4 bg-muted/30 border-0">
@@ -705,11 +705,11 @@ export default function TicketShow(props: TicketShowProps) {
             <div className="lg:col-span-2 space-y-4">
           {/* Description Card - Cleaner */}
           <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Description</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold">Description</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="p-4 bg-muted/20 rounded-lg">
+              <div className="p-5 bg-muted/20 rounded-lg">
                 <p className="whitespace-pre-line text-sm leading-relaxed break-words text-foreground">{ticket.description}</p>
               </div>
             </CardContent>
@@ -717,8 +717,8 @@ export default function TicketShow(props: TicketShowProps) {
 
           {/* Ticket Information Card - Cleaner */}
           <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Ticket Information</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold">Ticket Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
@@ -884,10 +884,10 @@ export default function TicketShow(props: TicketShowProps) {
 
               return completedApprovals.length > 0 ? (
                 <Card>
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-4">
                     <div className="flex items-center gap-2">
                       <Shield className="h-5 w-5 text-primary" />
-                      <CardTitle className="text-lg">Approval History</CardTitle>
+                      <CardTitle className="text-lg font-semibold">Approval History</CardTitle>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -1056,8 +1056,8 @@ export default function TicketShow(props: TicketShowProps) {
           {ticket.current_approval && 
            ticket.current_approval.status === 'pending' && 
            !['resolved', 'closed', 'cancelled'].includes(ticket.status) && (
-              <Card className="border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-amber-50/80 to-amber-100/60 shadow-lg">
-                <CardContent className="p-5">
+              <Card className="border-0 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm">
+                <CardContent className="p-6">
                   <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-3">
@@ -1065,29 +1065,29 @@ export default function TicketShow(props: TicketShowProps) {
                           <Clock className="h-5 w-5 text-amber-900" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2 mb-3">
-                            <Badge className="bg-amber-200 text-amber-900 border-amber-400 text-xs font-semibold px-3 py-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-4">
+                            <Badge className="bg-amber-100 text-amber-900 border-amber-200 text-xs font-semibold px-3 py-1">
                               {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
                             </Badge>
-                            <Badge variant="outline" className="border-amber-400 bg-amber-100/80 text-amber-900 text-xs font-medium">
+                            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900 text-xs font-medium">
                               <Clock className="h-3 w-3 mr-1" />
                               Pending Approval
                             </Badge>
                           </div>
-                          <h3 className="text-lg font-bold text-amber-900 mb-2">
+                          <h3 className="text-lg font-semibold text-foreground mb-3">
                             Approval Required
                           </h3>
-                          <p className="text-sm text-amber-800 mb-3 leading-relaxed">
+                          <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
                             This ticket is waiting for {ticket.current_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'} approval.
                           </p>
                           {ticket.current_approval.approver && (
-                            <div className="flex items-start gap-2.5 text-sm mt-3">
+                            <div className="flex items-start gap-2.5 text-sm">
                               <UserAvatar user={ticket.current_approval.approver} size="sm" className="shrink-0 mt-0.5" />
                               <div>
-                                <span className="font-semibold text-amber-900">Assigned to:</span>{' '}
-                                <span className="font-semibold text-amber-900">{ticket.current_approval.approver.name}</span>
+                                <span className="font-medium text-muted-foreground">Assigned to:</span>{' '}
+                                <span className="font-semibold text-foreground">{ticket.current_approval.approver.name}</span>
                                 {ticket.current_approval.approver.email && (
-                                  <span className="text-amber-700 ml-1">({ticket.current_approval.approver.email})</span>
+                                  <span className="text-muted-foreground ml-1">({ticket.current_approval.approver.email})</span>
                                 )}
                               </div>
                             </div>
@@ -1129,22 +1129,22 @@ export default function TicketShow(props: TicketShowProps) {
 
           {/* Rejected Ticket */}
           {ticket.rejected_approval && ticket.status === 'cancelled' && (
-              <Card className="border-2 border-red-300 bg-gradient-to-br from-red-50 to-red-100/50 shadow-md">
-                <CardContent className="p-5">
+              <Card className="border-0 bg-red-50/50 dark:bg-red-950/20 shadow-sm">
+                <CardContent className="p-6">
                   <div className="flex items-start gap-3 mb-4">
                     <div className="p-2 rounded-lg bg-red-200/50 border border-red-300">
                       <XCircle className="h-5 w-5 text-red-700" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <Badge className="bg-red-200 text-red-900 border-red-300 text-xs font-semibold px-2.5 py-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-4">
+                        <Badge className="bg-red-100 text-red-900 border-red-200 text-xs font-semibold px-2.5 py-1">
                           {ticket.rejected_approval.approval_level === 'lm' ? 'Line Manager' : 'Head of Department'}
                         </Badge>
-                        <Badge variant="outline" className="border-red-400 bg-red-100 text-red-900 text-xs">
+                        <Badge variant="outline" className="border-red-200 bg-red-50 text-red-900 text-xs">
                           Rejected
                         </Badge>
                       </div>
-                      <h3 className="text-lg font-bold text-red-900 mb-2">
+                      <h3 className="text-lg font-semibold text-foreground mb-3">
                         Ticket Rejected
                       </h3>
                       <div className="space-y-2 text-sm text-red-800">
@@ -1260,10 +1260,10 @@ export default function TicketShow(props: TicketShowProps) {
 
           {/* Comments Section */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <CardTitle className="text-lg">Comments</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Comments</CardTitle>
                   <Badge variant="outline">{(ticket.comments?.length ?? 0)}</Badge>
                 </div>
                 {can('tickets.edit') && (ticket.comments?.length ?? 0) > 0 && (
@@ -1631,11 +1631,11 @@ export default function TicketShow(props: TicketShowProps) {
 
           {/* Attachments Section */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Paperclip className="h-5 w-5 text-muted-foreground" />
-                  <CardTitle className="text-lg">Attachments</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Attachments</CardTitle>
                   <Badge variant="outline">{(ticket.attachments?.length ?? 0)}</Badge>
                 </div>
                 {can('tickets.edit') && (
@@ -1835,8 +1835,8 @@ export default function TicketShow(props: TicketShowProps) {
 
           {/* Activity Timeline */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Activity Timeline</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold">Activity Timeline</CardTitle>
               <p className="text-xs text-muted-foreground mt-1">Status changes, assignments, and SLA tracking</p>
             </CardHeader>
             <CardContent>
@@ -1892,10 +1892,10 @@ export default function TicketShow(props: TicketShowProps) {
             <div className="space-y-6">
               {can('tickets.edit') && (
                 <Card className="sticky top-6">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-4">
                     <div className="flex items-center gap-2">
                       <Zap className="h-5 w-5 text-primary" />
-                      <CardTitle className="text-lg">Quick Actions</CardTitle>
+                      <CardTitle className="text-lg font-semibold">Quick Actions</CardTitle>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Update without leaving page</p>
                   </CardHeader>
@@ -2077,12 +2077,12 @@ export default function TicketShow(props: TicketShowProps) {
         </TabsContent>
 
         {/* Comments Tab */}
-        <TabsContent value="comments" className="space-y-4 mt-4">
+        <TabsContent value="comments" className="space-y-6 mt-6">
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <CardTitle className="text-lg">Comments</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Comments</CardTitle>
                   <Badge variant="outline">{(ticket.comments?.length ?? 0)}</Badge>
                 </div>
                 {can('tickets.edit') && (ticket.comments?.length ?? 0) > 0 && (
@@ -2448,13 +2448,13 @@ export default function TicketShow(props: TicketShowProps) {
         </TabsContent>
 
         {/* Attachments Tab */}
-        <TabsContent value="attachments" className="space-y-4 mt-4">
+        <TabsContent value="attachments" className="space-y-6 mt-6">
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Paperclip className="h-5 w-5 text-muted-foreground" />
-                  <CardTitle className="text-lg">Attachments</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Attachments</CardTitle>
                   <Badge variant="outline">{(ticket.attachments?.length ?? 0)}</Badge>
                 </div>
                 {can('tickets.edit') && (
@@ -2653,10 +2653,10 @@ export default function TicketShow(props: TicketShowProps) {
         </TabsContent>
 
         {/* Activity Tab */}
-        <TabsContent value="activity" className="space-y-4 mt-4">
+        <TabsContent value="activity" className="space-y-6 mt-6">
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Activity Timeline</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold">Activity Timeline</CardTitle>
               <p className="text-xs text-muted-foreground mt-1">Status changes, assignments, and SLA tracking</p>
             </CardHeader>
             <CardContent>

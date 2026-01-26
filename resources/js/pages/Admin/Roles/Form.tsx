@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { SUPER_ADMIN } from '@/constants/roles';
 import type { PageProps } from '@/types';
 
 interface Permission {
@@ -124,9 +125,9 @@ export default function RoleForm({ role, permissions }: RoleFormProps) {
                     onChange={(e) => setData('name', e.target.value)}
                     placeholder="e.g. Support Agent"
                     required
-                    disabled={role?.name === 'Super Admin'} // TODO: Use role constants
+                    disabled={role?.name === SUPER_ADMIN}
                   />
-                  {role?.name === 'Super Admin' && ( // TODO: Use role constants
+                  {role?.name === SUPER_ADMIN && (
                     <p className="text-xs text-muted-foreground">
                       Super Admin role name cannot be changed
                     </p>
@@ -203,7 +204,7 @@ export default function RoleForm({ role, permissions }: RoleFormProps) {
                 <Button type="button" variant="outline" asChild>
                   <Link href={route('admin.roles.index')}>Cancel</Link>
                 </Button>
-                <Button type="submit" disabled={processing || role?.name === 'Super Admin'}>
+                <Button type="submit" disabled={processing || role?.name === SUPER_ADMIN}>
                   {processing ? 'Saving...' : isEdit ? 'Update Role' : 'Create Role'}
                 </Button>
               </CardFooter>

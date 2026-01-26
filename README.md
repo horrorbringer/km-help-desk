@@ -12,6 +12,7 @@ Before you begin, ensure you have the following installed:
 **Note:** The Docker containers use PHP 8.3. You don't need PHP installed locally, but your `composer.lock` file requires PHP 8.3+ for dev dependencies.
 
 To verify your installation:
+
 ```bash
 docker --version
 docker-compose --version
@@ -314,8 +315,8 @@ If port 8080 is already in use, you can change it by editing `docker-compose.yml
 
 ```yaml
 nginx:
-  ports:
-    - "8081:80"  # Change 8080 to 8081
+    ports:
+        - '8081:80' # Change 8080 to 8081
 ```
 
 Or set the `APP_PORT` environment variable in your `.env` file:
@@ -329,20 +330,22 @@ APP_PORT=8081
 If you get database connection errors:
 
 1. Wait a bit longer for the database to initialize:
-   ```bash
-   sleep 20
-   docker-compose exec app php artisan migrate
-   ```
+
+    ```bash
+    sleep 20
+    docker-compose exec app php artisan migrate
+    ```
 
 2. Check if the database container is running:
-   ```bash
-   docker-compose ps db
-   ```
+
+    ```bash
+    docker-compose ps db
+    ```
 
 3. Check database logs:
-   ```bash
-   docker-compose logs db
-   ```
+    ```bash
+    docker-compose logs db
+    ```
 
 ### Permission Errors
 
@@ -378,6 +381,16 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
+## Documentation
+
+### 📋 Quick Reference
+
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Complete setup and usage guide
+- [DOCKER_COMMANDS.md](DOCKER_COMMANDS.md) - Docker and Laravel command reference
+- [PRODUCTION_DOCKER_GUIDE.md](PRODUCTION_DOCKER_GUIDE.md) - Production deployment guide
+- [PRODUCTION_COMMANDS.md](PRODUCTION_COMMANDS.md) - Production Docker commands
+- [LARAVEL_LOGS.md](LARAVEL_LOGS.md) - Laravel log management guide
+
 ## Development
 
 ### Running Tests
@@ -400,6 +413,7 @@ For deploying without Docker on a traditional LEMP stack:
 - `PRODUCTION_SERVER_QUICK_START.md` - Quick reference for server deployment
 
 **Quick Setup:**
+
 ```bash
 sudo ./setup-server.sh  # Initial server setup
 # Then follow PRODUCTION_SERVER_QUICK_START.md
@@ -413,6 +427,7 @@ For Docker-based deployment:
 - `PRODUCTION_QUICK_START.md` - Quick reference for Docker deployment
 
 **Quick Setup:**
+
 1. Copy environment template: `cp env.production.template .env`
 2. Configure SSL certificates: `./setup-ssl.sh your-domain.com`
 3. Deploy: `./deploy.sh`
@@ -428,4 +443,3 @@ For Docker-based deployment:
 ## Support
 
 For issues and questions, please refer to the project's issue tracker.
-

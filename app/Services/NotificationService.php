@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
+use App\Constants\RoleConstants;
 use App\Jobs\SendTicketAssignedEmailJob;
 use App\Jobs\SendTicketCreatedEmailJob;
 use App\Models\HelpDeskNotification;
 use App\Models\Ticket;
 use App\Models\TicketComment;
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class NotificationService
@@ -34,6 +34,30 @@ class NotificationService
             'related_user_id' => $relatedUserId,
             'data' => $data,
         ]);
+    }
+
+    /**
+     * Create a notification using a template
+     */
+    public function createFromTemplate(
+        int $userId,
+        string $type,
+        ?int $ticketId = null,
+        ?int $relatedUserId = null,
+        ?array $variables = null,
+        ?array $data = null
+    ): ?HelpDeskNotification {
+        $template = \App\Models\NotificationTemplate::active()->ofType($type)->first();
+
+        if (! $template) {
+            // Fallback to default behavior if no template found
+            return null;
+        }
+
+        $title = $template->renderSubject($variables ?? []);
+        $message = $template->renderMessage($variables ?? []);
+
+        return $this->create($userId, $type, $title, $message, $ticketId, $relatedUserId, $data);
     }
 
     /**
@@ -78,7 +102,7 @@ class NotificationService
     public function notifyWatchers(Ticket $ticket, string $type, string $title, string $message, ?array $excludeUserIds = null, ?array $data = null): void
     {
         $watchers = $ticket->watchers()->where('is_active', true);
-        
+
         if ($excludeUserIds) {
             $watchers->whereNotIn('users.id', $excludeUserIds);
         }
@@ -108,7 +132,7 @@ class NotificationService
                 'requester_email' => $ticket->requester?->email,
             ]);
             SendTicketCreatedEmailJob::dispatch($ticket);
-            
+
             // Notify assigned agent via email (queued)
             if ($ticket->assigned_agent_id) {
                 Log::info('NotificationService: Dispatching SendTicketAssignedEmailJob for agent', [
@@ -127,19 +151,19 @@ class NotificationService
                         'team_name' => $team->name,
                         'team_member_count' => $teamMembers->count(),
                     ]);
-                    
+
                     // Get delay setting for staggered job dispatch
                     $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500);
                     $memberIndex = 0;
-                    
+
                     foreach ($teamMembers as $user) {
                         // Dispatch job with a small delay to prevent rate limiting
                         // Delay increases slightly for each subsequent email
                         $delay = $memberIndex > 0 ? ($delayBetweenEmails * $memberIndex) / 1000 : 0; // Convert to seconds
-                        
+
                         SendTicketAssignedEmailJob::dispatch($ticket, $user)
                             ->delay(now()->addSeconds($delay));
-                        
+
                         $memberIndex++;
                     }
                 }
@@ -154,26 +178,35 @@ class NotificationService
 
         // Notify assigned team/agent if assigned
         if ($ticket->assigned_agent_id) {
-            $this->notifyAgent(
-                $ticket,
+            $this->createFromTemplate(
+                $ticket->assigned_agent_id,
                 'ticket_assigned',
-                'New Ticket Assigned',
-                "Ticket #{$ticket->ticket_number} has been assigned to you: {$ticket->subject}"
+                $ticket->id,
+                null,
+                [
+                    'ticket_number' => $ticket->ticket_number,
+                    'subject' => $ticket->subject,
+                    'assigned_agent_name' => $ticket->assignedAgent?->name,
+                ]
             );
         } elseif ($ticket->assigned_team_id) {
             // Notify department managers (LM/DLM/HOD/DHOD) when ticket is routed to their team
             $this->notifyDepartmentManagers($ticket);
-            
+
             // Notify all active users in the team
             $team = $ticket->assignedTeam;
             if ($team) {
                 foreach ($team->users()->where('is_active', true)->get() as $user) {
-                    $this->create(
+                    $this->createFromTemplate(
                         $user->id,
                         'ticket_assigned',
-                        'New Ticket for Team',
-                        "Ticket #{$ticket->ticket_number} has been assigned to your team: {$ticket->subject}",
-                        $ticket->id
+                        $ticket->id,
+                        null,
+                        [
+                            'ticket_number' => $ticket->ticket_number,
+                            'subject' => $ticket->subject,
+                            'team_name' => $team->name,
+                        ]
                     );
                 }
             }
@@ -192,7 +225,7 @@ class NotificationService
                 'assigned_agent_id' => $ticket->assigned_agent_id,
                 'assigned_team_id' => $ticket->assigned_team_id,
             ]);
-            
+
             // Notify assigned agent via email (queued)
             if ($ticket->assigned_agent_id) {
                 SendTicketAssignedEmailJob::dispatch($ticket, $ticket->assignedAgent);
@@ -207,19 +240,19 @@ class NotificationService
                         'team_name' => $team->name,
                         'team_member_count' => $teamMembers->count(),
                     ]);
-                    
+
                     // Get delay setting for staggered job dispatch
                     $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500);
                     $memberIndex = 0;
-                    
+
                     foreach ($teamMembers as $user) {
                         // Dispatch job with a small delay to prevent rate limiting
                         // Delay increases slightly for each subsequent email
                         $delay = $memberIndex > 0 ? ($delayBetweenEmails * $memberIndex) / 1000 : 0; // Convert to seconds
-                        
+
                         SendTicketAssignedEmailJob::dispatch($ticket, $user)
                             ->delay(now()->addSeconds($delay));
-                        
+
                         $memberIndex++;
                     }
                 }
@@ -333,7 +366,7 @@ class NotificationService
         $title = $isInternal ? 'Internal Comment Added' : 'New Comment on Ticket';
 
         // Notify requester (only if not internal)
-        if (!$isInternal && $ticket->requester_id && $ticket->requester_id !== $commenter->id) {
+        if (! $isInternal && $ticket->requester_id && $ticket->requester_id !== $commenter->id) {
             $this->notifyRequester(
                 $ticket,
                 $type,
@@ -396,12 +429,12 @@ class NotificationService
         }
 
         // Only notify requester if comment is not internal
-        if (!$comment->is_internal && $ticket->requester_id && $ticket->requester_id !== $commenter->id) {
+        if (! $comment->is_internal && $ticket->requester_id && $ticket->requester_id !== $commenter->id) {
             $this->notifyRequester(
                 $ticket,
                 $type,
                 $title,
-                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: " . substr($comment->body, 0, 100) . '...'
+                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: ".substr($comment->body, 0, 100).'...'
             );
             $excludeIds[] = $ticket->requester_id;
         }
@@ -412,18 +445,18 @@ class NotificationService
                 $ticket,
                 $type,
                 $title,
-                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: " . substr($comment->body, 0, 100) . '...'
+                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: ".substr($comment->body, 0, 100).'...'
             );
             $excludeIds[] = $ticket->assigned_agent_id;
         }
 
         // Notify watchers (only non-internal comments)
-        if (!$comment->is_internal) {
+        if (! $comment->is_internal) {
             $this->notifyWatchers(
                 $ticket,
                 $type,
                 $title,
-                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: " . substr($comment->body, 0, 100) . '...',
+                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: ".substr($comment->body, 0, 100).'...',
                 $excludeIds
             );
         }
@@ -556,11 +589,11 @@ class NotificationService
      */
     public function notifyApprovalRequested(Ticket $ticket, User $approver, string $approvalLevel): void
     {
-        if (!$approver) {
+        if (! $approver) {
             return;
         }
 
-        $approvalLevelName = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        $approvalLevelName = $approvalLevel === 'lm' ? RoleConstants::LINE_MANAGER : RoleConstants::HEAD_OF_DEPARTMENT;
         $title = "Approval Required: {$approvalLevelName}";
         $message = "Ticket #{$ticket->ticket_number} requires your {$approvalLevelName} approval: {$ticket->subject}";
 
@@ -602,8 +635,8 @@ class NotificationService
      */
     public function notifyApprovalApproved(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): void
     {
-        $approvalLevelName = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
-        
+        $approvalLevelName = $approvalLevel === 'lm' ? RoleConstants::LINE_MANAGER : RoleConstants::HEAD_OF_DEPARTMENT;
+
         // Send email notification to requester
         try {
             Log::info('NotificationService: Calling EmailService::sendApprovalApproved', [
@@ -643,8 +676,8 @@ class NotificationService
      */
     public function notifyApprovalRejected(Ticket $ticket, User $approver, string $approvalLevel, ?string $comments = null): void
     {
-        $approvalLevelName = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
-        
+        $approvalLevelName = $approvalLevel === 'lm' ? RoleConstants::LINE_MANAGER : RoleConstants::HEAD_OF_DEPARTMENT;
+
         // Send email notification to requester
         try {
             Log::info('NotificationService: Calling EmailService::sendApprovalRejected', [
@@ -674,7 +707,7 @@ class NotificationService
                 $ticket,
                 'approval_rejected',
                 "Ticket Rejected by {$approvalLevelName}",
-                "Ticket #{$ticket->ticket_number} has been rejected by {$approver->name} ({$approvalLevelName})" . ($comments ? ": {$comments}" : '')
+                "Ticket #{$ticket->ticket_number} has been rejected by {$approver->name} ({$approvalLevelName})".($comments ? ": {$comments}" : '')
             );
         }
     }
@@ -685,13 +718,13 @@ class NotificationService
      */
     public function notifyDepartmentManagers(Ticket $ticket): void
     {
-        if (!$ticket->assigned_team_id) {
+        if (! $ticket->assigned_team_id) {
             return;
         }
 
         try {
             $team = $ticket->assignedTeam;
-            if (!$team) {
+            if (! $team) {
                 return;
             }
 
@@ -714,6 +747,7 @@ class NotificationService
                     'assigned_team_id' => $ticket->assigned_team_id,
                     'team_name' => $team->name,
                 ]);
+
                 return;
             }
 
@@ -765,4 +799,3 @@ class NotificationService
         }
     }
 }
-

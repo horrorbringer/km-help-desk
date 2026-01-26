@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Constants\RoleConstants;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,7 +23,7 @@ class DepartmentRequest extends FormRequest
             }
             
             // Executives can edit all, others can only edit their own
-            if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+            if (!$user->hasAnyRole(RoleConstants::getExecutiveRoles())) {
                 $department = $this->route('department');
                 return $department && $user->department_id === $department->id;
             }

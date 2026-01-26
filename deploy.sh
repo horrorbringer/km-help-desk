@@ -1,80 +1,64 @@
 #!/bin/bash
-
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+echo "🚀 KM Help Desk Deployment Script"
+echo "================================"
+echo ""
 
-# Configuration
-PROJECT_DIR="/home/makara/km-help-desk"
-COMPOSE_FILE="docker-compose.prod.yml"
-ENV_FILE=".env"
-
-echo -e "${GREEN}Starting production deployment...${NC}"
-
-# Navigate to project directory
-cd "$PROJECT_DIR" || exit 1
-
-# Check if .env file exists
-if [ ! -f "$ENV_FILE" ]; then
-    echo -e "${RED}Error: $ENV_FILE file not found!${NC}"
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker is not installed. Please install Docker first."
     exit 1
 fi
 
-# Pull latest code
-echo -e "${YELLOW}Pulling latest code from repository...${NC}"
-git fetch origin
-git reset --hard origin/main
-git clean -fd
+# Check if Docker Compose is installed
+if ! command -v docker-compose &> /dev/null; then
+    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
+    exit 1
+fi
 
-# Build Docker images
-echo -e "${YELLOW}Building Docker images...${NC}"
-docker-compose -f "$COMPOSE_FILE" build --no-cache
+# Configuration
+DOCKER_USERNAME="vanny3333"
+IMAGE_NAME="km-help-desk"
+IMAGE_TAG=${1:-latest}
+FULL_IMAGE="${DOCKER_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-# Stop existing containers
-echo -e "${YELLOW}Stopping existing containers...${NC}"
-docker-compose -f "$COMPOSE_FILE" down
+echo "📦 Pulling latest image: ${FULL_IMAGE}"
+docker pull ${FULL_IMAGE}
 
-# Start containers
-echo -e "${YELLOW}Starting containers...${NC}"
-docker-compose -f "$COMPOSE_FILE" up -d
+echo ""
+echo "🔄 Starting services..."
+docker-compose -f docker-compose.production.yml up -d
 
-# Wait for database to be ready
-echo -e "${YELLOW}Waiting for database to be ready...${NC}"
-sleep 15
+echo ""
+echo "⏳ Waiting for services to be ready..."
+sleep 10
 
-# Run migrations
-echo -e "${YELLOW}Running database migrations...${NC}"
-docker-compose -f "$COMPOSE_FILE" exec -T app php artisan migrate --force
+echo ""
+echo "📊 Checking service status..."
+docker-compose -f docker-compose.production.yml ps
 
-# Clear and cache configuration
-echo -e "${YELLOW}Optimizing application...${NC}"
-docker-compose -f "$COMPOSE_FILE" exec -T app php artisan config:cache
-docker-compose -f "$COMPOSE_FILE" exec -T app php artisan route:cache
-docker-compose -f "$COMPOSE_FILE" exec -T app php artisan view:cache
-docker-compose -f "$COMPOSE_FILE" exec -T app php artisan event:cache
+echo ""
+echo "🔑 Generating application key (if needed)..."
+docker-compose -f docker-compose.production.yml exec -T app php artisan key:generate --force 2>/dev/null || echo "App key already exists"
 
-# Clear application cache
-docker-compose -f "$COMPOSE_FILE" exec -T app php artisan cache:clear
+echo ""
+echo "🗄️  Running database migrations..."
+docker-compose -f docker-compose.production.yml exec -T app php artisan migrate --force
 
-# Set permissions
-echo -e "${YELLOW}Setting permissions...${NC}"
-docker-compose -f "$COMPOSE_FILE" exec -T app chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
-docker-compose -f "$COMPOSE_FILE" exec -T app chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
+echo ""
+echo "🔗 Creating storage link..."
+docker-compose -f docker-compose.production.yml exec -T app php artisan storage:link 2>/dev/null || echo "Storage link already exists"
 
-# Create storage link if it doesn't exist
-docker-compose -f "$COMPOSE_FILE" exec -T app php artisan storage:link || true
+echo ""
+echo "⚡ Optimizing application..."
+docker-compose -f docker-compose.production.yml exec -T app php artisan optimize
 
-# Restart queue and scheduler
-echo -e "${YELLOW}Restarting queue and scheduler...${NC}"
-docker-compose -f "$COMPOSE_FILE" restart queue scheduler
-
-# Show container status
-echo -e "${GREEN}Deployment completed!${NC}"
-echo -e "${YELLOW}Container status:${NC}"
-docker-compose -f "$COMPOSE_FILE" ps
-
-echo -e "${GREEN}✓ Production deployment successful!${NC}"
+echo ""
+echo "✅ Deployment complete!"
+echo ""
+echo "📝 Next steps:"
+echo "   - Check logs: docker-compose -f docker-compose.production.yml logs -f"
+echo "   - Run seeders (optional): docker-compose -f docker-compose.production.yml exec app php artisan db:seed --force"
+echo "   - Access application at: http://localhost (or your configured port)"
+echo ""

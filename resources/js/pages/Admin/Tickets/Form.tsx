@@ -393,7 +393,7 @@ export default function TicketForm(props: TicketFormProps) {
     }
     
     // 2. From meta tag (fallback)
-    let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     if (token) return token;
     
     // 3. Try to get from cookies (Laravel stores it as XSRF-TOKEN)
@@ -465,7 +465,7 @@ export default function TicketForm(props: TicketFormProps) {
         router.reload({ only: ['ticket'] });
       } else {
         let errorMessage = 'Failed to upload files.';
-        let errorDetails: string[] = [];
+        const errorDetails: string[] = [];
         
         if (response.status === 419) {
           errorMessage = 'Session expired. Please refresh the page and try again.';
@@ -748,7 +748,7 @@ export default function TicketForm(props: TicketFormProps) {
         router.reload({ only: ['ticket'] });
       } else {
         let errorMessage = 'Failed to upload files.';
-        let errorDetails: string[] = [];
+        const errorDetails: string[] = [];
         
         if (response.status === 419) {
           errorMessage = 'Session expired. Please refresh the page and try again.';

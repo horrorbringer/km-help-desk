@@ -113,5 +113,50 @@ class NotificationController extends Controller
 
         return response()->json($notifications);
     }
-}
 
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $request->validate([
+            'notification_ids' => 'required|array',
+            'notification_ids.*' => 'integer|exists:help_desk_notifications,id',
+        ]);
+
+        $notificationIds = $request->notification_ids;
+
+        // Ensure user can only delete their own notifications
+        $deletedCount = HelpDeskNotification::where('user_id', Auth::id())
+            ->whereIn('id', $notificationIds)
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'deleted_count' => $deletedCount,
+            'message' => "Deleted {$deletedCount} notification(s)",
+        ]);
+    }
+
+    public function bulkMarkAsRead(Request $request): JsonResponse
+    {
+        $request->validate([
+            'notification_ids' => 'required|array',
+            'notification_ids.*' => 'integer|exists:help_desk_notifications,id',
+        ]);
+
+        $notificationIds = $request->notification_ids;
+
+        // Ensure user can only mark their own notifications as read
+        $updatedCount = HelpDeskNotification::where('user_id', Auth::id())
+            ->whereIn('id', $notificationIds)
+            ->where('is_read', false)
+            ->update([
+                'is_read' => true,
+                'read_at' => now(),
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'updated_count' => $updatedCount,
+            'message' => "Marked {$updatedCount} notification(s) as read",
+        ]);
+    }
+}

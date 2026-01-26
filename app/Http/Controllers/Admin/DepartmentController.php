@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Constants\RoleConstants;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\DepartmentRequest;
 use App\Models\Department;
@@ -39,7 +40,7 @@ class DepartmentController extends Controller
         // Apply department-based visibility
         // Executives (Super Admin, CEO, Director) can see all departments
         // All other users can only see their own department
-        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+        if (!$user->hasAnyRole(RoleConstants::getExecutiveRoles())) {
             if ($user->department_id) {
                 // User has a department - show only their department
                 $query->where('id', $user->department_id);
@@ -96,7 +97,7 @@ class DepartmentController extends Controller
         
         // Check if user can view this department
         // Executives can view all, others can only view their own
-        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+        if (!$user->hasAnyRole(RoleConstants::getExecutiveRoles())) {
             if ($user->department_id !== $department->id) {
                 abort(403, 'You can only view your own department.');
             }
@@ -150,7 +151,7 @@ class DepartmentController extends Controller
         
         // Check if user can edit this department
         // Executives can edit all, others can only edit their own
-        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+        if (!$user->hasAnyRole(RoleConstants::getExecutiveRoles())) {
             if ($user->department_id !== $department->id) {
                 abort(403, 'You can only edit your own department.');
             }
@@ -176,7 +177,7 @@ class DepartmentController extends Controller
         
         // Check if user can edit this department
         // Executives can edit all, others can only edit their own
-        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+        if (!$user->hasAnyRole(RoleConstants::getExecutiveRoles())) {
             if ($user->department_id !== $department->id) {
                 abort(403, 'You can only edit your own department.');
             }
@@ -220,7 +221,7 @@ class DepartmentController extends Controller
         $user = auth()->user();
         
         // Check if user can edit this department
-        if (!$user->hasAnyRole(['Super Admin', 'CEO', 'Director'])) {
+        if (!$user->hasAnyRole(RoleConstants::getExecutiveRoles())) {
             if ($user->department_id !== $department->id) {
                 abort(403, 'You can only edit your own department.');
             }

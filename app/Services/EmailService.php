@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Constants\RoleConstants;
 use App\Models\EmailTemplate;
 use App\Models\Ticket;
 use App\Models\TicketComment;
@@ -427,7 +428,7 @@ class EmailService
         }
 
         $data = $this->getTicketData($ticket);
-        $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        $data['approval_level'] = $approvalLevel === 'lm' ? RoleConstants::LINE_MANAGER : RoleConstants::HEAD_OF_DEPARTMENT;
         $data['approver_name'] = $approver->name;
         
         $eventType = $approvalLevel === 'lm' ? 'approval_lm_requested' : 'approval_hod_requested';
@@ -465,7 +466,7 @@ class EmailService
         }
         
         $data = $this->getTicketData($ticket);
-        $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        $data['approval_level'] = $approvalLevel === 'lm' ? RoleConstants::LINE_MANAGER : RoleConstants::HEAD_OF_DEPARTMENT;
         $data['approver_name'] = $approver->name;
         $data['comments'] = $comments ?? '';
         
@@ -504,7 +505,7 @@ class EmailService
         }
         
         $data = $this->getTicketData($ticket);
-        $data['approval_level'] = $approvalLevel === 'lm' ? 'Line Manager' : 'Head of Department';
+        $data['approval_level'] = $approvalLevel === 'lm' ? RoleConstants::LINE_MANAGER : RoleConstants::HEAD_OF_DEPARTMENT;
         $data['approver_name'] = $approver->name;
         $data['comments'] = $comments ?? '';
         $data['rejection_comments'] = $comments ?? '';
