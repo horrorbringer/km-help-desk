@@ -75,17 +75,42 @@ class WorkflowTemplateController extends Controller
     public function store(WorkflowTemplateRequest $request): RedirectResponse
     {
         $data = $request->validated();
-        
+
         // Ensure JSON fields are properly formatted
         $data['workflow_steps'] = $data['workflow_steps'] ?? [];
         $data['routing_rules'] = $data['routing_rules'] ?? [];
         $data['approval_rules'] = $data['approval_rules'] ?? [];
-        
+
         WorkflowTemplate::create($data);
 
         return redirect()
             ->route('admin.workflow-templates.index')
             ->with('success', 'Workflow template created successfully.');
+    }
+
+    public function show(WorkflowTemplate $workflowTemplate): Response
+    {
+        return Inertia::render('Admin/WorkflowTemplates/Show', [
+            'template' => [
+                'id' => $workflowTemplate->id,
+                'name' => $workflowTemplate->name,
+                'description' => $workflowTemplate->description,
+                'category' => $workflowTemplate->category ? [
+                    'id' => $workflowTemplate->category->id,
+                    'name' => $workflowTemplate->category->name,
+                ] : null,
+                'department' => $workflowTemplate->department ? [
+                    'id' => $workflowTemplate->department->id,
+                    'name' => $workflowTemplate->department->name,
+                ] : null,
+                'priority' => $workflowTemplate->priority,
+                'is_active' => $workflowTemplate->is_active,
+                'workflow_steps' => $workflowTemplate->workflow_steps ?? [],
+                'created_at' => $workflowTemplate->created_at->format('Y-m-d H:i'),
+                'updated_at' => $workflowTemplate->updated_at->format('Y-m-d H:i'),
+            ],
+            'formOptions' => $this->getFormOptions(),
+        ]);
     }
 
     public function edit(WorkflowTemplate $workflowTemplate): Response
@@ -110,12 +135,12 @@ class WorkflowTemplateController extends Controller
     public function update(WorkflowTemplateRequest $request, WorkflowTemplate $workflowTemplate): RedirectResponse
     {
         $data = $request->validated();
-        
+
         // Ensure JSON fields are properly formatted
         $data['workflow_steps'] = $data['workflow_steps'] ?? [];
         $data['routing_rules'] = $data['routing_rules'] ?? [];
         $data['approval_rules'] = $data['approval_rules'] ?? [];
-        
+
         $workflowTemplate->update($data);
 
         return redirect()
@@ -135,7 +160,7 @@ class WorkflowTemplateController extends Controller
     public function toggleStatus(WorkflowTemplate $workflowTemplate): RedirectResponse
     {
         $workflowTemplate->update([
-            'is_active' => !$workflowTemplate->is_active,
+            'is_active' => ! $workflowTemplate->is_active,
         ]);
 
         return redirect()

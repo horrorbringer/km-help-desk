@@ -1,443 +1,766 @@
-import React, { FormEvent } from 'react';
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { FormEvent, useState } from 'react';
+import { toast } from 'sonner';
 
-import AppLayout from '@/layouts/app-layout';
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import AppLayout from '@/layouts/app-layout';
 import type { PageProps } from '@/types';
 
-type BaseOption = { id: number; name: string };
+type BaseOption = { id: number; name: string; color?: string };
 
 interface TicketTemplateFormProps {
-  template?: {
-    id: number;
-    name: string;
-    slug: string;
-    description?: string;
-    template_data: Record<string, any>;
-    is_active: boolean;
-    is_public: boolean;
-  };
-  formOptions: {
-    statuses: string[];
-    priorities: string[];
-    sources: string[];
-    departments: BaseOption[];
-    agents: BaseOption[];
-    categories: BaseOption[];
-    projects: BaseOption[];
-    sla_policies: BaseOption[];
-    tags: BaseOption[];
-  };
+    template?: {
+        id: number;
+        name: string;
+        slug: string;
+        description?: string;
+        template_data: Record<string, any>;
+        is_active: boolean;
+        is_public: boolean;
+    };
+    formOptions: {
+        statuses: string[];
+        priorities: string[];
+        sources: string[];
+        departments: BaseOption[];
+        agents: BaseOption[];
+        categories: BaseOption[];
+        projects: BaseOption[];
+        sla_policies: BaseOption[];
+        tags: BaseOption[];
+    };
 }
 
-export default function TicketTemplateForm({ template, formOptions }: TicketTemplateFormProps) {
-  const isEdit = !!template;
-  const { errors } = usePage<PageProps>().props;
+export default function TicketTemplateForm({
+    template,
+    formOptions,
+}: TicketTemplateFormProps) {
+    const isEdit = !!template;
+    const { errors } = usePage<PageProps>().props;
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  const templateData = template?.template_data ?? {};
+    const templateData = template?.template_data ?? {};
 
-  const { data, setData, post, put, processing } = useForm({
-    name: template?.name ?? '',
-    slug: template?.slug ?? '',
-    description: template?.description ?? '',
-    template_data: {
-      subject: templateData.subject ?? '',
-      description: templateData.description ?? '',
-      category_id: templateData.category_id ?? '',
-      project_id: templateData.project_id ?? '',
-      assigned_team_id: templateData.assigned_team_id ?? '',
-      assigned_agent_id: templateData.assigned_agent_id ?? '',
-      priority: templateData.priority ?? formOptions.priorities[1] ?? 'medium',
-      status: templateData.status ?? formOptions.statuses[0] ?? 'open',
-      source: templateData.source ?? formOptions.sources[0] ?? 'web',
-      sla_policy_id: templateData.sla_policy_id ?? '',
-      tag_ids: templateData.tag_ids ?? [],
-    },
-    is_active: template?.is_active ?? true,
-    is_public: template?.is_public ?? true,
-  });
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-
-    if (isEdit && template) {
-      put(route('admin.ticket-templates.update', template.id));
-    } else {
-      post(route('admin.ticket-templates.store'));
-    }
-  };
-
-  const updateTemplateData = (field: string, value: any) => {
-    setData('template_data', {
-      ...data.template_data,
-      [field]: value,
+    const { data, setData, post, put, processing } = useForm({
+        name: template?.name ?? '',
+        slug: template?.slug ?? '',
+        description: template?.description ?? '',
+        template_data: {
+            subject: templateData.subject ?? '',
+            description: templateData.description ?? '',
+            category_id: templateData.category_id ?? '',
+            project_id: templateData.project_id ?? '',
+            assigned_team_id: templateData.assigned_team_id ?? '',
+            assigned_agent_id: templateData.assigned_agent_id ?? '',
+            priority:
+                templateData.priority ?? formOptions.priorities[1] ?? 'medium',
+            status: templateData.status ?? formOptions.statuses[0] ?? 'open',
+            source: templateData.source ?? formOptions.sources[0] ?? 'web',
+            sla_policy_id: templateData.sla_policy_id ?? '',
+            tag_ids: templateData.tag_ids ?? [],
+        },
+        is_active: template?.is_active ?? true,
+        is_public: template?.is_public ?? true,
     });
-  };
 
-  const toggleTag = (tagId: number) => {
-    const tagIds = data.template_data.tag_ids || [];
-    const newTagIds = tagIds.includes(tagId)
-      ? tagIds.filter((id: number) => id !== tagId)
-      : [...tagIds, tagId];
-    updateTemplateData('tag_ids', newTagIds);
-  };
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
 
-  return (
-    <AppLayout>
-      <Head title={isEdit ? 'Edit Ticket Template' : 'New Ticket Template'} />
+        if (isEdit && template) {
+            put(route('admin.ticket-templates.update', template.id), {
+                onSuccess: () => {
+                    toast.success('Ticket template updated successfully.');
+                },
+                onError: () => {
+                    toast.error(
+                        'Failed to update ticket template. Please check the form.',
+                    );
+                },
+            });
+        } else {
+            post(route('admin.ticket-templates.store'), {
+                onSuccess: () => {
+                    toast.success('Ticket template created successfully.');
+                },
+                onError: () => {
+                    toast.error(
+                        'Failed to create ticket template. Please check the form.',
+                    );
+                },
+            });
+        }
+    };
 
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">
-              {isEdit ? 'Edit Ticket Template' : 'New Ticket Template'}
-            </h1>
-            <p className="text-muted-foreground">
-              {isEdit
-                ? 'Update the ticket template.'
-                : 'Create a reusable template to quickly create tickets with pre-filled data.'}
-            </p>
-          </div>
-          <Button asChild variant="outline">
-            <Link href={route('admin.ticket-templates.index')}>← Back</Link>
-          </Button>
-        </div>
+    const handleDelete = (e: React.MouseEvent) => {
+        e.preventDefault();
+        if (template) {
+            router.delete(
+                route('admin.ticket-templates.destroy', template.id),
+                {
+                    onSuccess: () => {
+                        toast.success('Ticket template deleted successfully.');
+                    },
+                    onError: () => {
+                        toast.error('Failed to delete ticket template.');
+                    },
+                },
+            );
+        }
+    };
 
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Main Form */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Template Information</CardTitle>
-                <CardDescription>
-                  {isEdit
-                    ? 'Update the template details below.'
-                    : 'Fill in the information to create a new ticket template.'}
-                </CardDescription>
-              </CardHeader>
+    const updateTemplateData = (field: string, value: any) => {
+        setData('template_data', {
+            ...data.template_data,
+            [field]: value,
+        });
+    };
 
-              <CardContent className="space-y-4">
-                {/* Name */}
-                <div className="space-y-2">
-                  <Label htmlFor="name">Template Name *</Label>
-                  <Input
-                    id="name"
-                    value={data.name}
-                    onChange={(e) => setData('name', e.target.value)}
-                    placeholder="e.g. Equipment Repair Request"
-                    required
-                  />
-                  {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
-                </div>
+    const toggleTag = (tagId: number) => {
+        const tagIds = data.template_data.tag_ids || [];
+        const newTagIds = tagIds.includes(tagId)
+            ? tagIds.filter((id: number) => id !== tagId)
+            : [...tagIds, tagId];
+        updateTemplateData('tag_ids', newTagIds);
+    };
 
-                {/* Description */}
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={data.description}
-                    onChange={(e) => setData('description', e.target.value)}
-                    placeholder="Describe when to use this template..."
-                    rows={3}
-                  />
-                  {errors.description && (
-                    <p className="text-xs text-red-500">{errors.description}</p>
-                  )}
-                </div>
+    return (
+        <AppLayout>
+            <Head
+                title={isEdit ? 'Edit Ticket Template' : 'New Ticket Template'}
+            />
 
-                <div className="border-t pt-4">
-                  <h3 className="text-lg font-semibold mb-4">Pre-filled Ticket Data</h3>
-
-                  {/* Subject */}
-                  <div className="space-y-2 mb-4">
-                    <Label htmlFor="subject">Subject</Label>
-                    <Input
-                      id="subject"
-                      value={data.template_data.subject}
-                      onChange={(e) => updateTemplateData('subject', e.target.value)}
-                      placeholder="Default ticket subject"
-                    />
-                  </div>
-
-                  {/* Description */}
-                  <div className="space-y-2 mb-4">
-                    <Label htmlFor="ticket_description">Description</Label>
-                    <Textarea
-                      id="ticket_description"
-                      value={data.template_data.description}
-                      onChange={(e) => updateTemplateData('description', e.target.value)}
-                      placeholder="Default ticket description"
-                      rows={4}
-                    />
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {/* Category */}
-                    <div className="space-y-2">
-                      <Label>Category</Label>
-                      <Select
-                        value={String(data.template_data.category_id || '__none')}
-                        onValueChange={(value) =>
-                          updateTemplateData('category_id', value === '__none' ? '' : value)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">None</SelectItem>
-                          {formOptions.categories.map((category) => (
-                            <SelectItem key={category.id} value={String(category.id)}>
-                              {category.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+            <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold">
+                            {isEdit
+                                ? 'Edit Ticket Template'
+                                : 'New Ticket Template'}
+                        </h1>
+                        <p className="text-muted-foreground">
+                            {isEdit
+                                ? 'Update the ticket template.'
+                                : 'Create a reusable template to quickly create tickets with pre-filled data.'}
+                        </p>
                     </div>
+                    <Button asChild variant="outline">
+                        <Link href={route('admin.ticket-templates.index')}>
+                            ← Back
+                        </Link>
+                    </Button>
+                </div>
 
-                    {/* Priority */}
-                    <div className="space-y-2">
-                      <Label>Priority</Label>
-                      <Select
-                        value={data.template_data.priority}
-                        onValueChange={(value) => updateTemplateData('priority', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {formOptions.priorities.map((priority) => (
-                            <SelectItem key={priority} value={priority}>
-                              {priority}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                <form onSubmit={handleSubmit}>
+                    <div className="grid gap-6 lg:grid-cols-3">
+                        {/* Main Form */}
+                        <Card className="lg:col-span-2">
+                            <CardHeader>
+                                <CardTitle>Template Information</CardTitle>
+                                <CardDescription>
+                                    {isEdit
+                                        ? 'Update the template details below.'
+                                        : 'Fill in the information to create a new ticket template.'}
+                                </CardDescription>
+                            </CardHeader>
+
+                            <CardContent className="space-y-4">
+                                {/* Name */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="name">
+                                        Template Name *
+                                    </Label>
+                                    <Input
+                                        id="name"
+                                        value={data.name}
+                                        onChange={(e) =>
+                                            setData('name', e.target.value)
+                                        }
+                                        placeholder="e.g. Equipment Repair Request"
+                                        required
+                                    />
+                                    {errors.name && (
+                                        <p className="text-xs text-red-500">
+                                            {errors.name}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Description */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="description">
+                                        Description
+                                    </Label>
+                                    <Textarea
+                                        id="description"
+                                        value={data.description}
+                                        onChange={(e) =>
+                                            setData(
+                                                'description',
+                                                e.target.value,
+                                            )
+                                        }
+                                        placeholder="Describe when to use this template..."
+                                        rows={3}
+                                    />
+                                    {errors.description && (
+                                        <p className="text-xs text-red-500">
+                                            {errors.description}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="border-t pt-4">
+                                    <h3 className="mb-4 text-lg font-semibold">
+                                        Pre-filled Ticket Data
+                                    </h3>
+
+                                    {/* Subject */}
+                                    <div className="mb-4 space-y-2">
+                                        <Label htmlFor="subject">Subject</Label>
+                                        <Input
+                                            id="subject"
+                                            value={data.template_data.subject}
+                                            onChange={(e) =>
+                                                updateTemplateData(
+                                                    'subject',
+                                                    e.target.value,
+                                                )
+                                            }
+                                            placeholder="Default ticket subject"
+                                        />
+                                    </div>
+
+                                    {/* Description */}
+                                    <div className="mb-4 space-y-2">
+                                        <Label htmlFor="ticket_description">
+                                            Description
+                                        </Label>
+                                        <Textarea
+                                            id="ticket_description"
+                                            value={
+                                                data.template_data.description
+                                            }
+                                            onChange={(e) =>
+                                                updateTemplateData(
+                                                    'description',
+                                                    e.target.value,
+                                                )
+                                            }
+                                            placeholder="Default ticket description"
+                                            rows={4}
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        {/* Category */}
+                                        <div className="space-y-2">
+                                            <Label>Category</Label>
+                                            <Select
+                                                value={String(
+                                                    data.template_data
+                                                        .category_id ||
+                                                        '__none',
+                                                )}
+                                                onValueChange={(value) =>
+                                                    updateTemplateData(
+                                                        'category_id',
+                                                        value === '__none'
+                                                            ? ''
+                                                            : value,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select category" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none">
+                                                        None
+                                                    </SelectItem>
+                                                    {formOptions.categories.map(
+                                                        (category) => (
+                                                            <SelectItem
+                                                                key={
+                                                                    category.id
+                                                                }
+                                                                value={String(
+                                                                    category.id,
+                                                                )}
+                                                            >
+                                                                {category.name}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {/* Priority */}
+                                        <div className="space-y-2">
+                                            <Label>Priority</Label>
+                                            <Select
+                                                value={
+                                                    data.template_data.priority
+                                                }
+                                                onValueChange={(value) =>
+                                                    updateTemplateData(
+                                                        'priority',
+                                                        value,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {formOptions.priorities.map(
+                                                        (priority) => (
+                                                            <SelectItem
+                                                                key={priority}
+                                                                value={priority}
+                                                            >
+                                                                {priority}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {/* Team */}
+                                        <div className="space-y-2">
+                                            <Label>Assigned Team</Label>
+                                            <Select
+                                                value={String(
+                                                    data.template_data
+                                                        .assigned_team_id ||
+                                                        '__none',
+                                                )}
+                                                onValueChange={(value) =>
+                                                    updateTemplateData(
+                                                        'assigned_team_id',
+                                                        value === '__none'
+                                                            ? ''
+                                                            : value,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select team" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none">
+                                                        None
+                                                    </SelectItem>
+                                                    {formOptions.departments.map(
+                                                        (dept) => (
+                                                            <SelectItem
+                                                                key={dept.id}
+                                                                value={String(
+                                                                    dept.id,
+                                                                )}
+                                                            >
+                                                                {dept.name}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {/* Agent */}
+                                        <div className="space-y-2">
+                                            <Label>Assigned Agent</Label>
+                                            <Select
+                                                value={String(
+                                                    data.template_data
+                                                        .assigned_agent_id ||
+                                                        '__none',
+                                                )}
+                                                onValueChange={(value) =>
+                                                    updateTemplateData(
+                                                        'assigned_agent_id',
+                                                        value === '__none'
+                                                            ? ''
+                                                            : value,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select agent" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none">
+                                                        None
+                                                    </SelectItem>
+                                                    {formOptions.agents.map(
+                                                        (agent) => (
+                                                            <SelectItem
+                                                                key={agent.id}
+                                                                value={String(
+                                                                    agent.id,
+                                                                )}
+                                                            >
+                                                                {agent.name}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {/* Project */}
+                                        <div className="space-y-2">
+                                            <Label>Project</Label>
+                                            <Select
+                                                value={String(
+                                                    data.template_data
+                                                        .project_id || '__none',
+                                                )}
+                                                onValueChange={(value) =>
+                                                    updateTemplateData(
+                                                        'project_id',
+                                                        value === '__none'
+                                                            ? ''
+                                                            : value,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select project" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none">
+                                                        None
+                                                    </SelectItem>
+                                                    {formOptions.projects.map(
+                                                        (project) => (
+                                                            <SelectItem
+                                                                key={project.id}
+                                                                value={String(
+                                                                    project.id,
+                                                                )}
+                                                            >
+                                                                {project.name}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {/* SLA Policy */}
+                                        <div className="space-y-2">
+                                            <Label>SLA Policy</Label>
+                                            <Select
+                                                value={String(
+                                                    data.template_data
+                                                        .sla_policy_id ||
+                                                        '__none',
+                                                )}
+                                                onValueChange={(value) =>
+                                                    updateTemplateData(
+                                                        'sla_policy_id',
+                                                        value === '__none'
+                                                            ? ''
+                                                            : value,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select SLA policy" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none">
+                                                        None
+                                                    </SelectItem>
+                                                    {formOptions.sla_policies.map(
+                                                        (sla) => (
+                                                            <SelectItem
+                                                                key={sla.id}
+                                                                value={String(
+                                                                    sla.id,
+                                                                )}
+                                                            >
+                                                                {sla.name}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {/* Tags */}
+                                    <div className="space-y-2">
+                                        <Label>Tags</Label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {formOptions.tags.map((tag) => (
+                                                <button
+                                                    key={tag.id}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        toggleTag(tag.id)
+                                                    }
+                                                    className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+                                                        data.template_data.tag_ids?.includes(
+                                                            tag.id,
+                                                        )
+                                                            ? 'ring-2 ring-offset-2'
+                                                            : 'opacity-70'
+                                                    }`}
+                                                    style={{
+                                                        backgroundColor:
+                                                            tag.color ||
+                                                            '#gray',
+                                                        color: '#fff',
+                                                    }}
+                                                >
+                                                    {tag.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Active */}
+                                <div className="flex items-center space-x-2 border-t pt-4">
+                                    <Checkbox
+                                        id="is_active"
+                                        checked={data.is_active}
+                                        onCheckedChange={(checked) =>
+                                            setData(
+                                                'is_active',
+                                                Boolean(checked),
+                                            )
+                                        }
+                                    />
+                                    <Label
+                                        htmlFor="is_active"
+                                        className="cursor-pointer text-sm font-normal"
+                                    >
+                                        Template is active
+                                    </Label>
+                                </div>
+
+                                {/* Public */}
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="is_public"
+                                        checked={data.is_public}
+                                        onCheckedChange={(checked) =>
+                                            setData(
+                                                'is_public',
+                                                Boolean(checked),
+                                            )
+                                        }
+                                    />
+                                    <Label
+                                        htmlFor="is_public"
+                                        className="cursor-pointer text-sm font-normal"
+                                    >
+                                        Template is public (all users can use)
+                                    </Label>
+                                </div>
+                            </CardContent>
+
+                            <CardFooter className="flex justify-between border-t pt-4">
+                                {isEdit && (
+                                    <Button
+                                        type="button"
+                                        variant="destructive"
+                                        onClick={() =>
+                                            setShowDeleteDialog(true)
+                                        }
+                                    >
+                                        Delete
+                                    </Button>
+                                )}
+                                <div className="ml-auto flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        asChild
+                                    >
+                                        <Link
+                                            href={route(
+                                                'admin.ticket-templates.index',
+                                            )}
+                                        >
+                                            Cancel
+                                        </Link>
+                                    </Button>
+                                    <Button type="submit" disabled={processing}>
+                                        {processing
+                                            ? 'Saving...'
+                                            : isEdit
+                                              ? 'Update Template'
+                                              : 'Create Template'}
+                                    </Button>
+                                </div>
+                            </CardFooter>
+                        </Card>
+
+                        {/* Help Card */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Template Tips</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3 text-sm">
+                                <div>
+                                    <p className="mb-1 font-medium">
+                                        Quick Creation
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                        Templates allow users to quickly create
+                                        tickets with pre-filled data, saving
+                                        time on repetitive tasks.
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="mb-1 font-medium">
+                                        Template Variables
+                                    </p>
+                                    <p className="mb-2 text-muted-foreground">
+                                        Use variables in subject and description
+                                        that will be replaced when the template
+                                        is used:
+                                    </p>
+                                    <ul className="ml-2 list-inside list-disc space-y-1 text-muted-foreground">
+                                        <li>
+                                            <code className="rounded bg-muted px-1">
+                                                &#123;date&#125;
+                                            </code>{' '}
+                                            - Current date (Y-m-d)
+                                        </li>
+                                        <li>
+                                            <code className="rounded bg-muted px-1">
+                                                &#123;time&#125;
+                                            </code>{' '}
+                                            - Current time (H:i)
+                                        </li>
+                                        <li>
+                                            <code className="rounded bg-muted px-1">
+                                                &#123;datetime&#125;
+                                            </code>{' '}
+                                            - Current date and time
+                                        </li>
+                                        <li>
+                                            <code className="rounded bg-muted px-1">
+                                                &#123;user&#125;
+                                            </code>{' '}
+                                            - Current user name
+                                        </li>
+                                        <li>
+                                            <code className="rounded bg-muted px-1">
+                                                &#123;user_email&#125;
+                                            </code>{' '}
+                                            - Current user email
+                                        </li>
+                                        <li>
+                                            <code className="rounded bg-muted px-1">
+                                                &#123;year&#125;
+                                            </code>{' '}
+                                            - Current year
+                                        </li>
+                                        <li>
+                                            <code className="rounded bg-muted px-1">
+                                                &#123;month&#125;
+                                            </code>{' '}
+                                            - Current month name
+                                        </li>
+                                        <li>
+                                            <code className="rounded bg-muted px-1">
+                                                &#123;day&#125;
+                                            </code>{' '}
+                                            - Current day
+                                        </li>
+                                    </ul>
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                        Example: "Equipment Repair Request -{' '}
+                                        &#123;date&#125;" will become "Equipment
+                                        Repair Request - 2024-01-15"
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="mb-1 font-medium">
+                                        Public vs Private
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                        Public templates can be used by all
+                                        users. Private templates are only
+                                        visible to the creator.
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="mb-1 font-medium">
+                                        Usage Tracking
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                        Templates track how many times they've
+                                        been used, helping you identify the most
+                                        popular templates.
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </div>
+                </form>
 
-                    {/* Team */}
-                    <div className="space-y-2">
-                      <Label>Assigned Team</Label>
-                      <Select
-                        value={String(data.template_data.assigned_team_id || '__none')}
-                        onValueChange={(value) =>
-                          updateTemplateData('assigned_team_id', value === '__none' ? '' : value)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select team" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">None</SelectItem>
-                          {formOptions.departments.map((dept) => (
-                            <SelectItem key={dept.id} value={String(dept.id)}>
-                              {dept.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Agent */}
-                    <div className="space-y-2">
-                      <Label>Assigned Agent</Label>
-                      <Select
-                        value={String(data.template_data.assigned_agent_id || '__none')}
-                        onValueChange={(value) =>
-                          updateTemplateData('assigned_agent_id', value === '__none' ? '' : value)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select agent" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">None</SelectItem>
-                          {formOptions.agents.map((agent) => (
-                            <SelectItem key={agent.id} value={String(agent.id)}>
-                              {agent.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Project */}
-                    <div className="space-y-2">
-                      <Label>Project</Label>
-                      <Select
-                        value={String(data.template_data.project_id || '__none')}
-                        onValueChange={(value) =>
-                          updateTemplateData('project_id', value === '__none' ? '' : value)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select project" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">None</SelectItem>
-                          {formOptions.projects.map((project) => (
-                            <SelectItem key={project.id} value={String(project.id)}>
-                              {project.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* SLA Policy */}
-                    <div className="space-y-2">
-                      <Label>SLA Policy</Label>
-                      <Select
-                        value={String(data.template_data.sla_policy_id || '__none')}
-                        onValueChange={(value) =>
-                          updateTemplateData('sla_policy_id', value === '__none' ? '' : value)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select SLA policy" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">None</SelectItem>
-                          {formOptions.sla_policies.map((sla) => (
-                            <SelectItem key={sla.id} value={String(sla.id)}>
-                              {sla.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* Tags */}
-                  <div className="space-y-2">
-                    <Label>Tags</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {formOptions.tags.map((tag) => (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          onClick={() => toggleTag(tag.id)}
-                          className={`px-3 py-1 rounded-full text-sm font-medium transition ${
-                            data.template_data.tag_ids?.includes(tag.id)
-                              ? 'ring-2 ring-offset-2'
-                              : 'opacity-70'
-                          }`}
-                          style={{ backgroundColor: tag.color || '#gray', color: '#fff' }}
-                        >
-                          {tag.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Active */}
-                <div className="flex items-center space-x-2 border-t pt-4">
-                  <Checkbox
-                    id="is_active"
-                    checked={data.is_active}
-                    onCheckedChange={(checked) => setData('is_active', Boolean(checked))}
-                  />
-                  <Label htmlFor="is_active" className="text-sm font-normal cursor-pointer">
-                    Template is active
-                  </Label>
-                </div>
-
-                {/* Public */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="is_public"
-                    checked={data.is_public}
-                    onCheckedChange={(checked) => setData('is_public', Boolean(checked))}
-                  />
-                  <Label htmlFor="is_public" className="text-sm font-normal cursor-pointer">
-                    Template is public (all users can use)
-                  </Label>
-                </div>
-              </CardContent>
-
-              <CardFooter className="flex justify-between border-t pt-4">
-                <Button type="button" variant="outline" asChild>
-                  <Link href={route('admin.ticket-templates.index')}>Cancel</Link>
-                </Button>
-                <Button type="submit" disabled={processing}>
-                  {processing ? 'Saving...' : isEdit ? 'Update Template' : 'Create Template'}
-                </Button>
-              </CardFooter>
-            </Card>
-
-            {/* Help Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Template Tips</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div>
-                  <p className="font-medium mb-1">Quick Creation</p>
-                  <p className="text-muted-foreground">
-                    Templates allow users to quickly create tickets with pre-filled data, saving
-                    time on repetitive tasks.
-                  </p>
-                </div>
-                <div>
-                  <p className="font-medium mb-1">Template Variables</p>
-                  <p className="text-muted-foreground mb-2">
-                    Use variables in subject and description that will be replaced when the template is used:
-                  </p>
-                  <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-2">
-                    <li><code className="bg-muted px-1 rounded">&#123;date&#125;</code> - Current date (Y-m-d)</li>
-                    <li><code className="bg-muted px-1 rounded">&#123;time&#125;</code> - Current time (H:i)</li>
-                    <li><code className="bg-muted px-1 rounded">&#123;datetime&#125;</code> - Current date and time</li>
-                    <li><code className="bg-muted px-1 rounded">&#123;user&#125;</code> - Current user name</li>
-                    <li><code className="bg-muted px-1 rounded">&#123;user_email&#125;</code> - Current user email</li>
-                    <li><code className="bg-muted px-1 rounded">&#123;year&#125;</code> - Current year</li>
-                    <li><code className="bg-muted px-1 rounded">&#123;month&#125;</code> - Current month name</li>
-                    <li><code className="bg-muted px-1 rounded">&#123;day&#125;</code> - Current day</li>
-                  </ul>
-                  <p className="text-muted-foreground mt-2 text-xs">
-                    Example: "Equipment Repair Request - {date}" will become "Equipment Repair Request - 2024-01-15"
-                  </p>
-                </div>
-                <div>
-                  <p className="font-medium mb-1">Public vs Private</p>
-                  <p className="text-muted-foreground">
-                    Public templates can be used by all users. Private templates are only visible to
-                    the creator.
-                  </p>
-                </div>
-                <div>
-                  <p className="font-medium mb-1">Usage Tracking</p>
-                  <p className="text-muted-foreground">
-                    Templates track how many times they've been used, helping you identify the most
-                    popular templates.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </form>
-      </div>
-    </AppLayout>
-  );
+                <AlertDialog
+                    open={showDeleteDialog}
+                    onOpenChange={setShowDeleteDialog}
+                >
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will
+                                permanently delete the ticket template.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                                onClick={handleDelete}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                                Delete
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </div>
+        </AppLayout>
+    );
 }
-

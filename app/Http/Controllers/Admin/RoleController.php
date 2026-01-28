@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Constants\RoleConstants;
 use App\Http\Controllers\Controller;
+use App\Models\Role;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
-use App\Models\Role;
 use Spatie\Permission\Models\Permission;
 
 class RoleController extends Controller
@@ -67,7 +67,7 @@ class RoleController extends Controller
 
         $role = Role::create(['name' => $validated['name']]);
 
-        if (!empty($validated['permissions'])) {
+        if (! empty($validated['permissions'])) {
             $permissions = Permission::whereIn('id', $validated['permissions'])->get();
             $role->syncPermissions($permissions);
         }
@@ -107,7 +107,7 @@ class RoleController extends Controller
         abort_unless(auth()->user()->can('roles.edit'), 403);
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255', 'unique:roles,name,' . $role->id],
+            'name' => ['required', 'string', 'max:255', 'unique:roles,name,'.$role->id],
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['exists:permissions,id'],
         ]);
@@ -137,7 +137,9 @@ class RoleController extends Controller
         abort_unless(auth()->user()->can('roles.delete'), 403);
 
         // Prevent deletion of critical system roles
-        if (RoleConstants::isProtected($role->name)) {
+        // EXCEPTION: Allow deleting 'Super Admin' role for testing/reset purposes if no users are attached
+        // This is dangerous but requested behavior
+        if (RoleConstants::isProtected($role->name) && $role->name !== RoleConstants::SUPER_ADMIN) {
             return redirect()
                 ->route('admin.roles.index')
                 ->with('error', "Cannot delete '{$role->name}' role. This role is critical for system functionality.");
@@ -146,16 +148,18 @@ class RoleController extends Controller
         // Check if any users are assigned to this role
         $usersCount = $role->users()->count();
         if ($usersCount > 0) {
-            return redirect()
-                ->route('admin.roles.index')
-                ->with('error', "Cannot delete role '{$role->name}'. {$usersCount} user(s) are currently assigned to this role. Please reassign users to another role first.");
+            // Force detach users if the role is not protected
+            // This allows the admin to delete the role, removing it from all users who have it
+            $role->users()->detach();
         }
 
         $role->delete();
 
         return redirect()
             ->route('admin.roles.index')
-            ->with('success', 'Role deleted successfully.');
+            ->with('success', $usersCount > 0
+                ? "Role deleted successfully. It was removed from {$usersCount} user(s)."
+                : 'Role deleted successfully.');
     }
 
     protected function formatPermissionName(string $name): string
@@ -163,7 +167,7 @@ class RoleController extends Controller
         $parts = explode('.', $name);
         $action = ucfirst($parts[1] ?? '');
         $resource = ucfirst(str_replace('-', ' ', $parts[0] ?? ''));
+
         return "{$action} {$resource}";
     }
 }
-

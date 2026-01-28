@@ -24,8 +24,18 @@ export default class PushNotificationManager {
 
             // Get VAPID public key
             const response = await fetch(route('push.vapid-public-key'));
-            const data = await response.json();
-            this.vapidPublicKey = data.publicKey;
+            if (
+                response.headers
+                    .get('content-type')
+                    ?.includes('application/json')
+            ) {
+                const data = await response.json();
+                this.vapidPublicKey = data.publicKey;
+            } else {
+                console.warn(
+                    'VAPID public key endpoint returned non-JSON response',
+                );
+            }
 
             return true;
         } catch (error) {
@@ -69,9 +79,10 @@ export default class PushNotificationManager {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document
-                        .querySelector('meta[name="csrf-token"]')
-                        .getAttribute('content'),
+                    'X-CSRF-TOKEN':
+                        document
+                            .querySelector('meta[name="csrf-token"]')
+                            ?.getAttribute('content') || '',
                 },
                 body: JSON.stringify({
                     endpoint: subscription.endpoint,
@@ -85,6 +96,14 @@ export default class PushNotificationManager {
                     },
                 }),
             });
+
+            if (
+                !response.headers
+                    .get('content-type')
+                    ?.includes('application/json')
+            ) {
+                throw new Error('Invalid response format: Expected JSON');
+            }
 
             const result = await response.json();
 
@@ -119,9 +138,10 @@ export default class PushNotificationManager {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document
-                                .querySelector('meta[name="csrf-token"]')
-                                .getAttribute('content'),
+                            'X-CSRF-TOKEN':
+                                document
+                                    .querySelector('meta[name="csrf-token"]')
+                                    ?.getAttribute('content') || '',
                         },
                         body: JSON.stringify({
                             endpoint: subscription.endpoint,

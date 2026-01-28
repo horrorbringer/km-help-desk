@@ -56,12 +56,12 @@ class ReportController extends Controller
                     'description' => 'Project-related ticket statistics',
                     'icon' => 'folder',
                 ],
-                [
-                    'id' => 'time-entries',
-                    'name' => 'Time Entries & Billing',
-                    'description' => 'Time tracking and billing reports',
-                    'icon' => 'clock',
-                ],
+                // [
+                //     'id' => 'time-entries',
+                //     'name' => 'Time Entries & Billing',
+                //     'description' => 'Time tracking and billing reports',
+                //     'icon' => 'clock',
+                // ],
             ],
         ]);
     }
@@ -112,16 +112,16 @@ class ReportController extends Controller
 
         // Summary statistics
         $summary = [
-            'total' => Ticket::when(isset($filters['date_from']), fn($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
-                ->when(isset($filters['date_to']), fn($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
+            'total' => Ticket::when(isset($filters['date_from']), fn ($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
+                ->when(isset($filters['date_to']), fn ($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
                 ->count(),
-            'by_status' => Ticket::when(isset($filters['date_from']), fn($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
-                ->when(isset($filters['date_to']), fn($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
+            'by_status' => Ticket::when(isset($filters['date_from']), fn ($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
+                ->when(isset($filters['date_to']), fn ($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
                 ->groupBy('status')
                 ->selectRaw('status, count(*) as count')
                 ->pluck('count', 'status'),
-            'by_priority' => Ticket::when(isset($filters['date_from']), fn($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
-                ->when(isset($filters['date_to']), fn($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
+            'by_priority' => Ticket::when(isset($filters['date_from']), fn ($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
+                ->when(isset($filters['date_to']), fn ($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
                 ->groupBy('priority')
                 ->selectRaw('priority, count(*) as count')
                 ->pluck('count', 'priority'),
@@ -216,8 +216,8 @@ class ReportController extends Controller
 
         $slaStats = DB::table('tickets')
             ->join('sla_policies', 'tickets.sla_policy_id', '=', 'sla_policies.id')
-            ->when(isset($filters['date_from']), fn($q) => $q->whereDate('tickets.created_at', '>=', $filters['date_from']))
-            ->when(isset($filters['date_to']), fn($q) => $q->whereDate('tickets.created_at', '<=', $filters['date_to']))
+            ->when(isset($filters['date_from']), fn ($q) => $q->whereDate('tickets.created_at', '>=', $filters['date_from']))
+            ->when(isset($filters['date_to']), fn ($q) => $q->whereDate('tickets.created_at', '<=', $filters['date_to']))
             ->select(
                 'sla_policies.id',
                 'sla_policies.name',
@@ -230,7 +230,7 @@ class ReportController extends Controller
             ->get()
             ->map(function ($stat) {
                 $total = $stat->total_tickets;
-                $responseCompliance = $total > 0 
+                $responseCompliance = $total > 0
                     ? round((($total - $stat->response_breaches) / $total) * 100, 2)
                     : 100;
                 $resolutionCompliance = $total > 0
@@ -398,14 +398,14 @@ class ReportController extends Controller
 
         // Summary statistics
         $baseQuery = TimeEntry::query()
-            ->when(isset($filters['date_from']), fn($q) => $q->whereDate('date', '>=', $filters['date_from']))
-            ->when(isset($filters['date_to']), fn($q) => $q->whereDate('date', '<=', $filters['date_to']))
-            ->when(isset($filters['user_id']), fn($q) => $q->where('user_id', $filters['user_id']))
-            ->when(isset($filters['ticket_id']), fn($q) => $q->where('ticket_id', $filters['ticket_id']))
-            ->when(isset($filters['activity_type']), fn($q) => $q->where('activity_type', $filters['activity_type']))
-            ->when(isset($filters['is_billable']), fn($q) => $q->where('is_billable', $filters['is_billable'] === '1'))
-            ->when(isset($filters['is_approved']), fn($q) => $q->where('is_approved', $filters['is_approved'] === '1'))
-            ->when(isset($filters['project_id']), fn($q) => $q->whereHas('ticket', function ($tq) use ($filters) {
+            ->when(isset($filters['date_from']), fn ($q) => $q->whereDate('date', '>=', $filters['date_from']))
+            ->when(isset($filters['date_to']), fn ($q) => $q->whereDate('date', '<=', $filters['date_to']))
+            ->when(isset($filters['user_id']), fn ($q) => $q->where('user_id', $filters['user_id']))
+            ->when(isset($filters['ticket_id']), fn ($q) => $q->where('ticket_id', $filters['ticket_id']))
+            ->when(isset($filters['activity_type']), fn ($q) => $q->where('activity_type', $filters['activity_type']))
+            ->when(isset($filters['is_billable']), fn ($q) => $q->where('is_billable', $filters['is_billable'] === '1'))
+            ->when(isset($filters['is_approved']), fn ($q) => $q->where('is_approved', $filters['is_approved'] === '1'))
+            ->when(isset($filters['project_id']), fn ($q) => $q->whereHas('ticket', function ($tq) use ($filters) {
                 $tq->where('project_id', $filters['project_id']);
             }));
 
@@ -423,17 +423,18 @@ class ReportController extends Controller
                 ->groupBy('activity_type')
                 ->selectRaw('activity_type, SUM(duration_minutes) as total_minutes, SUM(amount) as total_amount')
                 ->get()
-                ->mapWithKeys(fn($item) => [
+                ->mapWithKeys(fn ($item) => [
                     $item->activity_type => [
                         'minutes' => $item->total_minutes,
                         'hours' => round($item->total_minutes / 60, 2),
                         'amount' => $item->total_amount ?? 0,
-                    ]
+                    ],
                 ]),
             'by_user' => User::whereIn('id', (clone $baseQuery)->distinct()->pluck('user_id'))
                 ->get(['id', 'name'])
                 ->map(function ($user) use ($baseQuery) {
                     $userEntries = (clone $baseQuery)->where('user_id', $user->id);
+
                     return [
                         'user' => ['id' => $user->id, 'name' => $user->name],
                         'minutes' => $userEntries->sum('duration_minutes'),
@@ -478,4 +479,3 @@ class ReportController extends Controller
         ];
     }
 }
-

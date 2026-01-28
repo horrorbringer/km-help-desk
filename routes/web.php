@@ -62,6 +62,7 @@ Route::get('/', function () {
 Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('system-monitor', [\App\Http\Controllers\Admin\SystemMonitorController::class, 'index'])->name('admin.system-monitor');
+    Route::get('system-monitor/data', [\App\Http\Controllers\Admin\SystemMonitorController::class, 'data'])->name('admin.system-monitor.data');
 
     Route::resource('projects', \App\Http\Controllers\Admin\ProjectController::class)
         ->names('admin.projects');
@@ -179,17 +180,11 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
         Route::get('/{savedSearch}/apply', [SavedSearchController::class, 'apply'])->name('apply');
     });
 
-    Route::get('ticket-templates/{ticketTemplate}/data', [TicketTemplateController::class, 'getTemplateData'])
-        ->name('admin.ticket-templates.data');
-
     Route::get('ticket-templates/active/list', [TicketTemplateController::class, 'getActiveTemplates'])
         ->name('admin.ticket-templates.active');
 
-    Route::get('ticket-templates/{ticketTemplate}/duplicate', [TicketTemplateController::class, 'duplicate'])
-        ->name('admin.ticket-templates.duplicate');
-
-    Route::get('ticket-templates/{ticketTemplate}/create-ticket', [TicketTemplateController::class, 'createFromTemplate'])
-        ->name('admin.ticket-templates.create-ticket');
+    Route::get('ticket-templates/{ticket_template}/data', [TicketTemplateController::class, 'getData'])
+        ->name('admin.ticket-templates.data');
 
     Route::post('ticket-templates/bulk-update', [TicketTemplateController::class, 'bulkUpdate'])
         ->name('admin.ticket-templates.bulk-update');
@@ -197,14 +192,11 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::post('ticket-templates/bulk-delete', [TicketTemplateController::class, 'bulkDelete'])
         ->name('admin.ticket-templates.bulk-delete');
 
-    Route::post('ticket-templates/bulk-duplicate', [TicketTemplateController::class, 'bulkDuplicate'])
-        ->name('admin.ticket-templates.bulk-duplicate');
+    // Route::resource('time-entries', TimeEntryController::class)
+    //     ->names('admin.time-entries');
 
-    Route::resource('time-entries', TimeEntryController::class)
-        ->names('admin.time-entries');
-
-    Route::post('time-entries/{timeEntry}/approve', [TimeEntryController::class, 'approve'])
-        ->name('admin.time-entries.approve');
+    // Route::post('time-entries/{timeEntry}/approve', [TimeEntryController::class, 'approve'])
+    //     ->name('admin.time-entries.approve');
 
     // Ticket Attachments
     Route::post('tickets/{ticket}/attachments', [\App\Http\Controllers\Admin\TicketAttachmentController::class, 'store'])
@@ -230,7 +222,7 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
         Route::get('/sla', [ReportController::class, 'sla'])->name('sla');
         Route::get('/categories', [ReportController::class, 'categories'])->name('categories');
         Route::get('/projects', [ReportController::class, 'projects'])->name('projects');
-        Route::get('/time-entries', [ReportController::class, 'timeEntries'])->name('time-entries');
+        // Route::get('/time-entries', [ReportController::class, 'timeEntries'])->name('time-entries');
     });
 
     Route::prefix('notifications')->name('admin.notifications.')->group(function () {
@@ -280,4 +272,4 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
 //     }
 // })->middleware('auth');
 
-require __DIR__ . '/settings.php';
+require __DIR__.'/settings.php';

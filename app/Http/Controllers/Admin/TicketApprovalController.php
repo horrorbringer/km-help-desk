@@ -7,6 +7,7 @@ use App\Constants\RoleConstants;
 use App\Http\Controllers\Controller;
 use App\Models\Ticket;
 use App\Models\TicketApproval;
+use App\Models\ApprovalLevel;
 use App\Services\ApprovalWorkflowService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -145,18 +146,18 @@ class TicketApprovalController extends Controller
             'ticket.category',
             'ticket.assignedTeam',
         ])
-        ->where('status', 'pending')
-        ->whereHas('ticket', function ($query) {
-            // Exclude tickets that are resolved, closed, or cancelled
-            // These tickets don't need approval action anymore
-            $query->whereNotIn('status', ['resolved', 'closed', 'cancelled']);
-        })
-        ->where(function ($query) {
-            $query->where('approver_id', Auth::id())
-                ->orWhereNull('approver_id');
-        })
-        ->orderBy('created_at', 'desc')
-        ->paginate(20);
+            ->where('status', 'pending')
+            ->whereHas('ticket', function ($query) {
+                // Exclude tickets that are resolved, closed, or cancelled
+                // These tickets don't need approval action anymore
+                $query->whereNotIn('status', ['resolved', 'closed', 'cancelled']);
+            })
+            ->where(function ($query) {
+                $query->where('approver_id', Auth::id())
+                    ->orWhereNull('approver_id');
+            })
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
 
         return Inertia::render('Admin/Tickets/PendingApprovals', [
             'approvals' => $pendingApprovals,
@@ -187,11 +188,26 @@ class TicketApprovalController extends Controller
             return true;
         }
 
-        // Check if user has the required role for this approval level
-        $requiredRoles = ApprovalLevelConstants::getRolesForLevel($approval->approval_level);
-        foreach ($requiredRoles as $role) {
-            if ($user->hasRole($role)) {
-                return true;
+        // DYNAMIC CHECK: Look up the approval level configuration from database
+        $approvalLevelConfig = ApprovalLevel::where('code', $approval->approval_level)
+            ->where('is_active', true)
+            ->first();
+
+        if ($approvalLevelConfig) {
+            // Check roles defined in the database configuration
+            foreach ($approvalLevelConfig->role_names as $roleName) {
+                if ($user->hasRole($roleName)) {
+                    return true;
+                }
+            }
+        } else {
+            // FALLBACK: Use hardcoded constants if DB record doesn't exist
+            // Check if user has the required role for this approval level
+            $requiredRoles = ApprovalLevelConstants::getRolesForLevel($approval->approval_level);
+            foreach ($requiredRoles as $role) {
+                if ($user->hasRole($role)) {
+                    return true;
+                }
             }
         }
 

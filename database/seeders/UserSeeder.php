@@ -101,6 +101,242 @@ class UserSeeder extends Seeder
                 'phone' => '+855 12 000 003',
                 'role_key' => 'dhod',
             ],
+            // ============================================
+            // FIELD ENGINEERING DEPARTMENT
+            // ============================================
+            [
+                'name' => 'Field Eng HOD',
+                'email' => 'hod.field@kimmix.com',
+                'department_code' => 'FIELD-ENG',
+                'employee_id' => 'EMP-FIELD-01',
+                'phone' => '+855 12 000 101',
+                'role_key' => 'hod',
+            ],
+            [
+                'name' => 'Field Eng Deputy HOD',
+                'email' => 'dhod.field@kimmix.com',
+                'department_code' => 'FIELD-ENG',
+                'employee_id' => 'EMP-FIELD-02',
+                'phone' => '+855 12 000 102',
+                'role_key' => 'dhod',
+            ],
+            // ============================================
+            // PROCUREMENT DEPARTMENT
+            // ============================================
+            [
+                'name' => 'Procurement HOD',
+                'email' => 'hod.proc@kimmix.com',
+                'department_code' => 'PROC',
+                'employee_id' => 'EMP-PROC-01',
+                'phone' => '+855 12 000 201',
+                'role_key' => 'hod',
+            ],
+            [
+                'name' => 'Procurement Deputy HOD',
+                'email' => 'dhod.proc@kimmix.com',
+                'department_code' => 'PROC',
+                'employee_id' => 'EMP-PROC-02',
+                'phone' => '+855 12 000 202',
+                'role_key' => 'dhod',
+            ],
+            // ============================================
+            // HEALTH & SAFETY (HSE) DEPARTMENT
+            // ============================================
+            [
+                'name' => 'HSE HOD',
+                'email' => 'hod.hse@kimmix.com',
+                'department_code' => 'HSE',
+                'employee_id' => 'EMP-HSE-01',
+                'phone' => '+855 12 000 301',
+                'role_key' => 'hod',
+            ],
+            [
+                'name' => 'HSE Deputy HOD',
+                'email' => 'dhod.hse@kimmix.com',
+                'department_code' => 'HSE',
+                'employee_id' => 'EMP-HSE-02',
+                'phone' => '+855 12 000 302',
+                'role_key' => 'dhod',
+            ],
+            // ============================================
+            // FINANCE DEPARTMENT
+            // ============================================
+            [
+                'name' => 'Finance HOD',
+                'email' => 'hod.fin@kimmix.com',
+                'department_code' => 'FIN',
+                'employee_id' => 'EMP-FIN-01',
+                'phone' => '+855 12 000 401',
+                'role_key' => 'hod',
+            ],
+            [
+                'name' => 'Finance Deputy HOD',
+                'email' => 'dhod.fin@kimmix.com',
+                'department_code' => 'FIN',
+                'employee_id' => 'EMP-FIN-02',
+                'phone' => '+855 12 000 402',
+                'role_key' => 'dhod',
+            ],
+            // ============================================
+            // HR DEPARTMENT
+            // ============================================
+            [
+                'name' => 'HR HOD',
+                'email' => 'hod.hr@kimmix.com',
+                'department_code' => 'HR',
+                'employee_id' => 'EMP-HR-01',
+                'phone' => '+855 12 000 501',
+                'role_key' => 'hod',
+            ],
+            [
+                'name' => 'HR Deputy HOD',
+                'email' => 'dhod.hr@kimmix.com',
+                'department_code' => 'HR',
+                'employee_id' => 'EMP-HR-02',
+                'phone' => '+855 12 000 502',
+                'role_key' => 'dhod',
+            ],
+            // ============================================
+            // FACILITIES DEPARTMENT
+            // ============================================
+            [
+                'name' => 'Facilities HOD',
+                'email' => 'hod.facilities@kimmix.com',
+                'department_code' => 'FACILITIES',
+                'employee_id' => 'EMP-FAC-01',
+                'phone' => '+855 12 000 601',
+                'role_key' => 'hod',
+            ],
+            [
+                'name' => 'Facilities Deputy HOD',
+                'email' => 'dhod.facilities@kimmix.com',
+                'department_code' => 'FACILITIES',
+                'employee_id' => 'EMP-FAC-02',
+                'phone' => '+855 12 000 602',
+                'role_key' => 'dhod',
+            ],
+            // ============================================
+            // LINE MANAGERS & DEPUTY LINE MANAGERS
+            // ============================================
+            // IT Department
+            [
+                'name' => 'IT Line Manager',
+                'email' => 'it.lm@kimmix.com',
+                'department_code' => 'IT-SD',
+                'employee_id' => 'EMP-1021',
+                'phone' => '+855 12 345 679',
+                'role_key' => 'line_manager',
+            ],
+            [
+                'name' => 'IT Deputy LM',
+                'email' => 'it.dlm@kimmix.com',
+                'department_code' => 'IT-SD',
+                'employee_id' => 'EMP-1022',
+                'phone' => '+855 12 345 680',
+                'role_key' => 'dlm',
+            ],
+            // Field Engineering Department
+            [
+                'name' => 'Field Eng Line Manager',
+                'email' => 'field.lm@kimmix.com',
+                'department_code' => 'FIELD-ENG',
+                'employee_id' => 'EMP-FIELD-LM-01', // Changed to avoid collision with old test data
+                'phone' => '+855 12 345 678',
+                'role_key' => 'line_manager',
+            ],
+            [
+                'name' => 'Field Eng Deputy LM',
+                'email' => 'field.dlm@kimmix.com',
+                'department_code' => 'FIELD-ENG',
+                'employee_id' => 'EMP-FIELD-LM-02',
+                'phone' => '+855 12 000 104',
+                'role_key' => 'dlm',
+            ],
+            // Procurement Department
+            [
+                'name' => 'Procurement Line Manager',
+                'email' => 'proc.lm@kimmix.com',
+                'department_code' => 'PROC',
+                'employee_id' => 'EMP-PROC-LM-01',
+                'phone' => '+855 12 000 203',
+                'role_key' => 'line_manager',
+            ],
+            [
+                'name' => 'Procurement Deputy LM',
+                'email' => 'proc.dlm@kimmix.com',
+                'department_code' => 'PROC',
+                'employee_id' => 'EMP-PROC-LM-02',
+                'phone' => '+855 12 000 204',
+                'role_key' => 'dlm',
+            ],
+            // HSE Department
+            [
+                'name' => 'HSE Line Manager',
+                'email' => 'hse.lm@kimmix.com',
+                'department_code' => 'HSE',
+                'employee_id' => 'EMP-HSE-LM-01',
+                'phone' => '+855 12 000 303',
+                'role_key' => 'line_manager',
+            ],
+            [
+                'name' => 'HSE Deputy LM',
+                'email' => 'hse.dlm@kimmix.com',
+                'department_code' => 'HSE',
+                'employee_id' => 'EMP-HSE-LM-02',
+                'phone' => '+855 12 000 304',
+                'role_key' => 'dlm',
+            ],
+            // Finance Department
+            [
+                'name' => 'Finance Line Manager',
+                'email' => 'fin.lm@kimmix.com',
+                'department_code' => 'FIN',
+                'employee_id' => 'EMP-FIN-LM-01',
+                'phone' => '+855 12 000 403',
+                'role_key' => 'line_manager',
+            ],
+            [
+                'name' => 'Finance Deputy LM',
+                'email' => 'fin.dlm@kimmix.com',
+                'department_code' => 'FIN',
+                'employee_id' => 'EMP-FIN-LM-02',
+                'phone' => '+855 12 000 404',
+                'role_key' => 'dlm',
+            ],
+            // HR Department
+            [
+                'name' => 'HR Line Manager',
+                'email' => 'hr.lm@kimmix.com',
+                'department_code' => 'HR',
+                'employee_id' => 'EMP-HR-LM-01',
+                'phone' => '+855 12 000 503',
+                'role_key' => 'line_manager',
+            ],
+            [
+                'name' => 'HR Deputy LM',
+                'email' => 'hr.dlm@kimmix.com',
+                'department_code' => 'HR',
+                'employee_id' => 'EMP-HR-LM-02',
+                'phone' => '+855 12 000 504',
+                'role_key' => 'dlm',
+            ],
+            // Facilities Department
+            [
+                'name' => 'Facilities Line Manager',
+                'email' => 'fac.lm@kimmix.com',
+                'department_code' => 'FACILITIES',
+                'employee_id' => 'EMP-FAC-LM-01',
+                'phone' => '+855 12 000 603',
+                'role_key' => 'line_manager',
+            ],
+            [
+                'name' => 'Facilities Deputy LM',
+                'email' => 'fac.dlm@kimmix.com',
+                'department_code' => 'FACILITIES',
+                'employee_id' => 'EMP-FAC-LM-02',
+                'phone' => '+855 12 000 604',
+                'role_key' => 'dlm',
+            ],
             // Line Manager (IT) - Required for approval workflow
             [
                 'name' => 'IT Line Manager',
@@ -367,5 +603,3 @@ class UserSeeder extends Seeder
         }
     }
 }
-
-

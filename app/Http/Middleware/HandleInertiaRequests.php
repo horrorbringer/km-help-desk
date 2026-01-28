@@ -33,12 +33,12 @@ class HandleInertiaRequests extends Middleware
     protected function getBooleanSetting(string $key, bool $default = true): bool
     {
         $value = \App\Models\Setting::get($key, $default);
-        
+
         // Ensure we return a boolean
         if (is_bool($value)) {
             return $value;
         }
-        
+
         // Handle string values
         if (is_string($value)) {
             $lowerValue = strtolower(trim($value));
@@ -49,12 +49,12 @@ class HandleInertiaRequests extends Middleware
                 return false;
             }
         }
-        
+
         // Handle numeric values
         if (is_numeric($value)) {
             return (bool) $value;
         }
-        
+
         // Default fallback
         return $default;
     }
@@ -75,12 +75,18 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'csrf_token' => csrf_token(), // Share CSRF token for file uploads
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+                'warning' => fn () => $request->session()->get('warning'),
+                'info' => fn () => $request->session()->get('info'),
+            ],
             'auth' => [
                 'user' => $request->user() ? [
                     'id' => $request->user()->id,
                     'name' => $request->user()->name,
                     'email' => $request->user()->email,
-                    'avatar' => $request->user()->avatar ? asset('storage/' . $request->user()->avatar) : null,
+                    'avatar' => $request->user()->avatar ? asset('storage/'.$request->user()->avatar) : null,
                     'department_id' => $request->user()->department_id,
                     'roles' => $request->user()->getRoleNames(),
                     'permissions' => $request->user()->getAllPermissions()->pluck('name'),

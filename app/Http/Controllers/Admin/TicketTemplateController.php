@@ -65,7 +65,7 @@ class TicketTemplateController extends Controller
     {
         $data = $request->validated();
         $data['created_by'] = Auth::id();
-        
+
         TicketTemplate::create($data);
 
         return redirect()
@@ -108,89 +108,6 @@ class TicketTemplateController extends Controller
     }
 
     /**
-     * Duplicate/clone a template
-     */
-    public function duplicate(TicketTemplate $ticketTemplate): RedirectResponse
-    {
-        $newTemplate = $ticketTemplate->replicate();
-        $newTemplate->name = $ticketTemplate->name . ' (Copy)';
-        $newTemplate->slug = $ticketTemplate->slug . '-copy-' . time();
-        $newTemplate->usage_count = 0;
-        $newTemplate->created_by = Auth::id();
-        $newTemplate->is_active = false; // Set to inactive by default so user can review before activating
-        $newTemplate->save();
-
-        return redirect()
-            ->route('admin.ticket-templates.edit', $newTemplate)
-            ->with('success', 'Template duplicated successfully. You can now edit it.');
-    }
-
-    /**
-     * Create ticket from template
-     */
-    public function createFromTemplate(TicketTemplate $ticketTemplate): RedirectResponse
-    {
-        abort_unless(Auth::user()->can('tickets.create'), 403);
-        
-        $ticketTemplate->incrementUsage();
-        
-        $templateData = $this->processTemplateVariables($ticketTemplate->getFormData());
-
-        return redirect()
-            ->route('admin.tickets.create')
-            ->with('template_data', $templateData)
-            ->with('template_name', $ticketTemplate->name);
-    }
-
-    /**
-     * Get template data for applying to ticket form
-     */
-    public function getTemplateData(TicketTemplate $ticketTemplate): \Illuminate\Http\JsonResponse
-    {
-        $ticketTemplate->incrementUsage();
-
-        $templateData = $ticketTemplate->getFormData();
-        
-        // Process template variables/placeholders
-        $templateData = $this->processTemplateVariables($templateData);
-
-        return response()->json([
-            'data' => $templateData,
-        ]);
-    }
-
-    /**
-     * Process template variables/placeholders
-     */
-    protected function processTemplateVariables(array $data): array
-    {
-        $user = Auth::user();
-        $now = now();
-
-        $variables = [
-            '{date}' => $now->format('Y-m-d'),
-            '{time}' => $now->format('H:i'),
-            '{datetime}' => $now->format('Y-m-d H:i'),
-            '{user}' => $user->name ?? 'User',
-            '{user_email}' => $user->email ?? '',
-            '{year}' => $now->format('Y'),
-            '{month}' => $now->format('F'),
-            '{day}' => $now->format('d'),
-        ];
-
-        // Process subject and description
-        if (isset($data['subject'])) {
-            $data['subject'] = str_replace(array_keys($variables), array_values($variables), $data['subject']);
-        }
-        
-        if (isset($data['description'])) {
-            $data['description'] = str_replace(array_keys($variables), array_values($variables), $data['description']);
-        }
-
-        return $data;
-    }
-
-    /**
      * Get all active templates for quick selection
      */
     public function getActiveTemplates(): \Illuminate\Http\JsonResponse
@@ -208,6 +125,29 @@ class TicketTemplateController extends Controller
             ]);
 
         return response()->json(['templates' => $templates]);
+    }
+
+    /**
+     * Get data for a specific template to populate the form
+     */
+    public function getData(TicketTemplate $ticketTemplate): \Illuminate\Http\JsonResponse
+    {
+        // Check if active
+        if (! $ticketTemplate->is_active) {
+            abort(404, 'Template not found or inactive');
+        }
+
+        // Check permission (public or created by user)
+        $userId = Auth::id();
+        if (! $ticketTemplate->is_public && $ticketTemplate->created_by !== $userId) {
+            abort(403, 'Unauthorized access to this template');
+        }
+
+        $ticketTemplate->incrementUsage();
+
+        return response()->json([
+            'data' => $ticketTemplate->template_data,
+        ]);
     }
 
     /**
@@ -234,59 +174,13 @@ class TicketTemplateController extends Controller
         $isActive = $action === 'activate';
 
         foreach ($templates as $template) {
-            // Only allow users to update their own templates or public templates
-            if ($template->created_by === Auth::id() || $template->is_public) {
-                $template->update(['is_active' => $isActive]);
-                $updatedCount++;
-            }
+            $template->update(['is_active' => $isActive]);
+            $updatedCount++;
         }
 
         $message = $updatedCount > 0
             ? "Successfully {$action}d {$updatedCount} template(s)."
-            : "No templates were updated.";
-
-        return redirect()
-            ->route('admin.ticket-templates.index')
-            ->with('success', $message);
-    }
-
-    /**
-     * Bulk duplicate templates
-     */
-    public function bulkDuplicate(Request $request): RedirectResponse
-    {
-        abort_unless(Auth::user()->can('ticket-templates.create'), 403);
-
-        $request->validate([
-            'template_ids' => ['required', 'array', 'min:1'],
-            'template_ids.*' => ['exists:ticket_templates,id'],
-        ]);
-
-        $templateIds = $request->input('template_ids');
-
-        $templates = TicketTemplate::whereIn('id', $templateIds)
-            ->forUser(Auth::id())
-            ->get();
-
-        $duplicatedCount = 0;
-
-        foreach ($templates as $template) {
-            // Only allow users to duplicate templates they can access
-            if ($template->created_by === Auth::id() || $template->is_public) {
-                $newTemplate = $template->replicate();
-                $newTemplate->name = $template->name . ' (Copy)';
-                $newTemplate->slug = $template->slug . '-copy-' . time() . '-' . $duplicatedCount;
-                $newTemplate->usage_count = 0;
-                $newTemplate->created_by = Auth::id();
-                $newTemplate->is_active = false; // Set to inactive by default
-                $newTemplate->save();
-                $duplicatedCount++;
-            }
-        }
-
-        $message = $duplicatedCount > 0
-            ? "Successfully duplicated {$duplicatedCount} template(s)."
-            : "No templates were duplicated.";
+            : 'No templates were updated.';
 
         return redirect()
             ->route('admin.ticket-templates.index')
@@ -313,11 +207,11 @@ class TicketTemplateController extends Controller
 
         $deletedCount = 0;
         foreach ($templates as $template) {
-            // Only allow users to delete their own templates
-            if ($template->created_by === Auth::id()) {
-                $template->delete();
-                $deletedCount++;
-            }
+            // Delete the template
+            // We assume that if the user has the 'ticket-templates.delete' permission (checked above),
+            // they are authorized to delete the templates they can see/select.
+            $template->delete();
+            $deletedCount++;
         }
 
         return redirect()
@@ -340,4 +234,3 @@ class TicketTemplateController extends Controller
         ];
     }
 }
-

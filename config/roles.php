@@ -1,0 +1,348 @@
+<?php
+
+return [
+    /*
+    |--------------------------------------------------------------------------
+    | Permission Groups & Actions
+    |--------------------------------------------------------------------------
+    |
+    | Define the available permission groups and their specific actions.
+    | These will be combined to create permissions like 'tickets.view'.
+    |
+    */
+    'permissions_map' => [
+        'tickets' => ['view', 'create', 'edit', 'delete', 'assign', 'resolve', 'close', 'auto-approve', 'create-on-behalf'],
+        'approvals' => ['view', 'approve', 'approve-any', 'reject'],
+        'users' => ['view', 'create', 'edit', 'delete'],
+        'departments' => ['view', 'create', 'edit', 'delete'],
+        'categories' => ['view', 'create', 'edit', 'delete'],
+        'projects' => ['view', 'create', 'edit', 'delete', 'edit-own'], // Added edit-own for nuances
+        'sla-policies' => ['view', 'create', 'edit', 'delete'],
+        'tags' => ['view', 'create', 'edit', 'delete'],
+        'canned-responses' => ['view', 'create', 'edit', 'delete'],
+        'email-templates' => ['view', 'create', 'edit', 'delete'],
+        'automation-rules' => ['view', 'create', 'edit', 'delete'],
+        'escalation-rules' => ['view', 'create', 'edit', 'delete'],
+        'custom-fields' => ['view', 'create', 'edit', 'delete'],
+        'ticket-templates' => ['view', 'create', 'edit', 'delete'],
+        'time-entries' => ['view', 'create', 'edit', 'delete', 'approve'],
+        'knowledge-base' => ['view', 'create', 'edit', 'delete'],
+        'reports' => ['view'],
+        'notifications' => ['view'],
+        'settings' => ['view', 'edit'],
+        'bookings' => ['view', 'create', 'edit', 'delete'],
+        'rooms' => ['view', 'create', 'edit', 'delete'],
+        'roles' => ['view', 'create', 'edit', 'delete'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Role Hierarchy & Metadata
+    |--------------------------------------------------------------------------
+    |
+    | Define roles with their hierarchy level, parent role, and metadata.
+    | Hierarchy: Executive (10-7) -> Management (6-4) -> Operations (3-2) -> User (1-0)
+    |
+    */
+    'structure' => [
+        // Executive Level
+        'Super Admin' => [
+            'level' => 10,
+            'parent' => null,
+            'is_system' => true,
+            'metadata' => ['approval_limit' => null, 'department_scope' => 'all'],
+            'permissions' => ['*'], // Special wildcard for all permissions
+        ],
+        'CEO' => [
+            'level' => 9,
+            'parent' => null,
+            'is_system' => true,
+            'metadata' => ['approval_limit' => null, 'department_scope' => 'all'],
+            'permissions' => [
+                'tickets.*', // Grants all ticket permissions
+                'approvals.*',
+                'bookings.*', 'rooms.*',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view', 'settings.view',
+            ],
+            'excluded_permissions' => ['tickets.delete'], // Example of exclusion if needed
+        ],
+        'Director' => [
+            'level' => 8,
+            'parent' => 'CEO',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 50000, 'department_scope' => 'all'],
+            'permissions' => [
+                'tickets.*',
+                'approvals.*',
+                'bookings.*', 'rooms.*',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+        'Head of Department' => [
+            'level' => 7,
+            'parent' => 'Director',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 10000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view', 'approvals.reject',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+        'Deputy Head of Department' => [
+            'level' => 6.5,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 7500, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view', 'approvals.reject',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+
+        // Management Level
+        'IT Manager' => [
+            'level' => 6,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'users.create', 'users.edit',
+                'departments.view',
+                'categories.view', 'categories.edit',
+                'projects.view', 'tags.view',
+                'bookings.*', 'rooms.*',
+                'custom-fields.*', 'automation-rules.*', 'escalation-rules.*', 'email-templates.*', 'sla-policies.*',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'knowledge-base.create', 'knowledge-base.edit',
+                'reports.view',
+            ],
+        ],
+        'Operations Manager' => [
+            'level' => 6,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'projects.edit', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+        'Finance Manager' => [
+            'level' => 6,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+        'HR Manager' => [
+            'level' => 6,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'users.create', 'users.edit',
+                'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'knowledge-base.create', 'knowledge-base.edit',
+                'reports.view',
+            ],
+        ],
+        'Procurement Manager' => [
+            'level' => 6,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+        'Safety Manager' => [
+            'level' => 6,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'knowledge-base.create', 'knowledge-base.edit',
+                'reports.view',
+            ],
+        ],
+        'Line Manager' => [
+            'level' => 5,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 1000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+        'Deputy Line Manager' => [
+            'level' => 4.5,
+            'parent' => 'Line Manager',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 750, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+        'Manager' => [
+            'level' => 5,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 1000, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+        'Project Manager' => [
+            'level' => 5,
+            'parent' => 'Head of Department',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => 5000, 'department_scope' => 'project'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close', 'tickets.auto-approve', 'tickets.create-on-behalf',
+                'approvals.view', 'approvals.approve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'projects.edit', 'tags.view',
+                'time-entries.view', 'time-entries.approve',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+
+        // Operations Level
+        'IT Administrator' => [
+            'level' => 3,
+            'parent' => 'IT Manager',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => null, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close',
+                'bookings.*', 'rooms.*',
+                'users.view', 'users.create', 'users.edit',
+                'departments.view', 'departments.edit',
+                'categories.view', 'categories.edit',
+                'projects.view',
+                'tags.view', 'tags.edit',
+                'custom-fields.*', 'automation-rules.*', 'escalation-rules.*', 'email-templates.*', 'sla-policies.*', 'canned-responses.*', 'ticket-templates.*',
+                'time-entries.view', 'time-entries.create', 'time-entries.edit',
+                'knowledge-base.*',
+                'reports.view',
+            ],
+        ],
+        'Senior Agent' => [
+            'level' => 2,
+            'parent' => 'Line Manager',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => null, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.resolve', 'tickets.close',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'users.view', 'departments.view', 'categories.view', 'projects.view', 'tags.view',
+                'canned-responses.view', 'canned-responses.create', 'canned-responses.edit',
+                'ticket-templates.view', 'ticket-templates.create', 'ticket-templates.edit',
+                'time-entries.view', 'time-entries.create', 'time-entries.edit',
+                'knowledge-base.view', 'knowledge-base.create', 'knowledge-base.edit',
+                'reports.view',
+            ],
+        ],
+        'Agent' => [
+            'level' => 2,
+            'parent' => 'Line Manager',
+            'is_system' => true,
+            'metadata' => ['approval_limit' => null, 'department_scope' => 'own_department'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.resolve', 'tickets.close',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'departments.view',
+                'time-entries.view', 'time-entries.create', 'time-entries.edit',
+                'knowledge-base.view', 'reports.view',
+            ],
+        ],
+
+        // User Level
+        'Requester' => [
+            'level' => 1,
+            'parent' => null,
+            'is_system' => true,
+            'metadata' => ['approval_limit' => null, 'department_scope' => 'none'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'departments.view',
+                'knowledge-base.view',
+            ],
+        ],
+        'Contractor' => [
+            'level' => 0,
+            'parent' => null,
+            'is_system' => true,
+            'metadata' => ['approval_limit' => null, 'department_scope' => 'none'],
+            'permissions' => [
+                'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.resolve',
+                'bookings.view', 'bookings.create', 'bookings.edit', 'rooms.view',
+                'departments.view',
+                'time-entries.view', 'time-entries.create', 'time-entries.edit',
+                'knowledge-base.view',
+            ],
+        ],
+    ],
+];

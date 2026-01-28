@@ -23,9 +23,20 @@ class BookingController extends Controller
         $query = Booking::query()
             ->with(['user', 'room'])
             ->where('end_time', '>=', $startOfWeek)
-            ->where('start_time', '<=', $endOfWeek);
+            ->where('start_time', '<=', $endOfWeek)
+            ->orderBy('start_time');
 
         $bookings = $query->get();
+
+        // Fetch booking history for the heatmap (last 365 days)
+        $bookingHistory = Booking::query()
+            ->selectRaw('DATE(start_time) as date, count(*) as count')
+            ->where('start_time', '>=', now()->subYear())
+            ->groupBy('date')
+            ->get()
+            ->mapWithKeys(function ($item) {
+                return [$item->date => $item->count];
+            });
 
         // Calculate detailed status for each room for "Today" (Phnom Penh time)
         $now = now('Asia/Phnom_Penh');
@@ -49,7 +60,7 @@ class BookingController extends Controller
             if ($currentBooking) {
                 $roomStatuses[$room->id] = [
                     'status' => 'busy',
-                    'message' => 'Busy until ' . $currentBooking->end_time->setTimezone('Asia/Phnom_Penh')->format('H:i'),
+                    'message' => 'Busy until '.$currentBooking->end_time->setTimezone('Asia/Phnom_Penh')->format('H:i'),
                 ];
             } else {
                 // Check next booking today
@@ -63,7 +74,7 @@ class BookingController extends Controller
                     $count = $futureBookings->count();
                     $roomStatuses[$room->id] = [
                         'status' => 'available',
-                        'message' => 'Available until ' . $nextBooking->start_time->setTimezone('Asia/Phnom_Penh')->format('H:i') . " ($count upcoming)",
+                        'message' => 'Available until '.$nextBooking->start_time->setTimezone('Asia/Phnom_Penh')->format('H:i')." ($count upcoming)",
                     ];
                 } else {
                     $roomStatuses[$room->id] = [
@@ -77,6 +88,7 @@ class BookingController extends Controller
         return \Inertia\Inertia::render('bookings/Index', [
             'rooms' => $rooms,
             'bookings' => $bookings,
+            'bookingHistory' => $bookingHistory,
             'currentDate' => $startOfWeek->format('Y-m-d'),
             'roomStatuses' => $roomStatuses,
         ]);
@@ -138,6 +150,7 @@ class BookingController extends Controller
             if ($conflicts) {
                 // Determine conflicting date for error message
                 $conflictDate = $period['current_start']->format('M jS');
+
                 return back()->withErrors(['start_time' => "Conflict detected on {$conflictDate}. No bookings were created."]);
             }
         }
@@ -165,7 +178,7 @@ class BookingController extends Controller
         });
 
         $msg = $isRecurring
-            ? 'Recurring booking created for ' . ($repeatCount + 1) . ' weeks!'
+            ? 'Recurring booking created for '.($repeatCount + 1).' weeks!'
             : 'Room booked successfully!';
 
         return redirect()->back()->with('success', $msg);
@@ -192,7 +205,7 @@ class BookingController extends Controller
      */
     public function update(Request $request, Booking $booking)
     {
-        if ($booking->user_id !== $request->user()->id) {
+        if ($booking->user_id !== $request->user()->id && ! $request->user()->can('bookings.edit')) {
             abort(403, 'You are not authorized to update this booking.');
         }
 
@@ -243,7 +256,7 @@ class BookingController extends Controller
         // But for "cancelling", we should use the cancel method.
         // If the user triggers destroy, we'll assume hard delete for now or check authorization.
 
-        if ($booking->user_id !== $request->user()->id) {
+        if ($booking->user_id !== $request->user()->id && ! $request->user()->can('bookings.delete')) {
             abort(403, 'You are not authorized to delete this booking.');
         }
 
@@ -257,7 +270,7 @@ class BookingController extends Controller
      */
     public function cancel(Request $request, Booking $booking)
     {
-        if ($booking->user_id !== $request->user()->id) {
+        if ($booking->user_id !== $request->user()->id && ! $request->user()->can('bookings.delete')) {
             abort(403, 'You are not authorized to cancel this booking.');
         }
 

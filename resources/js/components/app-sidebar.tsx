@@ -211,12 +211,12 @@ const getNavMain = (
                     icon: IconChartBar,
                     permission: 'reports.view', // Use reports permission for now
                 },
-                {
-                    title: 'Time Entries',
-                    url: route('admin.time-entries.index'),
-                    icon: IconChartBar,
-                    permission: 'time-entries.view',
-                },
+                // {
+                //     title: 'Time Entries',
+                //     url: route('admin.time-entries.index'),
+                //     icon: IconChartBar,
+                //     permission: 'time-entries.view',
+                // },
                 {
                     title: 'Notifications',
                     url: route('admin.notifications.index'),

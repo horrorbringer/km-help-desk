@@ -17,6 +17,11 @@ const fetchJson = async <T>(url: string): Promise<T> => {
         headers: { Accept: 'application/json' },
     });
 
+    const contentType = response.headers.get('content-type');
+    if (contentType && !contentType.includes('application/json')) {
+        throw new Error('Invalid response format: Expected JSON');
+    }
+
     if (!response.ok) {
         throw new Error(`Failed to fetch: ${response.status}`);
     }
