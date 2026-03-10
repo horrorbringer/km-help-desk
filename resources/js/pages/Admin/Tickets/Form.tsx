@@ -114,6 +114,8 @@ type TicketFormProps = {
         projects: BaseOption[];
         requesters: BaseOption[];
         can_create_on_behalf?: boolean;
+        is_internal?: boolean;
+        is_hod?: boolean;
         customFields?: {
             id: number;
             name: string;
@@ -272,6 +274,7 @@ export default function TicketForm(props: TicketFormProps) {
         ticket_number: string;
         subject: string;
         description: string;
+        internal_note: string;
         requester_id: string | number;
         assigned_team_id: string | number;
         assigned_agent_id: string | number | null;
@@ -296,6 +299,7 @@ export default function TicketForm(props: TicketFormProps) {
         ticket_number: ticket?.ticket_number ?? '',
         subject: ticket?.subject ?? '',
         description: ticket?.description ?? '',
+        internal_note: ticket?.internal_note ?? '',
         requester_id:
             isEdit && ticket?.requester?.id
                 ? ticket.requester.id
@@ -1305,6 +1309,31 @@ export default function TicketForm(props: TicketFormProps) {
                                     </p>
                                 )}
                             </div>
+
+                            {formOptions.is_internal && (
+                                <div>
+                                    <Label
+                                        htmlFor="internal_note"
+                                        className="text-sm font-medium flex items-center gap-2"
+                                    >
+                                        <Sparkles className="h-4 w-4 text-amber-500" />
+                                        Internal Note (Optional)
+                                    </Label>
+                                    <Textarea
+                                        id="internal_note"
+                                        rows={3}
+                                        value={data.internal_note}
+                                        onChange={(e) =>
+                                            setData('internal_note', e.target.value)
+                                        }
+                                        placeholder="Private notes for support staff only..."
+                                        className="mt-1.5 resize-none text-base bg-amber-50/10 border-amber-200/50"
+                                    />
+                                    <p className="mt-1.5 text-xs text-muted-foreground">
+                                        This note is only visible to support team members.
+                                    </p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -1524,49 +1553,51 @@ export default function TicketForm(props: TicketFormProps) {
                                         )}
                                 </div>
 
-                                <div>
-                                    <Label className="text-sm font-medium">
-                                        Team Department{' '}
-                                        <span className="text-destructive">
-                                            *
-                                        </span>
-                                    </Label>
-                                    <Select
-                                        value={data.assigned_team_id?.toString()}
-                                        onValueChange={(value) =>
-                                            setData(
-                                                'assigned_team_id',
-                                                Number(value),
-                                            )
-                                        }
-                                    >
-                                        <SelectTrigger className="mt-1.5 h-10">
-                                            <SelectValue placeholder="Select team" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {formOptions.departments.map(
-                                                (team) => (
-                                                    <SelectItem
-                                                        key={team.id}
-                                                        value={team.id.toString()}
-                                                    >
-                                                        {team.name}
-                                                    </SelectItem>
-                                                ),
-                                            )}
-                                        </SelectContent>
-                                    </Select>
-                                    {errors.assigned_team_id && (
-                                        <p className="mt-1.5 text-xs text-destructive">
-                                            {errors.assigned_team_id}
-                                        </p>
-                                    )}
-                                    {defaultTeamId && !isEdit && (
-                                        <p className="mt-1.5 text-xs text-muted-foreground">
-                                            Auto-filled from your department
-                                        </p>
-                                    )}
-                                </div>
+                                {formOptions.is_internal && (
+                                    <div>
+                                        <Label className="text-sm font-medium">
+                                            Team Department{' '}
+                                            <span className="text-destructive">
+                                                *
+                                            </span>
+                                        </Label>
+                                        <Select
+                                            value={data.assigned_team_id?.toString()}
+                                            onValueChange={(value) =>
+                                                setData(
+                                                    'assigned_team_id',
+                                                    Number(value),
+                                                )
+                                            }
+                                        >
+                                            <SelectTrigger className="mt-1.5 h-10">
+                                                <SelectValue placeholder="Select team" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {formOptions.departments.map(
+                                                    (team) => (
+                                                        <SelectItem
+                                                            key={team.id}
+                                                            value={team.id.toString()}
+                                                        >
+                                                            {team.name}
+                                                        </SelectItem>
+                                                    ),
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        {errors.assigned_team_id && (
+                                            <p className="mt-1.5 text-xs text-destructive">
+                                                {errors.assigned_team_id}
+                                            </p>
+                                        )}
+                                        {defaultTeamId && !isEdit && (
+                                            <p className="mt-1.5 text-xs text-muted-foreground">
+                                                Auto-filled from your department
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <div>
@@ -1684,15 +1715,16 @@ export default function TicketForm(props: TicketFormProps) {
                     </Card>
 
                     {/* Status & Priority */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-xl">
-                                Status & Priority
-                            </CardTitle>
-                            <CardDescription>
-                                Set ticket status, priority level, and source
-                            </CardDescription>
-                        </CardHeader>
+                    {(formOptions.is_internal || isEdit) && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-xl">
+                                    Status & Priority
+                                </CardTitle>
+                                <CardDescription>
+                                    Set ticket status, priority level, and source
+                                </CardDescription>
+                            </CardHeader>
                         <CardContent className="space-y-5">
                             <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3">
                                 {formOptions.statuses.length > 1 && (
@@ -2076,6 +2108,7 @@ export default function TicketForm(props: TicketFormProps) {
                             </p>
                         </CardContent>
                     </Card>
+                    )}
                 </div>
 
                 <div className="space-y-6">

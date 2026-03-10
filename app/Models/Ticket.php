@@ -51,6 +51,7 @@ class Ticket extends Model
         'ticket_number',
         'subject',
         'description',
+        'internal_note',
         'requester_id',
         'assigned_team_id',
         'assigned_agent_id',

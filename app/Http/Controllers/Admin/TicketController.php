@@ -1421,23 +1421,36 @@ class TicketController extends Controller
         
         // Optimize: Cache settings to avoid multiple queries
         $canAssign = $user->can('tickets.assign');
+        $isAgent = $user->hasAnyRole(RoleConstants::getAgentRoles());
+        $isManager = $user->hasAnyRole(RoleConstants::getManagementRoles()) || $isExecutiveOrAdmin || $isHOD;
+        $isInternal = $isAgent || $isManager;
+
         $enableAdvancedOptions = $canAssign ? \App\Models\Setting::get('enable_advanced_options', true) : false;
         $enableSlaOptions = $canAssign ? \App\Models\Setting::get('enable_sla_options', true) : false;
         $enableCustomFields = $canAssign ? \App\Models\Setting::get('enable_custom_fields', true) : false;
         $enableTags = $canAssign ? \App\Models\Setting::get('enable_tags', true) : false;
         $enableWatchers = $canAssign ? \App\Models\Setting::get('enable_watchers', true) : false;
         
+        // Departments: Show all support teams for internal users, but keep IT-SD for external users
+        $departmentsQuery = Department::where('is_active', true)->select('id', 'name')->orderBy('name');
+        if (!$isInternal) {
+            $departmentsQuery->where('code', 'IT-SD');
+        } else {
+            $departmentsQuery->where('is_support_team', true);
+        }
+
         return [
             'statuses' => $this->getAvailableStatuses(),
             'priorities' => Ticket::PRIORITIES,
             'sources' => Ticket::SOURCES,
-            'departments' => Department::where('is_active', true)->select('id', 'name')->where('code','IT-SD')->orderBy('name')->get(),
+            'departments' => $departmentsQuery->get(),
             'agents' => $agents,
             'categories' => TicketCategory::active()->select('id', 'name')->orderBy('name')->get(),
             'projects' => Project::select('id', 'name')->orderBy('name')->get(),
             'requesters' => $requesters,
             'can_create_on_behalf' => $canCreateOnBehalf,
             'is_hod' => $isHOD,
+            'is_internal' => $isInternal,
             'sla_policies' => SlaPolicy::select('id', 'name')->orderBy('name')->get(),
             'tags' => Tag::select('id', 'name', 'color')->orderBy('name')->get(),
             // Advanced Options settings

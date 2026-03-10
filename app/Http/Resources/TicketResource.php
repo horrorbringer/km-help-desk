@@ -19,6 +19,7 @@ class TicketResource extends JsonResource
             'ticket_number' => $this->ticket_number,
             'subject' => $this->subject,
             'description' => $this->description,
+            'internal_note' => $this->when($request->user()?->can('tickets.assign'), $this->internal_note),
             'status' => $this->status,
             'priority' => $this->priority,
             'estimated_cost' => $this->estimated_cost,
@@ -217,5 +218,3 @@ class TicketResource extends JsonResource
         ];
     }
 }
-
-

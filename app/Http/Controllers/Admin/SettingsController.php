@@ -16,7 +16,7 @@ class SettingsController extends Controller
         // Settings should be accessible to admins and managers
         // For now, we'll allow any authenticated user, but you can add permission check:
         // abort_unless(auth()->user()->can('settings.view'), 403);
-        
+
         $groups = [
             'general' => $this->getGeneralSettings(),
             'email' => $this->getEmailSettings(),
@@ -37,6 +37,16 @@ class SettingsController extends Controller
         foreach ($data as $key => $value) {
             if (str_starts_with($key, 'setting_')) {
                 $settingKey = str_replace('setting_', '', $key);
+
+                // Handle file upload for app_logo
+                if ($settingKey === 'app_logo' && $request->hasFile('setting_app_logo')) {
+                    $file = $request->file('setting_app_logo');
+                    $path = $file->store('settings', 'public');
+                    // We store the path relative to storage/app/public, 
+                    // asset('storage/' . $path) will be used to display it
+                    $value = asset('storage/' . $path);
+                }
+
                 $setting = Setting::where('key', $settingKey)->first();
 
                 if ($setting) {
@@ -48,7 +58,8 @@ class SettingsController extends Controller
                         $setting->type = $this->detectType($value);
                     }
                     $setting->save();
-                } else {
+                }
+                else {
                     // Create new setting if it doesn't exist
                     $detectedType = $this->detectType($value);
                     Setting::create([
@@ -87,16 +98,16 @@ class SettingsController extends Controller
             }
             return '0'; // Default to false
         }
-        
+
         if ($type === 'integer') {
-            return (string) (int) $value;
+            return (string)(int)$value;
         }
-        
+
         if ($type === 'json') {
             return is_string($value) ? $value : json_encode($value);
         }
-        
-        return (string) ($value ?? '');
+
+        return (string)($value ?? '');
     }
 
     protected function getGeneralSettings(): array
@@ -203,4 +214,3 @@ class SettingsController extends Controller
         return 'general';
     }
 }
-

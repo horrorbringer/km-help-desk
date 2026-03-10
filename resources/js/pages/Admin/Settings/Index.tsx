@@ -135,6 +135,7 @@ export default function SettingsIndex() {
     e.preventDefault();
     put(route('admin.settings.update'), {
       preserveScroll: true,
+      forceFormData: true,
       onSuccess: () => {
         // Reload to refresh shared props (like settings in sidebar)
         // This is SPA-friendly - uses Inertia's AJAX, not a full page refresh
@@ -192,13 +193,28 @@ export default function SettingsIndex() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="setting_app_logo">Logo URL</Label>
-                      <Input
-                        id="setting_app_logo"
-                        value={data.setting_app_logo}
-                        onChange={(e) => setData('setting_app_logo', e.target.value)}
-                        placeholder="/logo.png"
-                      />
+                      <Label htmlFor="setting_app_logo">Application Logo</Label>
+                      <div className="flex items-center gap-4">
+                        {settings?.general?.app_logo && (
+                          <div className="flex aspect-square size-12 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                            <img 
+                              src={settings.general.app_logo} 
+                              alt="Logo" 
+                              className="size-full object-cover" 
+                            />
+                          </div>
+                        )}
+                        <Input
+                          id="setting_app_logo"
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setData('setting_app_logo', e.target.files?.[0] || '')}
+                          className="flex-1"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Recommended size: 512x512px. SVG, PNG or JPG.
+                      </p>
                     </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
