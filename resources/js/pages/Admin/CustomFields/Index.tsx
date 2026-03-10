@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface CustomField {
@@ -45,6 +46,7 @@ interface CustomFieldsIndexProps extends PageProps {
 
 export default function CustomFieldsIndex() {
   const { customFields, filters, fieldTypes, flash } = usePage<CustomFieldsIndexProps>().props;
+  const { canCreate, canEdit } = useModulePermissions('custom-fields');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -72,9 +74,11 @@ export default function CustomFieldsIndex() {
               Create custom fields to capture additional ticket information
             </p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.custom-fields.create')}>+ New Field</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.custom-fields.create')}>+ New Field</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Messages */}
@@ -194,9 +198,11 @@ export default function CustomFieldsIndex() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={route('admin.custom-fields.edit', field.id)}>Edit</Link>
-                        </Button>
+                        {canEdit && (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.custom-fields.edit', field.id)}>Edit</Link>
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

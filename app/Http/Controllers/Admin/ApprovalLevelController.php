@@ -40,7 +40,11 @@ class ApprovalLevelController extends Controller
         $roles = Role::pluck('name')->toArray();
 
         return Inertia::render('Admin/ApprovalLevels/Index', [
-            'approvalLevels' => $approvalLevels,
+            'approvalLevels' => $approvalLevels->map(function ($level) {
+                return array_merge($level->toArray(), [
+                    'can_delete' => $level->canBeDeleted(),
+                ]);
+            }),
             'filters' => $request->only(['q', 'is_active', 'is_system_level']),
             'formOptions' => [
                 'roles' => $roles,
@@ -127,7 +131,7 @@ class ApprovalLevelController extends Controller
 
         // Only validate code uniqueness if it changed and it's not a system level
         // (System levels shouldn't have code changes, but UI enforces that disabled state)
-        if (! $approvalLevel->is_system_level) {
+        if (!$approvalLevel->is_system_level) {
             $rules['code'] = [
                 'required',
                 'string',
@@ -171,7 +175,7 @@ class ApprovalLevelController extends Controller
     public function toggleStatus(ApprovalLevel $approvalLevel)
     {
         $approvalLevel->update([
-            'is_active' => ! $approvalLevel->is_active,
+            'is_active' => !$approvalLevel->is_active,
         ]);
 
         return back()->with('success', 'Approval level status updated.');

@@ -52,7 +52,7 @@ class HandleInertiaRequests extends Middleware
 
         // Handle numeric values
         if (is_numeric($value)) {
-            return (bool) $value;
+            return (bool)$value;
         }
 
         // Default fallback
@@ -73,26 +73,28 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'appName' => \App\Models\Setting::get('app_name', config('app.name')),
+            'appLogo' => \App\Models\Setting::get('app_logo', null),
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'csrf_token' => csrf_token(), // Share CSRF token for file uploads
             'flash' => [
-                'success' => fn () => $request->session()->get('success'),
-                'error' => fn () => $request->session()->get('error'),
-                'warning' => fn () => $request->session()->get('warning'),
-                'info' => fn () => $request->session()->get('info'),
+                'success' => fn() => $request->session()->get('success'),
+                'error' => fn() => $request->session()->get('error'),
+                'warning' => fn() => $request->session()->get('warning'),
+                'info' => fn() => $request->session()->get('info'),
             ],
             'auth' => [
                 'user' => $request->user() ? [
                     'id' => $request->user()->id,
                     'name' => $request->user()->name,
                     'email' => $request->user()->email,
-                    'avatar' => $request->user()->avatar ? asset('storage/'.$request->user()->avatar) : null,
+                    'avatar' => $request->user()->avatar ? asset('storage/' . $request->user()->avatar) : null,
                     'department_id' => $request->user()->department_id,
                     'roles' => $request->user()->getRoleNames(),
                     'permissions' => $request->user()->getAllPermissions()->pluck('name'),
                 ] : null,
             ],
-            'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'sidebarOpen' => !$request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'settings' => [
                 'enable_advanced_options' => $this->getBooleanSetting('enable_advanced_options', true),
             ],

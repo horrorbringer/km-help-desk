@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface EmailTemplate {
@@ -43,6 +44,7 @@ interface EmailTemplatesIndexProps extends PageProps {
 
 export default function EmailTemplatesIndex() {
   const { templates, filters, eventTypes, flash } = usePage<EmailTemplatesIndexProps>().props;
+  const { canCreate, canEdit } = useModulePermissions('email-templates');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -70,9 +72,11 @@ export default function EmailTemplatesIndex() {
               Manage email templates for ticket notifications
             </p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.email-templates.create')}>+ New Template</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.email-templates.create')}>+ New Template</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -177,9 +181,11 @@ export default function EmailTemplatesIndex() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={route('admin.email-templates.edit', template.id)}>Edit</Link>
-                        </Button>
+                        {canEdit && (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.email-templates.edit', template.id)}>Edit</Link>
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

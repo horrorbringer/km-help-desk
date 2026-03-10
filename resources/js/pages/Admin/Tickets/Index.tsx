@@ -114,6 +114,16 @@ const statusColorMap: Record<string, string> = {
   cancelled: 'bg-gray-200 text-gray-700',
 };
 
+const statusTabActiveClasses: Record<string, string> = {
+  open: 'data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-blue-200 dark:data-[state=active]:bg-blue-950 dark:data-[state=active]:text-blue-300',
+  assigned: 'data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:border-indigo-200 dark:data-[state=active]:bg-indigo-950 dark:data-[state=active]:text-indigo-300',
+  in_progress: 'data-[state=active]:bg-amber-50 data-[state=active]:text-amber-700 data-[state=active]:border-amber-200 dark:data-[state=active]:bg-amber-950 dark:data-[state=active]:text-amber-300',
+  pending: 'data-[state=active]:bg-yellow-50 data-[state=active]:text-yellow-700 data-[state=active]:border-yellow-200 dark:data-[state=active]:bg-yellow-950 dark:data-[state=active]:text-yellow-300',
+  resolved: 'data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700 data-[state=active]:border-emerald-200 dark:data-[state=active]:bg-emerald-950 dark:data-[state=active]:text-emerald-300',
+  closed: 'data-[state=active]:bg-slate-50 data-[state=active]:text-slate-700 data-[state=active]:border-slate-200 dark:data-[state=active]:bg-slate-950 dark:data-[state=active]:text-slate-300',
+  cancelled: 'data-[state=active]:bg-gray-50 data-[state=active]:text-gray-700 data-[state=active]:border-gray-200 dark:data-[state=active]:bg-gray-950 dark:data-[state=active]:text-gray-300',
+};
+
 const priorityColorMap: Record<string, string> = {
   low: 'bg-slate-200 text-slate-800',
   medium: 'bg-blue-100 text-blue-800',
@@ -438,42 +448,18 @@ export default function TicketIndex({ tickets, filters, options, counts, flash }
                     >
                       All
                     </TabsTrigger>
-                    <TabsTrigger 
-                      value="open" 
-                      className="text-xs sm:text-sm data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-blue-200 dark:data-[state=active]:bg-blue-950 dark:data-[state=active]:text-blue-300"
-                    >
-                      Open
-                    </TabsTrigger>
-                    <TabsTrigger 
-                      value="assigned" 
-                      className="text-xs sm:text-sm data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:border-indigo-200 dark:data-[state=active]:bg-indigo-950 dark:data-[state=active]:text-indigo-300"
-                    >
-                      Assigned
-                    </TabsTrigger>
-                    <TabsTrigger 
-                      value="in_progress" 
-                      className="text-xs sm:text-sm data-[state=active]:bg-amber-50 data-[state=active]:text-amber-700 data-[state=active]:border-amber-200 dark:data-[state=active]:bg-amber-950 dark:data-[state=active]:text-amber-300"
-                    >
-                      In Progress
-                    </TabsTrigger>
-                    <TabsTrigger 
-                      value="pending" 
-                      className="text-xs sm:text-sm data-[state=active]:bg-yellow-50 data-[state=active]:text-yellow-700 data-[state=active]:border-yellow-200 dark:data-[state=active]:bg-yellow-950 dark:data-[state=active]:text-yellow-300"
-                    >
-                      Pending
-                    </TabsTrigger>
-                    <TabsTrigger 
-                      value="resolved" 
-                      className="text-xs sm:text-sm data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700 data-[state=active]:border-emerald-200 dark:data-[state=active]:bg-emerald-950 dark:data-[state=active]:text-emerald-300"
-                    >
-                      Resolved
-                    </TabsTrigger>
-                    <TabsTrigger 
-                      value="closed" 
-                      className="text-xs sm:text-sm data-[state=active]:bg-slate-50 data-[state=active]:text-slate-700 data-[state=active]:border-slate-200 dark:data-[state=active]:bg-slate-950 dark:data-[state=active]:text-slate-300"
-                    >
-                      Closed
-                    </TabsTrigger>
+                    {options.statuses.map((status) => (
+                      <TabsTrigger 
+                        key={status}
+                        value={status} 
+                        className={cn(
+                          "text-xs sm:text-sm capitalize",
+                          statusTabActiveClasses[status] ?? "data-[state=active]:bg-background"
+                        )}
+                      >
+                        {status.replace('_', ' ')}
+                      </TabsTrigger>
+                    ))}
                   </TabsList>
                 </Tabs>
               </div>

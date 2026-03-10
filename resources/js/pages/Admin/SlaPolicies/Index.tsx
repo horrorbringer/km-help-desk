@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface SlaPolicy {
@@ -55,6 +56,7 @@ const formatTime = (minutes: number): string => {
 
 export default function SlaPoliciesIndex() {
   const { policies, filters, flash } = usePage<SlaPoliciesIndexProps>().props;
+  const { canCreate, canView, canEdit } = useModulePermissions('sla-policies');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -82,9 +84,11 @@ export default function SlaPoliciesIndex() {
               Manage Service Level Agreement policies and track compliance
             </p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.sla-policies.create')}>+ New SLA Policy</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.sla-policies.create')}>+ New SLA Policy</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -210,12 +214,16 @@ export default function SlaPoliciesIndex() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex justify-end gap-2">
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={route('admin.sla-policies.show', policy.id)}>View</Link>
-                            </Button>
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={route('admin.sla-policies.edit', policy.id)}>Edit</Link>
-                            </Button>
+                            {canView && (
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={route('admin.sla-policies.show', policy.id)}>View</Link>
+                              </Button>
+                            )}
+                            {canEdit && (
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={route('admin.sla-policies.edit', policy.id)}>Edit</Link>
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>

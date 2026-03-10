@@ -22,22 +22,26 @@ class EmailService
         ?Ticket $ticket = null
     ): bool {
         try {
+            // Check if email notifications are enabled globally first
+            $mailEnabled = \App\Models\Setting::get('mail_enabled', true);
+            if (!$mailEnabled) {
+                return false;
+            }
+
             $template = EmailTemplate::active()
                 ->forEvent($eventType)
                 ->first();
 
             if (!$template) {
-                Log::warning("No active email template found for event: {$eventType}");
+                // Use a dedicated log level or tag to make these easier to filter/ignore
+                Log::notice("Email skipped: No active template for event '{$eventType}'", [
+                    'ticket_id' => $ticket?->id,
+                    'recipient' => $recipient->email,
+                ]);
                 return false;
             }
 
             $rendered = $template->render($data);
-
-            // Check if email notifications are enabled
-            $mailEnabled = \App\Models\Setting::get('mail_enabled', true);
-            if (!$mailEnabled) {
-                return false;
-            }
 
             Mail::send([], [], function ($message) use ($recipient, $rendered, $template) {
                 $fromAddress = \App\Models\Setting::get('mail_from_address', config('mail.from.address'));
@@ -555,4 +559,3 @@ class EmailService
         ];
     }
 }
-

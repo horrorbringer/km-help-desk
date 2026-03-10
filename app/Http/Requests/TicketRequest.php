@@ -16,6 +16,17 @@ class TicketRequest extends FormRequest
     {
         $ticketId = $this->route('ticket')?->id;
         $isUpdate = $ticketId !== null;
+        $user = $this->user();
+
+        $isPrivileged = $user->hasAnyRole(array_merge(
+            RoleConstants::getManagementRoles(),
+            RoleConstants::getAgentRoles(),
+            RoleConstants::getExecutiveRoles()
+        )) || $user->hasRole(RoleConstants::SUPER_ADMIN) || $user->hasRole(RoleConstants::IT_ADMINISTRATOR);
+
+        $allowedStatuses = $isPrivileged 
+            ? 'open,assigned,in_progress,pending,resolved,closed,cancelled' 
+            : 'open';
 
         return [
             'ticket_number' => ['nullable', 'string', 'max:20', 'unique:tickets,ticket_number,' . $ticketId],
@@ -27,7 +38,7 @@ class TicketRequest extends FormRequest
             'category_id' => [$isUpdate ? 'sometimes' : 'required', 'exists:ticket_categories,id'],
             'project_id' => ['nullable', 'exists:projects,id'],
             'sla_policy_id' => ['nullable', 'exists:sla_policies,id'],
-            'status' => [$isUpdate ? 'sometimes' : 'required', 'in:open,assigned,in_progress,pending,resolved,closed,cancelled'],
+            'status' => [$isUpdate ? 'sometimes' : 'required', "in:{$allowedStatuses}"],
             'priority' => [$isUpdate ? 'sometimes' : 'required', 'in:low,medium,high,critical'],
             'estimated_cost' => ['nullable', 'numeric', 'min:0'],
             'source' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:50'],
@@ -163,5 +174,3 @@ class TicketRequest extends FormRequest
         });
     }
 }
-
-

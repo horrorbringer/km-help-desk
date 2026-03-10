@@ -128,6 +128,16 @@ type TicketShowProps = {
   };
   agents?: BaseOption[];
   departments?: BaseOption[];
+  options?: {
+    statuses: string[];
+    priorities: string[];
+    teams: Array<{ id: number; name: string }>;
+    agents: Array<{ id: number; name: string }>;
+    categories: Array<{ id: number; name: string }>;
+    projects: Array<{ id: number; name: string }>;
+    requesters: Array<{ id: number; name: string }>;
+    tags: Array<{ id: number; name: string; color: string }>;
+  };
 };
 
 const statusColorMap: Record<string, string> = {
@@ -1923,7 +1933,7 @@ export default function TicketShow(props: TicketShowProps) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {['open', 'assigned', 'in_progress', 'pending', 'resolved', 'closed', 'cancelled'].map((status) => (
+                          {(props.options?.statuses || ['open', 'assigned', 'in_progress', 'pending', 'resolved', 'closed', 'cancelled']).map((status) => (
                             <SelectItem key={status} value={status}>
                               <div className="flex items-center gap-2">
                                 <Badge className={cn('text-xs', statusColorMap[status] ?? '')}>

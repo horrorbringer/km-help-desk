@@ -798,4 +798,130 @@ class NotificationService
             ]);
         }
     }
+    /**
+     * Notify all members of a specific team
+     */
+    public function notifyTeam(int $teamId, Ticket $ticket, string $template = 'ticket_assigned', array $additionalData = []): void
+    {
+        $team = \App\Models\Department::find($teamId);
+        if (!$team) {
+            return;
+        }
+
+        $users = $team->users()->where('is_active', true)->get();
+        foreach ($users as $user) {
+            $this->createFromTemplate(
+                $user->id,
+                $template,
+                $ticket->id,
+                null,
+                array_merge([
+                    'ticket_number' => $ticket->ticket_number,
+                    'subject' => $ticket->subject,
+                    'team_name' => $team->name,
+                ], $additionalData)
+            );
+
+            try {
+                SendTicketAssignedEmailJob::dispatch($ticket, $user);
+            } catch (\Exception $e) {
+                Log::error('Failed to dispatch email notification job in notifyTeam', [
+                    'ticket_id' => $ticket->id,
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Notify all users with a specific role
+     */
+    public function notifyRole(string $roleName, Ticket $ticket, string $template = 'ticket_assigned', array $additionalData = []): void
+    {
+        $users = \App\Models\User::role($roleName)->where('is_active', true)->get();
+        foreach ($users as $user) {
+            $this->createFromTemplate(
+                $user->id,
+                $template,
+                $ticket->id,
+                null,
+                array_merge([
+                    'ticket_number' => $ticket->ticket_number,
+                    'subject' => $ticket->subject,
+                    'role_name' => $roleName,
+                ], $additionalData)
+            );
+
+            try {
+                SendTicketAssignedEmailJob::dispatch($ticket, $user);
+            } catch (\Exception $e) {
+                Log::error('Failed to dispatch email notification job in notifyRole', [
+                    'ticket_id' => $ticket->id,
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Notify a specific user
+     */
+    public function notifyUser(int $userId, Ticket $ticket, string $template = 'ticket_assigned', array $additionalData = []): void
+    {
+        $user = \App\Models\User::find($userId);
+        if (!$user || !$user->is_active) {
+            return;
+        }
+
+        $this->createFromTemplate(
+            $user->id,
+            $template,
+            $ticket->id,
+            null,
+            array_merge([
+                'ticket_number' => $ticket->ticket_number,
+                'subject' => $ticket->subject,
+            ], $additionalData)
+        );
+
+        try {
+            SendTicketAssignedEmailJob::dispatch($ticket, $user);
+        } catch (\Exception $e) {
+            Log::error('Failed to dispatch email notification job in notifyUser', [
+                'ticket_id' => $ticket->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Notify teammates of the requester
+     */
+    public function notifyTeammates(Ticket $ticket): void
+    {
+        if (!$ticket->requester || !$ticket->requester->department_id) {
+            return;
+        }
+
+        $team = $ticket->requester->department;
+        $teammates = $team->users()
+            ->where('id', '!=', $ticket->requester_id)
+            ->where('is_active', true)
+            ->get();
+
+        foreach ($teammates as $user) {
+            $this->create(
+                $user->id,
+                'teammate_ticket_created',
+                "Teammate Created Ticket: #{$ticket->ticket_number}",
+                "Your teammate {$ticket->requester->name} has created a new ticket: {$ticket->subject}",
+                $ticket->id
+            );
+
+            // We could also send an email here if a "teammate_ticket_created" template exists
+        }
+    }
 }

@@ -24,6 +24,8 @@ export interface NavItem {
 
 export interface SharedData {
     name: string;
+    appName?: string;
+    appLogo?: string;
     quote: { message: string; author: string };
     auth: Auth;
     sidebarOpen: boolean;
@@ -52,3 +54,18 @@ export interface User {
 export type PageProps<T = Record<string, unknown>> = SharedData & {
     errors: Record<string, string>;
 } & T;
+
+// Global declarations for Ziggy and permissions
+declare global {
+    /**
+     * Ziggy route helper
+     */
+    function route(name?: string, params?: any, absolute?: boolean, config?: any): any;
+    
+    /**
+     * Laravel permission helper (provided by HandleInertiaRequests middleware)
+     */
+    function can(permission: string): boolean;
+}
+
+export {};

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface Project {
@@ -49,6 +50,7 @@ const statusColorMap: Record<string, string> = {
 
 export default function ProjectsIndex() {
   const { projects, filters, projectManagers, flash } = usePage<ProjectsIndexProps>().props;
+  const { canCreate, canEdit, canView } = useModulePermissions('projects');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -74,9 +76,11 @@ export default function ProjectsIndex() {
             <h1 className="text-3xl font-bold">Projects</h1>
             <p className="text-muted-foreground">Manage construction projects and track tickets</p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.projects.create')}>+ New Project</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.projects.create')}>+ New Project</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -228,12 +232,16 @@ export default function ProjectsIndex() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex justify-end gap-2">
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={route('admin.projects.show', project.id)}>View</Link>
-                            </Button>
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={route('admin.projects.edit', project.id)}>Edit</Link>
-                            </Button>
+                            {canView && (
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={route('admin.projects.show', project.id)}>View</Link>
+                              </Button>
+                            )}
+                            {canEdit && (
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={route('admin.projects.edit', project.id)}>Edit</Link>
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>

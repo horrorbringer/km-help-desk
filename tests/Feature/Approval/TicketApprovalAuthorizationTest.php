@@ -13,23 +13,8 @@ use Illuminate\Support\Facades\Auth;
 use Spatie\Permission\Models\Role;
 
 beforeEach(function () {
-    // Create required roles for testing
-    $roles = [
-        RoleConstants::SUPER_ADMIN,
-        RoleConstants::LINE_MANAGER,
-        RoleConstants::HEAD_OF_DEPARTMENT,
-        RoleConstants::CEO,
-        RoleConstants::MANAGER,
-        RoleConstants::REQUESTER,
-    ];
-    
-    foreach ($roles as $roleName) {
-        Role::firstOrCreate(['name' => $roleName], [
-            'guard_name' => 'web',
-            'hierarchy_level' => 5,
-            'is_system_role' => true,
-        ]);
-    }
+    // Seed roles and permissions
+    $this->artisan('db:seed', ['--class' => 'RolePermissionSeeder']);
 
     // Create test department
     $this->department = Department::factory()->create([
@@ -220,9 +205,10 @@ test('cannot approve already approved approval', function () {
     $response->assertRedirect(route('admin.tickets.show', $ticket));
     $response->assertSessionHas('error');
     $response->assertSessionHas('error', function ($value) {
-        return str_contains($value, 'already been approved');
+            return str_contains($value, 'already been approved');
+        }
+        );
     });
-});
 
 test('cannot approve already rejected approval', function () {
     $this->actingAs($this->lineManager);
@@ -250,9 +236,10 @@ test('cannot approve already rejected approval', function () {
     $response->assertRedirect(route('admin.tickets.show', $ticket));
     $response->assertSessionHas('error');
     $response->assertSessionHas('error', function ($value) {
-        return str_contains($value, 'already been rejected');
+            return str_contains($value, 'already been rejected');
+        }
+        );
     });
-});
 
 test('cannot approve approval for resolved ticket', function () {
     $this->actingAs($this->lineManager);
@@ -279,9 +266,10 @@ test('cannot approve approval for resolved ticket', function () {
     $response->assertRedirect(route('admin.tickets.show', $ticket));
     $response->assertSessionHas('error');
     $response->assertSessionHas('error', function ($value) {
-        return str_contains($value, 'already resolved');
+            return str_contains($value, 'already resolved');
+        }
+        );
     });
-});
 
 test('cannot approve out of sequence', function () {
     $this->actingAs($this->hod);
@@ -318,12 +306,13 @@ test('cannot approve out of sequence', function () {
     $response->assertRedirect(route('admin.tickets.show', $ticket));
     $response->assertSessionHas('error');
     $response->assertSessionHas('error', function ($value) {
-        return str_contains($value, 'previous approvals');
-    });
+            return str_contains($value, 'previous approvals');
+        }
+        );
 
-    $hodApproval->refresh();
-    expect($hodApproval->status)->toBe('pending');
-});
+        $hodApproval->refresh();
+        expect($hodApproval->status)->toBe('pending');
+    });
 
 test('can approve when previous approvals are approved', function () {
     $this->actingAs($this->hod);
@@ -367,7 +356,7 @@ test('can approve when previous approvals are approved', function () {
 
 test('deputy line manager can approve at lm level', function () {
     $dlm = User::factory()->create([
-        'assigned_team_id' => $this->department->id,
+        'department_id' => $this->department->id,
     ]);
     $dlm->assignRole(RoleConstants::DEPUTY_LINE_MANAGER);
 
@@ -423,4 +412,3 @@ test('reject requires comments', function () {
 
     $response->assertInvalid(['comments']);
 });
-

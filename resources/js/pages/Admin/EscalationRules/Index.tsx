@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface EscalationRule {
@@ -45,6 +46,7 @@ interface EscalationRulesIndexProps extends PageProps {
 
 export default function EscalationRulesIndex() {
   const { rules, filters, timeTriggerTypes, flash } = usePage<EscalationRulesIndexProps>().props;
+  const { canCreate, canEdit } = useModulePermissions('escalation-rules');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -91,9 +93,11 @@ export default function EscalationRulesIndex() {
               Automatically escalate tickets based on time and conditions
             </p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.escalation-rules.create')}>+ New Rule</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.escalation-rules.create')}>+ New Rule</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -196,9 +200,11 @@ export default function EscalationRulesIndex() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={route('admin.escalation-rules.edit', rule.id)}>Edit</Link>
-                        </Button>
+                        {canEdit && (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.escalation-rules.edit', rule.id)}>Edit</Link>
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

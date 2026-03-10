@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface AutomationRule {
@@ -45,6 +46,7 @@ interface AutomationRulesIndexProps extends PageProps {
 
 export default function AutomationRulesIndex() {
   const { rules, filters, triggerEvents, flash } = usePage<AutomationRulesIndexProps>().props;
+  const { canCreate, canEdit } = useModulePermissions('automation-rules');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -72,9 +74,11 @@ export default function AutomationRulesIndex() {
               Automate ticket assignment, routing, and workflow actions
             </p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.automation-rules.create')}>+ New Rule</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.automation-rules.create')}>+ New Rule</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -195,9 +199,11 @@ export default function AutomationRulesIndex() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={route('admin.automation-rules.edit', rule.id)}>Edit</Link>
-                        </Button>
+                        {canEdit && (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.automation-rules.edit', rule.id)}>Edit</Link>
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

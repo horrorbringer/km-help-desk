@@ -56,6 +56,7 @@ interface AutomationRuleFormProps {
     users: { value: number; label: string }[];
     sla_policies: { value: number; label: string }[];
     tags: { value: number; label: string }[];
+    roles: { value: string; label: string }[];
     statuses: string[];
     priorities: string[];
   };
@@ -163,6 +164,12 @@ export default function AutomationRuleForm({
         return options.sla_policies;
       case 'add_tags':
         return options.tags;
+      case 'notify_team':
+        return options.departments;
+      case 'notify_role':
+        return options.roles;
+      case 'notify_user':
+        return options.users;
       default:
         return [];
     }
@@ -400,21 +407,27 @@ export default function AutomationRuleForm({
                             ))}
                           </SelectContent>
                         </Select>
-                        <Select
-                          value={String(action.value ?? '')}
-                          onValueChange={(value) => updateAction(index, 'value', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Value" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {getActionOptions(action.type).map((opt) => (
-                              <SelectItem key={opt.value} value={String(opt.value)}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {action.type === 'notify_department_managers' ? (
+                          <div className="flex items-center text-sm text-muted-foreground">
+                            (notifies relevant managers)
+                          </div>
+                        ) : (
+                          <Select
+                            value={String(action.value ?? '')}
+                            onValueChange={(value) => updateAction(index, 'value', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Value" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {getActionOptions(action.type).map((opt) => (
+                                <SelectItem key={opt.value} value={String(opt.value)}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                       <Button
                         type="button"

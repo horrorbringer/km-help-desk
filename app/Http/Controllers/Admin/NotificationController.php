@@ -7,6 +7,7 @@ use App\Models\HelpDeskNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -72,21 +73,29 @@ class NotificationController extends Controller
 
     public function markAllAsRead(): JsonResponse
     {
-        HelpDeskNotification::where('user_id', Auth::id())
+        $userId = Auth::id();
+        HelpDeskNotification::where('user_id', $userId)
             ->where('is_read', false)
             ->update([
                 'is_read' => true,
                 'read_at' => now(),
             ]);
 
+        $this->clearUnreadCountCache($userId);
+
         return response()->json(['success' => true]);
     }
 
     public function unreadCount(): JsonResponse
     {
-        $count = HelpDeskNotification::where('user_id', Auth::id())
-            ->where('is_read', false)
-            ->count();
+        $userId = Auth::id();
+        $cacheKey = "user_unread_count_{$userId}";
+
+        $count = Cache::remember($cacheKey, 30, function () use ($userId) {
+            return HelpDeskNotification::where('user_id', $userId)
+                ->unread()
+                ->count();
+        });
 
         return response()->json(['count' => $count]);
     }
@@ -122,11 +131,14 @@ class NotificationController extends Controller
         ]);
 
         $notificationIds = $request->notification_ids;
+        $userId = Auth::id();
 
         // Ensure user can only delete their own notifications
-        $deletedCount = HelpDeskNotification::where('user_id', Auth::id())
+        $deletedCount = HelpDeskNotification::where('user_id', $userId)
             ->whereIn('id', $notificationIds)
             ->delete();
+
+        $this->clearUnreadCountCache($userId);
 
         return response()->json([
             'success' => true,
@@ -143,9 +155,10 @@ class NotificationController extends Controller
         ]);
 
         $notificationIds = $request->notification_ids;
+        $userId = Auth::id();
 
         // Ensure user can only mark their own notifications as read
-        $updatedCount = HelpDeskNotification::where('user_id', Auth::id())
+        $updatedCount = HelpDeskNotification::where('user_id', $userId)
             ->whereIn('id', $notificationIds)
             ->where('is_read', false)
             ->update([
@@ -153,10 +166,20 @@ class NotificationController extends Controller
                 'read_at' => now(),
             ]);
 
+        $this->clearUnreadCountCache($userId);
+
         return response()->json([
             'success' => true,
             'updated_count' => $updatedCount,
             'message' => "Marked {$updatedCount} notification(s) as read",
         ]);
+    }
+
+    /**
+     * Clear the unread count cache for a user
+     */
+    public function clearUnreadCountCache(int $userId): void
+    {
+        Cache::forget("user_unread_count_{$userId}");
     }
 }

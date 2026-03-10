@@ -41,6 +41,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import AppLayout from '@/layouts/app-layout';
 import type { PageProps } from '@/types';
 import { CheckCircle2, Trash2, XCircle } from 'lucide-react';
@@ -78,6 +79,7 @@ interface TicketTemplatesIndexProps extends PageProps {
 export default function TicketTemplatesIndex() {
     const { templates, filters, flash } =
         usePage<TicketTemplatesIndexProps>().props;
+    const { canCreate, canEdit, canDelete } = useModulePermissions('ticket-templates');
     const [selectedTemplates, setSelectedTemplates] = useState<number[]>([]);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [templateToDelete, setTemplateToDelete] =
@@ -201,11 +203,13 @@ export default function TicketTemplatesIndex() {
                             Create reusable templates to quickly create tickets
                         </p>
                     </div>
-                    <Button asChild>
-                        <Link href={route('admin.ticket-templates.create')}>
-                            + New Template
-                        </Link>
-                    </Button>
+                    {canCreate && (
+                        <Button asChild>
+                            <Link href={route('admin.ticket-templates.create')}>
+                                + New Template
+                            </Link>
+                        </Button>
+                    )}
                 </div>
 
                 {/* Filters */}
@@ -422,7 +426,7 @@ export default function TicketTemplatesIndex() {
                                                         open={
                                                             deleteDialogOpen &&
                                                             templateToDelete?.id ===
-                                                                template.id
+                                                            template.id
                                                         }
                                                         onOpenChange={(
                                                             open,

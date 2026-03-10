@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface CannedResponse {
@@ -36,6 +37,7 @@ interface CannedResponsesIndexProps extends PageProps {
 
 export default function CannedResponsesIndex() {
   const { responses, filters, categories, flash } = usePage<CannedResponsesIndexProps>().props;
+  const { canCreate, canEdit } = useModulePermissions('canned-responses');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -63,9 +65,11 @@ export default function CannedResponsesIndex() {
               Pre-written responses for common ticket scenarios
             </p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.canned-responses.create')}>+ New Response</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.canned-responses.create')}>+ New Response</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -165,9 +169,11 @@ export default function CannedResponsesIndex() {
                         <span className="ml-2">by {response.author.name}</span>
                       )}
                     </div>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={route('admin.canned-responses.edit', response.id)}>Edit</Link>
-                    </Button>
+                    {canEdit && (
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={route('admin.canned-responses.edit', response.id)}>Edit</Link>
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

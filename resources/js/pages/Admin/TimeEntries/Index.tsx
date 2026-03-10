@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface TimeEntry {
@@ -72,6 +73,7 @@ interface TimeEntriesIndexProps extends PageProps {
 export default function TimeEntriesIndex() {
   const { timeEntries, filters, totals, activityTypes, flash } =
     usePage<TimeEntriesIndexProps>().props;
+  const { canCreate, canEdit } = useModulePermissions('time-entries');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -111,9 +113,11 @@ export default function TimeEntriesIndex() {
               Track time spent on tickets for billing and reporting
             </p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.time-entries.create')}>+ Log Time</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.time-entries.create')}>+ Log Time</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -282,9 +286,11 @@ export default function TimeEntriesIndex() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={route('admin.time-entries.edit', entry.id)}>Edit</Link>
-                        </Button>
+                        {canEdit && (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.time-entries.edit', entry.id)}>Edit</Link>
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

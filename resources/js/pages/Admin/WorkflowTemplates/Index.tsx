@@ -34,6 +34,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import AppLayout from '@/layouts/app-layout';
 import type { PageProps } from '@/types';
 
@@ -64,16 +65,13 @@ interface WorkflowTemplatesIndexProps extends PageProps {
         categories: Array<{ value: number; label: string }>;
         departments: Array<{ value: number; label: string }>;
     };
-    flash?: {
-        success?: string;
-        error?: string;
-    };
 }
 
 export default function WorkflowTemplatesIndex() {
     const { templates, filters, formOptions, flash } =
         usePage<WorkflowTemplatesIndexProps>().props;
     const { toast } = useToast();
+    const { canCreate, canView, canEdit, canDelete, canCustom } = useModulePermissions('workflow-templates');
     const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(
         null,
     );
@@ -145,12 +143,14 @@ export default function WorkflowTemplatesIndex() {
                             order
                         </p>
                     </div>
-                    <Link href={route('admin.workflow-templates.create')}>
-                        <Button>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Create Workflow Template
-                        </Button>
-                    </Link>
+                    {canCreate && (
+                        <Link href={route('admin.workflow-templates.create')}>
+                            <Button>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Create Workflow Template
+                            </Button>
+                        </Link>
+                    )}
                 </div>
 
                 {/* Filters */}
@@ -317,106 +317,114 @@ export default function WorkflowTemplatesIndex() {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() =>
-                                                    handleToggleStatus(
+                                            {canEdit && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() =>
+                                                        handleToggleStatus(
+                                                            template.id,
+                                                        )
+                                                    }
+                                                    title={
+                                                        template.is_active
+                                                            ? 'Deactivate'
+                                                            : 'Activate'
+                                                    }
+                                                >
+                                                    {template.is_active ? (
+                                                        <PowerOff className="h-4 w-4" />
+                                                    ) : (
+                                                        <Power className="h-4 w-4" />
+                                                    )}
+                                                </Button>
+                                            )}
+                                            {canView && (
+                                                <Link
+                                                    href={route(
+                                                        'admin.workflow-templates.show',
                                                         template.id,
-                                                    )
-                                                }
-                                                title={
-                                                    template.is_active
-                                                        ? 'Deactivate'
-                                                        : 'Activate'
-                                                }
-                                            >
-                                                {template.is_active ? (
-                                                    <PowerOff className="h-4 w-4" />
-                                                ) : (
-                                                    <Power className="h-4 w-4" />
-                                                )}
-                                            </Button>
-                                            <Link
-                                                href={route(
-                                                    'admin.workflow-templates.show',
-                                                    template.id,
-                                                )}
-                                            >
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    title="View Details"
+                                                    )}
                                                 >
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Link
-                                                href={route(
-                                                    'admin.workflow-templates.edit',
-                                                    template.id,
-                                                )}
-                                            >
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                >
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <AlertDialog
-                                                open={
-                                                    deleteDialogOpen ===
-                                                    template.id
-                                                }
-                                                onOpenChange={(open) =>
-                                                    setDeleteDialogOpen(
-                                                        open
-                                                            ? template.id
-                                                            : null,
-                                                    )
-                                                }
-                                            >
-                                                <AlertDialogTrigger asChild>
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="text-destructive hover:text-destructive"
+                                                        title="View Details"
                                                     >
-                                                        <Trash2 className="h-4 w-4" />
+                                                        <Eye className="h-4 w-4" />
                                                     </Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>
-                                                            Delete Workflow
-                                                            Template
-                                                        </AlertDialogTitle>
-                                                        <AlertDialogDescription>
-                                                            Are you sure you
-                                                            want to delete "
-                                                            {template.name}"?
-                                                            This action cannot
-                                                            be undone.
-                                                        </AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>
-                                                            Cancel
-                                                        </AlertDialogCancel>
-                                                        <AlertDialogAction
-                                                            onClick={() =>
-                                                                handleDelete(
-                                                                    template.id,
-                                                                )
-                                                            }
-                                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                </Link>
+                                            )}
+                                            {canEdit && (
+                                                <Link
+                                                    href={route(
+                                                        'admin.workflow-templates.edit',
+                                                        template.id,
+                                                    )}
+                                                >
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                    >
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                </Link>
+                                            )}
+                                            {canDelete && (
+                                                <AlertDialog
+                                                    open={
+                                                        deleteDialogOpen ===
+                                                        template.id
+                                                    }
+                                                    onOpenChange={(open) =>
+                                                        setDeleteDialogOpen(
+                                                            open
+                                                                ? template.id
+                                                                : null,
+                                                        )
+                                                    }
+                                                >
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-destructive hover:text-destructive"
                                                         >
-                                                            Delete
-                                                        </AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>
+                                                                Delete Workflow
+                                                                Template
+                                                            </AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                Are you sure you
+                                                                want to delete "
+                                                                {template.name}"?
+                                                                This action cannot
+                                                                be undone.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>
+                                                                Cancel
+                                                            </AlertDialogCancel>
+                                                            <AlertDialogAction
+                                                                onClick={() =>
+                                                                    handleDelete(
+                                                                        template.id,
+                                                                    )
+                                                                }
+                                                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                            >
+                                                                Delete
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            )}
                                         </div>
                                     </div>
                                 ))}

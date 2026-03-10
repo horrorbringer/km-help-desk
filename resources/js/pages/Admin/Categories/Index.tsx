@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Trash2, X, Sparkles, Pause, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import { toast } from 'sonner';
 
 import AppLayout from '@/layouts/app-layout';
@@ -65,13 +66,14 @@ interface CategoriesIndexProps extends PageProps {
 export default function CategoriesIndex() {
   const { categories, filters, rootCategories, departments, flash } = usePage<CategoriesIndexProps>().props;
   const { toast: toastFromHook } = useToast(); // Handle flash messages
+  const { canCreate, canEdit, canDelete } = useModulePermissions('categories');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
   const [bulkDefaultTeamId, setBulkDefaultTeamId] = useState<string>('');
   const [togglingStatus, setTogglingStatus] = useState<number | null>(null);
- 
+
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
     if (value === '' || value === '__all') {
@@ -192,11 +194,11 @@ export default function CategoriesIndex() {
         category_ids: selectedCategories,
         action: bulkDialogAction,
       };
-      
+
       if (bulkDialogAction === 'update_default_team') {
         payload.default_team_id = bulkDefaultTeamId && bulkDefaultTeamId !== '__none' ? bulkDefaultTeamId : null;
       }
-      
+
       router.post(
         route('admin.categories.bulk-update'),
         payload,
@@ -255,9 +257,11 @@ export default function CategoriesIndex() {
             <h1 className="text-3xl font-bold">Ticket Categories</h1>
             <p className="text-muted-foreground">Organize and classify tickets by category</p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.categories.create')}>+ New Category</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.categories.create')}>+ New Category</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -358,39 +362,45 @@ export default function CategoriesIndex() {
                   </Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleBulkAction('activate')}
-                    className="text-xs"
-                  >
-                    Activate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleBulkAction('deactivate')}
-                    className="text-xs"
-                  >
-                    Deactivate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleBulkAction('update_default_team')}
-                    className="text-xs"
-                  >
-                    Update Team
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleBulkAction('delete')}
-                    className="text-xs"
-                  >
-                    <Trash2 className="h-3 w-3 mr-1" />
-                    Delete
-                  </Button>
+                  {canEdit && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('activate')}
+                        className="text-xs"
+                      >
+                        Activate
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('deactivate')}
+                        className="text-xs"
+                      >
+                        Deactivate
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleBulkAction('update_default_team')}
+                        className="text-xs"
+                      >
+                        Update Team
+                      </Button>
+                    </>
+                  )}
+                  {canDelete && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleBulkAction('delete')}
+                      className="text-xs"
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -528,17 +538,16 @@ export default function CategoriesIndex() {
                         <td className="px-2 sm:px-4 py-3">
                           <Badge
                             variant={category.is_active ? 'default' : 'secondary'}
-                            className={`cursor-pointer hover:opacity-80 transition-opacity ${
-                              category.is_active ? 'bg-emerald-100 text-emerald-800' : ''
-                            } ${togglingStatus === category.id ? 'opacity-50 cursor-wait' : ''}`}
+                            className={`cursor-pointer hover:opacity-80 transition-opacity ${category.is_active ? 'bg-emerald-100 text-emerald-800' : ''
+                              } ${togglingStatus === category.id ? 'opacity-50 cursor-wait' : ''}`}
                             onClick={() => {
                               if (togglingStatus === category.id) return;
-                              
+
                               const newStatus = !category.is_active;
                               const action = newStatus ? 'activated' : 'deactivated';
-                              
+
                               setTogglingStatus(category.id);
-                              
+
                               // Show loading toast with beautiful styling
                               const toastId = toast.loading(
                                 `${newStatus ? 'Activating' : 'Deactivating'} category...`,
@@ -548,7 +557,7 @@ export default function CategoriesIndex() {
                                   icon: newStatus ? <Sparkles className="size-5 text-blue-600" /> : <Pause className="size-5 text-amber-600" />,
                                 }
                               );
-                              
+
                               router.post(
                                 route('admin.categories.toggle-status', category.id),
                                 {},
@@ -603,10 +612,12 @@ export default function CategoriesIndex() {
                         </td>
                         <td className="px-2 sm:px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1 sm:gap-2">
-                            <Button asChild variant="outline" size="sm" className="text-xs sm:text-sm">
-                              <Link href={route('admin.categories.edit', category.id)}>Edit</Link>
-                            </Button>
-                            {deleteDialogOpen === category.id ? (
+                            {canEdit && (
+                              <Button asChild variant="outline" size="sm" className="text-xs sm:text-sm">
+                                <Link href={route('admin.categories.edit', category.id)}>Edit</Link>
+                              </Button>
+                            )}
+                            {canDelete && (deleteDialogOpen === category.id ? (
                               <AlertDialog open={true} onOpenChange={(open) => !open && setDeleteDialogOpen(null)}>
                                 <AlertDialogContent>
                                   <AlertDialogHeader>
@@ -614,7 +625,7 @@ export default function CategoriesIndex() {
                                     <AlertDialogDescription>
                                       {category.children_count > 0 ? (
                                         <>
-                                          Cannot delete category "{category.name}" because it has {category.children_count} subcategor{category.children_count === 1 ? 'y' : 'ies'}. 
+                                          Cannot delete category "{category.name}" because it has {category.children_count} subcategor{category.children_count === 1 ? 'y' : 'ies'}.
                                           Please delete or move subcategories first.
                                         </>
                                       ) : category.tickets_count > 0 ? (
@@ -640,7 +651,7 @@ export default function CategoriesIndex() {
                                             duration: Infinity,
                                             icon: <Trash2 className="size-5 text-red-600" />,
                                           });
-                                          
+
                                           router.delete(route('admin.categories.destroy', category.id), {
                                             preserveScroll: true,
                                             onSuccess: () => {
@@ -696,13 +707,13 @@ export default function CategoriesIndex() {
                                   category.children_count > 0
                                     ? `Cannot delete: has ${category.children_count} subcategor${category.children_count === 1 ? 'y' : 'ies'}`
                                     : category.tickets_count > 0
-                                    ? `Cannot delete: has ${category.tickets_count} ticket${category.tickets_count === 1 ? '' : 's'}`
-                                    : 'Delete category'
+                                      ? `Cannot delete: has ${category.tickets_count} ticket${category.tickets_count === 1 ? '' : 's'}`
+                                      : 'Delete category'
                                 }
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
-                            )}
+                            ))}
                           </div>
                         </td>
                       </tr>
@@ -718,15 +729,15 @@ export default function CategoriesIndex() {
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>
-                      {bulkDialogAction === 'delete' ? 'Delete Categories' : 
-                       bulkDialogAction === 'activate' ? 'Activate Categories' : 
-                       bulkDialogAction === 'deactivate' ? 'Deactivate Categories' :
-                       'Update Default Team'}
+                      {bulkDialogAction === 'delete' ? 'Delete Categories' :
+                        bulkDialogAction === 'activate' ? 'Activate Categories' :
+                          bulkDialogAction === 'deactivate' ? 'Deactivate Categories' :
+                            'Update Default Team'}
                     </AlertDialogTitle>
                     <AlertDialogDescription>
                       {bulkDialogAction === 'delete' ? (
                         <>
-                          Are you sure you want to delete {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'}? 
+                          Are you sure you want to delete {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'}?
                           Categories with subcategories or tickets cannot be deleted. This action cannot be undone.
                         </>
                       ) : bulkDialogAction === 'activate' ? (
@@ -740,7 +751,7 @@ export default function CategoriesIndex() {
                       ) : bulkDialogAction === 'update_default_team' ? (
                         <div className="space-y-3">
                           <p>
-                            Select the default team for {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'}. 
+                            Select the default team for {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'}.
                             Tickets in these categories will be routed to the selected team.
                           </p>
                           <Select
@@ -772,10 +783,10 @@ export default function CategoriesIndex() {
                       disabled={bulkDialogAction === 'update_default_team' && !bulkDefaultTeamId}
                       className={bulkDialogAction === 'delete' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
                     >
-                      {bulkDialogAction === 'delete' ? 'Delete' : 
-                       bulkDialogAction === 'activate' ? 'Activate' : 
-                       bulkDialogAction === 'deactivate' ? 'Deactivate' :
-                       'Update Team'}
+                      {bulkDialogAction === 'delete' ? 'Delete' :
+                        bulkDialogAction === 'activate' ? 'Activate' :
+                          bulkDialogAction === 'deactivate' ? 'Deactivate' :
+                            'Update Team'}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

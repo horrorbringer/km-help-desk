@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from '@inertiajs/react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
 import { IconBell } from '@tabler/icons-react';
 
@@ -30,7 +30,7 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const [recentResponse, countResponse] = await Promise.all([
         axios.get(route('admin.notifications.recent')),
@@ -44,16 +44,25 @@ export function NotificationBell() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchNotifications();
 
+    // Fallback: If still loading after 5 seconds, stop the spinner
+    // This prevents the "running forever" perception if requests hang
+    const timeout = setTimeout(() => {
+        setLoading(false);
+    }, 5000);
+
     // Poll for new notifications every 30 seconds
     const interval = setInterval(fetchNotifications, 30000);
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+        clearTimeout(timeout);
+        clearInterval(interval);
+    };
+  }, [fetchNotifications]);
 
   const handleMarkAsRead = async (notificationId: number) => {
     try {
@@ -121,7 +130,7 @@ export function NotificationBell() {
                       handleMarkAsRead(notification.id);
                     }
                     if (notification.ticket) {
-                      window.location.href = route('admin.tickets.show', { ticket: notification.ticket.id });
+                      router.visit(route('admin.tickets.show', { ticket: notification.ticket.id }));
                     }
                   }}
                 >

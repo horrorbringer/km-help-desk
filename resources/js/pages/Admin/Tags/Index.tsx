@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface Tag {
@@ -30,6 +31,7 @@ interface TagsIndexProps extends PageProps {
 
 export default function TagsIndex() {
   const { tags, filters, flash } = usePage<TagsIndexProps>().props;
+  const { canCreate, canEdit } = useModulePermissions('tags');
 
   const handleFilter = (value: string) => {
     const newFilters = { ...filters };
@@ -52,9 +54,11 @@ export default function TagsIndex() {
             <h1 className="text-3xl font-bold">Tags</h1>
             <p className="text-muted-foreground">Organize tickets with tags and labels</p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.tags.create')}>+ New Tag</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.tags.create')}>+ New Tag</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -107,9 +111,11 @@ export default function TagsIndex() {
                     >
                       {tag.name}
                     </Badge>
-                    <Button asChild variant="ghost" size="sm">
-                      <Link href={route('admin.tags.edit', tag.id)}>Edit</Link>
-                    </Button>
+                    {canEdit && (
+                      <Button asChild variant="ghost" size="sm">
+                        <Link href={route('admin.tags.edit', tag.id)}>Edit</Link>
+                      </Button>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>

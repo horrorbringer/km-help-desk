@@ -1695,6 +1695,7 @@ export default function TicketForm(props: TicketFormProps) {
                         </CardHeader>
                         <CardContent className="space-y-5">
                             <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3">
+                                {formOptions.statuses.length > 1 && (
                                 <div>
                                     <Label className="text-sm font-medium">
                                         Status
@@ -1865,6 +1866,7 @@ export default function TicketForm(props: TicketFormProps) {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                )}
 
                                 <div>
                                     <Label className="text-sm font-medium">

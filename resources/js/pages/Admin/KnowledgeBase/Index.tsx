@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import type { PageProps } from '@/types';
 
 interface Article {
@@ -56,6 +57,7 @@ const statusColorMap: Record<string, string> = {
 
 export default function KnowledgeBaseIndex() {
   const { articles, filters, categories, flash } = usePage<KnowledgeBaseIndexProps>().props;
+  const { canCreate, canEdit } = useModulePermissions('knowledge-base');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -81,9 +83,11 @@ export default function KnowledgeBaseIndex() {
             <h1 className="text-3xl font-bold">Knowledge Base</h1>
             <p className="text-muted-foreground">Manage FAQ articles and help documentation</p>
           </div>
-          <Button asChild>
-            <Link href={route('admin.knowledge-base.create')}>+ New Article</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href={route('admin.knowledge-base.create')}>+ New Article</Link>
+            </Button>
+          )}
         </div>
 
         {/* Flash Message */}
@@ -247,9 +251,11 @@ export default function KnowledgeBaseIndex() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button asChild variant="outline" size="sm">
-                            <Link href={route('admin.knowledge-base.edit', { knowledge_base: article.id })}>Edit</Link>
-                          </Button>
+                          {canEdit && (
+                            <Button asChild variant="outline" size="sm">
+                              <Link href={route('admin.knowledge-base.edit', { knowledge_base: article.id })}>Edit</Link>
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

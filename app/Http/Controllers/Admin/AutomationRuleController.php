@@ -142,6 +142,10 @@ class AutomationRuleController extends Controller
             'set_category' => 'Set Category',
             'set_sla_policy' => 'Set SLA Policy',
             'add_tags' => 'Add Tags',
+            'notify_team' => 'Notify Team',
+            'notify_role' => 'Notify Role',
+            'notify_user' => 'Notify User',
+            'notify_department_managers' => 'Notify Department Managers',
         ];
     }
 
@@ -168,9 +172,12 @@ class AutomationRuleController extends Controller
                 'value' => $t->id,
                 'label' => $t->name,
             ]),
+            'roles' => \Spatie\Permission\Models\Role::orderBy('name')->get(['name'])->map(fn ($r) => [
+                'value' => $r->name,
+                'label' => $r->name,
+            ]),
             'statuses' => Ticket::STATUSES,
             'priorities' => Ticket::PRIORITIES,
         ];
     }
 }
-

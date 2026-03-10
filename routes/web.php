@@ -63,6 +63,9 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('system-monitor', [\App\Http\Controllers\Admin\SystemMonitorController::class, 'index'])->name('admin.system-monitor');
     Route::get('system-monitor/data', [\App\Http\Controllers\Admin\SystemMonitorController::class, 'data'])->name('admin.system-monitor.data');
+    Route::get('org-chart', [\App\Http\Controllers\Admin\OrgChartController::class, 'index'])
+        ->name('admin.org-chart')
+        ->middleware('permission:roles.view');
 
     Route::resource('projects', \App\Http\Controllers\Admin\ProjectController::class)
         ->names('admin.projects');
@@ -159,16 +162,59 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
     Route::resource('ticket-templates', TicketTemplateController::class)
         ->names('admin.ticket-templates');
 
-    Route::resource('workflow-templates', \App\Http\Controllers\Admin\WorkflowTemplateController::class)
-        ->names('admin.workflow-templates');
-    Route::post('workflow-templates/{workflowTemplate}/toggle-status', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'toggleStatus'])
-        ->name('admin.workflow-templates.toggle-status');
+    // Workflow Templates (with permission middleware)
+    Route::middleware('permission:workflow-templates.create')->group(function () {
+        Route::get('workflow-templates/create', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'create'])
+            ->name('admin.workflow-templates.create');
+        Route::post('workflow-templates', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'store'])
+            ->name('admin.workflow-templates.store');
+    });
+    Route::middleware('permission:workflow-templates.view')->group(function () {
+        Route::get('workflow-templates', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'index'])
+            ->name('admin.workflow-templates.index');
+        Route::get('workflow-templates/{workflowTemplate}', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'show'])
+            ->name('admin.workflow-templates.show');
+    });
+    Route::middleware('permission:workflow-templates.edit')->group(function () {
+        Route::get('workflow-templates/{workflowTemplate}/edit', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'edit'])
+            ->name('admin.workflow-templates.edit');
+        Route::put('workflow-templates/{workflowTemplate}', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'update'])
+            ->name('admin.workflow-templates.update');
+        Route::patch('workflow-templates/{workflowTemplate}', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'update']);
+        Route::post('workflow-templates/{workflowTemplate}/toggle-status', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'toggleStatus'])
+            ->name('admin.workflow-templates.toggle-status');
+    });
+    Route::middleware('permission:workflow-templates.delete')->group(function () {
+        Route::delete('workflow-templates/{workflowTemplate}', [\App\Http\Controllers\Admin\WorkflowTemplateController::class, 'destroy'])
+            ->name('admin.workflow-templates.destroy');
+    });
 
-    // Approval Levels
-    Route::resource('approval-levels', ApprovalLevelController::class)
-        ->names('admin.approval-levels');
-    Route::post('approval-levels/{approvalLevel}/toggle-status', [ApprovalLevelController::class, 'toggleStatus'])
-        ->name('admin.approval-levels.toggle-status');
+    // Approval Levels (with permission middleware)
+    Route::middleware('permission:approval-levels.create')->group(function () {
+        Route::get('approval-levels/create', [ApprovalLevelController::class, 'create'])
+            ->name('admin.approval-levels.create');
+        Route::post('approval-levels', [ApprovalLevelController::class, 'store'])
+            ->name('admin.approval-levels.store');
+    });
+    Route::middleware('permission:approval-levels.view')->group(function () {
+        Route::get('approval-levels', [ApprovalLevelController::class, 'index'])
+            ->name('admin.approval-levels.index');
+        Route::get('approval-levels/{approvalLevel}', [ApprovalLevelController::class, 'show'])
+            ->name('admin.approval-levels.show');
+    });
+    Route::middleware('permission:approval-levels.edit')->group(function () {
+        Route::get('approval-levels/{approvalLevel}/edit', [ApprovalLevelController::class, 'edit'])
+            ->name('admin.approval-levels.edit');
+        Route::put('approval-levels/{approvalLevel}', [ApprovalLevelController::class, 'update'])
+            ->name('admin.approval-levels.update');
+        Route::patch('approval-levels/{approvalLevel}', [ApprovalLevelController::class, 'update']);
+        Route::post('approval-levels/{approvalLevel}/toggle-status', [ApprovalLevelController::class, 'toggleStatus'])
+            ->name('admin.approval-levels.toggle-status');
+    });
+    Route::middleware('permission:approval-levels.delete')->group(function () {
+        Route::delete('approval-levels/{approvalLevel}', [ApprovalLevelController::class, 'destroy'])
+            ->name('admin.approval-levels.destroy');
+    });
 
     Route::resource('roles', RoleController::class)
         ->names('admin.roles');
@@ -272,4 +318,4 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
 //     }
 // })->middleware('auth');
 
-require __DIR__.'/settings.php';
+require __DIR__ . '/settings.php';

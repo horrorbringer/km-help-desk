@@ -189,6 +189,9 @@ class TicketController extends Controller
                         ]);
                         $notificationService->notifyTicketAssigned($ticket);
                     }
+
+                    // Notify teammates of the requester
+                    $notificationService->notifyTeammates($ticket);
                 } catch (\Exception $e) {
                     \Log::error('Notification service failed on ticket creation', [
                         'ticket_id' => $ticket->id,
@@ -277,6 +280,7 @@ class TicketController extends Controller
             'ticket' => TicketResource::make($ticket),
             'departments' => Department::where('is_active', true)->select('id', 'name')->orderBy('name')->get(),
             'agents' => $agents,
+            'options' => $this->filterOptions(),
         ]);
     }
 
@@ -1301,10 +1305,34 @@ class TicketController extends Controller
         return true;
     }
 
+    /**
+     * Get available statuses based on current user role.
+     * Requesters are restricted to 'open' only.
+     */
+    protected function getAvailableStatuses(): array
+    {
+        $user = Auth::user();
+        
+        // Determine available statuses based on role
+        $statuses = Ticket::STATUSES;
+        $isPrivileged = $user->hasAnyRole(array_merge(
+            RoleConstants::getManagementRoles(),
+            RoleConstants::getAgentRoles(),
+            RoleConstants::getExecutiveRoles()
+        )) || $user->hasRole(RoleConstants::SUPER_ADMIN) || $user->hasRole(RoleConstants::IT_ADMINISTRATOR);
+
+        if (!$isPrivileged) {
+            // Requesters can only see/select 'open'
+            return ['open'];
+        }
+
+        return $statuses;
+    }
+
     protected function filterOptions(): array
     {
         return [
-            'statuses' => Ticket::STATUSES,
+            'statuses' => $this->getAvailableStatuses(),
             'priorities' => Ticket::PRIORITIES,
             'teams' => Department::select('id', 'name')->orderBy('name')->get(),
             'agents' => User::select('id', 'name')->orderBy('name')->get(),
@@ -1400,7 +1428,7 @@ class TicketController extends Controller
         $enableWatchers = $canAssign ? \App\Models\Setting::get('enable_watchers', true) : false;
         
         return [
-            'statuses' => Ticket::STATUSES,
+            'statuses' => $this->getAvailableStatuses(),
             'priorities' => Ticket::PRIORITIES,
             'sources' => Ticket::SOURCES,
             'departments' => Department::where('is_active', true)->select('id', 'name')->where('code','IT-SD')->orderBy('name')->get(),
@@ -1778,5 +1806,3 @@ class TicketController extends Controller
         return false;
     }
 }
-
-

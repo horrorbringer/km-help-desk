@@ -108,6 +108,18 @@ class AutomationRule extends Model
                         $ticket->tags()->syncWithoutDetaching($value);
                     }
                     break;
+                case 'notify_team':
+                    app(NotificationService::class)->notifyTeam((int)$value, $ticket);
+                    break;
+                case 'notify_role':
+                    app(NotificationService::class)->notifyRole((string)$value, $ticket);
+                    break;
+                case 'notify_user':
+                    app(NotificationService::class)->notifyUser((int)$value, $ticket);
+                    break;
+                case 'notify_department_managers':
+                    app(NotificationService::class)->notifyDepartmentManagers($ticket);
+                    break;
             }
         }
 
@@ -126,16 +138,16 @@ class AutomationRule extends Model
     protected function getTicketValue(Ticket $ticket, string $field): mixed
     {
         return match ($field) {
-            'category_id' => $ticket->category_id,
-            'project_id' => $ticket->project_id,
-            'priority' => $ticket->priority,
-            'status' => $ticket->status,
-            'source' => $ticket->source,
-            'assigned_team_id' => $ticket->assigned_team_id,
-            'assigned_agent_id' => $ticket->assigned_agent_id,
-            'requester_id' => $ticket->requester_id,
-            default => $ticket->getAttribute($field),
-        };
+                'category_id' => $ticket->category_id,
+                'project_id' => $ticket->project_id,
+                'priority' => $ticket->priority,
+                'status' => $ticket->status,
+                'source' => $ticket->source,
+                'assigned_team_id' => $ticket->assigned_team_id,
+                'assigned_agent_id' => $ticket->assigned_agent_id,
+                'requester_id' => $ticket->requester_id,
+                default => $ticket->getAttribute($field),
+            };
     }
 
     /**
@@ -144,18 +156,18 @@ class AutomationRule extends Model
     protected function evaluateCondition(mixed $ticketValue, string $operator, mixed $conditionValue): bool
     {
         return match ($operator) {
-            'equals' => $ticketValue == $conditionValue,
-            'not_equals' => $ticketValue != $conditionValue,
-            'contains' => is_string($ticketValue) && str_contains($ticketValue, $conditionValue),
-            'not_contains' => is_string($ticketValue) && !str_contains($ticketValue, $conditionValue),
-            'in' => in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
-            'not_in' => !in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
-            'is_empty' => empty($ticketValue),
-            'is_not_empty' => !empty($ticketValue),
-            'greater_than' => $ticketValue > $conditionValue,
-            'less_than' => $ticketValue < $conditionValue,
-            default => false,
-        };
+                'equals' => $ticketValue == $conditionValue,
+                'not_equals' => $ticketValue != $conditionValue,
+                'contains' => is_string($ticketValue) && str_contains($ticketValue, $conditionValue),
+                'not_contains' => is_string($ticketValue) && !str_contains($ticketValue, $conditionValue),
+                'in' => in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
+                'not_in' => !in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
+                'is_empty' => empty($ticketValue),
+                'is_not_empty' => !empty($ticketValue),
+                'greater_than' => $ticketValue > $conditionValue,
+                'less_than' => $ticketValue < $conditionValue,
+                default => false,
+            };
     }
 
     public function scopeActive($query)
@@ -173,4 +185,3 @@ class AutomationRule extends Model
         return $query->orderBy('priority', 'desc')->orderBy('id');
     }
 }
-

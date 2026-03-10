@@ -39,7 +39,7 @@ class WorkflowTemplateController extends Controller
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString()
-            ->through(fn ($template) => [
+            ->through(fn($template) => [
                 'id' => $template->id,
                 'name' => $template->name,
                 'description' => $template->description,
@@ -160,7 +160,7 @@ class WorkflowTemplateController extends Controller
     public function toggleStatus(WorkflowTemplate $workflowTemplate): RedirectResponse
     {
         $workflowTemplate->update([
-            'is_active' => ! $workflowTemplate->is_active,
+            'is_active' => !$workflowTemplate->is_active,
         ]);
 
         return redirect()
@@ -174,12 +174,16 @@ class WorkflowTemplateController extends Controller
             'categories' => TicketCategory::where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name'])
-                ->map(fn ($cat) => ['value' => $cat->id, 'label' => $cat->name]),
+                ->map(fn($cat) => ['value' => $cat->id, 'label' => $cat->name]),
             'departments' => Department::where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name'])
-                ->map(fn ($dept) => ['value' => $dept->id, 'label' => $dept->name]),
-            'approval_levels' => \App\Constants\ApprovalLevelConstants::getOptions(),
+                ->map(fn($dept) => ['value' => $dept->id, 'label' => $dept->name]),
+            'approval_levels' => \App\Models\ApprovalLevel::where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('label')
+                ->get(['code', 'label'])
+                ->map(fn($level) => ['value' => $level->code, 'label' => $level->label]),
             'approver_types' => [
                 ['value' => 'line_manager', 'label' => 'Line Manager'],
                 ['value' => 'head_of_department', 'label' => 'Head of Department'],

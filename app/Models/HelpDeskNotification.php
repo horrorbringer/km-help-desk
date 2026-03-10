@@ -12,6 +12,17 @@ class HelpDeskNotification extends Model
 
     protected $table = 'help_desk_notifications';
 
+    protected static function booted()
+    {
+        static::saved(function ($notification) {
+            \Illuminate\Support\Facades\Cache::forget("user_unread_count_{$notification->user_id}");
+        });
+
+        static::deleted(function ($notification) {
+            \Illuminate\Support\Facades\Cache::forget("user_unread_count_{$notification->user_id}");
+        });
+    }
+
     protected $fillable = [
         'user_id',
         'type',
@@ -55,7 +66,7 @@ class HelpDeskNotification extends Model
 
     public function relatedUser(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'related_user_id');
+        return $this->belongsTo(User::class , 'related_user_id');
     }
 
     public function markAsRead(): void
@@ -88,4 +99,3 @@ class HelpDeskNotification extends Model
         return $query->where('type', $type);
     }
 }
-

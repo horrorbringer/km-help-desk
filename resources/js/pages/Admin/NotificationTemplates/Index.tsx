@@ -30,6 +30,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 import AppLayout from '@/layouts/app-layout';
 import type { PageProps } from '@/types';
 
@@ -73,6 +74,7 @@ const typeColorMap: Record<string, string> = {
 export default function NotificationTemplatesIndex() {
     const { templates, filters, types } =
         usePage<NotificationTemplatesIndexProps>().props;
+    const { canCreate, canEdit, canDelete } = useModulePermissions('notification-templates');
 
     const handleFilter = (key: string, value: string) => {
         const newFilters = { ...filters };
@@ -111,14 +113,16 @@ export default function NotificationTemplatesIndex() {
                             Customize notification messages and subjects
                         </p>
                     </div>
-                    <Button asChild>
-                        <Link
-                            href={route('admin.notification-templates.create')}
-                        >
-                            <IconPlus className="mr-2 h-4 w-4" />
-                            Create Template
-                        </Link>
-                    </Button>
+                    {canCreate && (
+                        <Button asChild>
+                            <Link
+                                href={route('admin.notification-templates.create')}
+                            >
+                                <IconPlus className="mr-2 h-4 w-4" />
+                                Create Template
+                            </Link>
+                        </Button>
+                    )}
                 </div>
 
                 {/* Filters */}

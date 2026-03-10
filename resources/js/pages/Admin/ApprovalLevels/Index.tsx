@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Plus, Edit, Trash2, Power, PowerOff, Search, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useModulePermissions } from '@/hooks/use-module-permissions';
 
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,15 +55,12 @@ interface ApprovalLevelsIndexProps extends PageProps {
   formOptions: {
     roles: string[];
   };
-  flash?: {
-    success?: string;
-    error?: string;
-  };
 }
 
 export default function ApprovalLevelsIndex() {
   const { approvalLevels, filters, flash } = usePage<ApprovalLevelsIndexProps>().props;
   const { toast } = useToast();
+  const { canCreate, canEdit, canDelete, canCustom } = useModulePermissions('approval-levels');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState(filters.q || '');
 
@@ -122,12 +120,14 @@ export default function ApprovalLevelsIndex() {
               Manage approval levels and their role mappings
             </p>
           </div>
-          <Link href={route('admin.approval-levels.create')}>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Approval Level
-            </Button>
-          </Link>
+          {canCreate && (
+            <Link href={route('admin.approval-levels.create')}>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Approval Level
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Filters */}
@@ -262,25 +262,29 @@ export default function ApprovalLevelsIndex() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleStatus(level.id)}
-                              title={level.is_active ? 'Deactivate' : 'Activate'}
-                            >
-                              {level.is_active ? (
-                                <PowerOff className="h-4 w-4" />
-                              ) : (
-                                <Power className="h-4 w-4" />
-                              )}
-                            </Button>
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={route('admin.approval-levels.edit', level.id)}>
-                                <Edit className="h-4 w-4 mr-1" />
-                                Edit
-                              </Link>
-                            </Button>
-                            {level.can_delete && (
+                            {canCustom('toggleStatus') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleToggleStatus(level.id)}
+                                title={level.is_active ? 'Deactivate' : 'Activate'}
+                              >
+                                {level.is_active ? (
+                                  <PowerOff className="h-4 w-4" />
+                                ) : (
+                                  <Power className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                            {canEdit && (
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={route('admin.approval-levels.edit', level.id)}>
+                                  <Edit className="h-4 w-4 mr-1" />
+                                  Edit
+                                </Link>
+                              </Button>
+                            )}
+                            {canDelete && level.can_delete && (
                               <AlertDialog
                                 open={deleteDialogOpen === level.id}
                                 onOpenChange={(open) => setDeleteDialogOpen(open ? level.id : null)}
