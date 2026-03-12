@@ -24,6 +24,7 @@ interface Department {
   is_support_team: boolean;
   is_active: boolean;
   description?: string | null;
+  telegram_chat_id?: string | null;
 }
 
 interface DepartmentFormProps {
@@ -40,6 +41,7 @@ export default function DepartmentForm({ department }: DepartmentFormProps) {
     is_support_team: department?.is_support_team ?? false,
     is_active: department?.is_active ?? true,
     description: department?.description ?? '',
+    telegram_chat_id: department?.telegram_chat_id ?? '',
   });
 
   const handleSubmit = (e: FormEvent) => {
@@ -125,6 +127,41 @@ export default function DepartmentForm({ department }: DepartmentFormProps) {
                 />
                 {errors.description && (
                   <p className="text-xs text-red-500">{errors.description}</p>
+                )}
+              </div>
+
+              {/* Telegram Group ID */}
+              <div className="space-y-2">
+                <Label htmlFor="telegram_chat_id">Telegram Group ID</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="telegram_chat_id"
+                    className="flex-1"
+                    value={data.telegram_chat_id}
+                    onChange={(e) => setData('telegram_chat_id', e.target.value)}
+                    placeholder="e.g. -1001234567890"
+                  />
+                  {isEdit && data.telegram_chat_id && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        post(route('admin.departments.test-telegram', department.id), {
+                          preserveScroll: true,
+                        });
+                      }}
+                      disabled={processing}
+                    >
+                      Test Connection
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                    Required for team notifications. Get this by adding the bot to your group.
+                </p>
+                {errors.telegram_chat_id && (
+                  <p className="text-xs text-red-500">{errors.telegram_chat_id}</p>
                 )}
               </div>
 

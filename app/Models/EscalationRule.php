@@ -9,6 +9,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class EscalationRule extends Model
 {
     use HasFactory, SoftDeletes;
+    use \App\Traits\HandlesRuleLogic {
+        matches as traitMatches;
+    }
 
     protected $fillable = [
         'name',
@@ -41,34 +44,16 @@ class EscalationRule extends Model
     ];
 
     /**
-     * Check if ticket matches rule conditions
+     * Check if ticket matches rule conditions + time trigger
      */
-    public function matches(Ticket $ticket): bool
+    public function matches(Ticket $ticket, array $originalData = []): bool
     {
-        if (!$this->is_active) {
+        // Use trait's condition matching
+        if (!$this->traitMatches($ticket, $originalData)) {
             return false;
         }
 
-        // Check conditions if provided
-        if (!empty($this->conditions)) {
-            foreach ($this->conditions as $condition) {
-                $field = $condition['field'] ?? null;
-                $operator = $condition['operator'] ?? 'equals';
-                $value = $condition['value'] ?? null;
-
-                if (!$field) {
-                    continue;
-                }
-
-                $ticketValue = $this->getTicketValue($ticket, $field);
-
-                if (!$this->evaluateCondition($ticketValue, $operator, $value)) {
-                    return false;
-                }
-            }
-        }
-
-        // Check time trigger
+        // Check time trigger (model specific)
         if ($this->time_trigger_type && $this->time_trigger_minutes) {
             if (!$this->checkTimeTrigger($ticket)) {
                 return false;
@@ -87,51 +72,12 @@ class EscalationRule extends Model
             return;
         }
 
-        $updateData = [];
-        $notifications = [];
-
-        foreach ($this->actions as $action) {
-            $type = $action['type'] ?? null;
-            $value = $action['value'] ?? null;
-
-            if (!$type) {
-                continue;
-            }
-
-            switch ($type) {
-                case 'change_priority':
-                    $updateData['priority'] = $value;
-                    break;
-                case 'reassign_to_team':
-                    $updateData['assigned_team_id'] = $value;
-                    $updateData['assigned_agent_id'] = null; // Clear agent when reassigning team
-                    break;
-                case 'reassign_to_agent':
-                    $updateData['assigned_agent_id'] = $value;
-                    break;
-                case 'change_status':
-                    $updateData['status'] = $value;
-                    break;
-                case 'notify_team':
-                    $notifications[] = ['type' => 'team', 'value' => $value];
-                    break;
-                case 'notify_agent':
-                    $notifications[] = ['type' => 'agent', 'value' => $value];
-                    break;
-                case 'notify_manager':
-                    $notifications[] = ['type' => 'manager'];
-                    break;
-            }
-        }
-
-        if (!empty($updateData)) {
-            $ticket->update($updateData);
-        }
-
-        // Send notifications
-        if (!empty($notifications)) {
-            $this->sendNotifications($ticket, $notifications);
-        }
+        app(\App\Services\TicketActionService::class)->executeActions(
+            $ticket,
+            $this->actions,
+            'escalation_rule',
+            $this->id
+        );
 
         // Update execution stats
         $this->increment('execution_count');
@@ -144,12 +90,12 @@ class EscalationRule extends Model
     protected function checkTimeTrigger(Ticket $ticket): bool
     {
         $triggerTime = match ($this->time_trigger_type) {
-            'created_at' => $ticket->created_at,
-            'updated_at' => $ticket->updated_at,
-            'first_response_due_at' => $ticket->first_response_due_at,
-            'resolution_due_at' => $ticket->resolution_due_at,
-            default => null,
-        };
+                'created_at' => $ticket->created_at,
+                'updated_at' => $ticket->updated_at,
+                'first_response_due_at' => $ticket->first_response_due_at,
+                'resolution_due_at' => $ticket->resolution_due_at,
+                default => null,
+            };
 
         if (!$triggerTime) {
             return false;
@@ -167,90 +113,6 @@ class EscalationRule extends Model
         return $diffMinutes >= $this->time_trigger_minutes;
     }
 
-    /**
-     * Get ticket value for a field
-     */
-    protected function getTicketValue(Ticket $ticket, string $field): mixed
-    {
-        return match ($field) {
-            'category_id' => $ticket->category_id,
-            'project_id' => $ticket->project_id,
-            'priority' => $ticket->priority,
-            'status' => $ticket->status,
-            'source' => $ticket->source,
-            'assigned_team_id' => $ticket->assigned_team_id,
-            'assigned_agent_id' => $ticket->assigned_agent_id,
-            default => $ticket->getAttribute($field),
-        };
-    }
-
-    /**
-     * Evaluate a condition
-     */
-    protected function evaluateCondition(mixed $ticketValue, string $operator, mixed $conditionValue): bool
-    {
-        return match ($operator) {
-            'equals' => $ticketValue == $conditionValue,
-            'not_equals' => $ticketValue != $conditionValue,
-            'in' => in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
-            'not_in' => !in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
-            'is_empty' => empty($ticketValue),
-            'is_not_empty' => !empty($ticketValue),
-            default => false,
-        };
-    }
-
-    /**
-     * Send notifications for escalation
-     */
-    protected function sendNotifications(Ticket $ticket, array $notifications): void
-    {
-        $notificationService = app(\App\Services\NotificationService::class);
-
-        foreach ($notifications as $notification) {
-            switch ($notification['type']) {
-                case 'team':
-                    $team = \App\Models\Department::find($notification['value']);
-                    if ($team) {
-                        foreach ($team->users()->where('is_active', true)->get() as $user) {
-                            $notificationService->create(
-                                $user->id,
-                                'ticket_escalated',
-                                'Ticket Escalated',
-                                "Ticket #{$ticket->ticket_number} has been escalated: {$ticket->subject}",
-                                $ticket->id
-                            );
-                        }
-                    }
-                    break;
-                case 'agent':
-                    $agent = \App\Models\User::find($notification['value']);
-                    if ($agent) {
-                        $notificationService->create(
-                            $agent->id,
-                            'ticket_escalated',
-                            'Ticket Escalated',
-                            "Ticket #{$ticket->ticket_number} has been escalated to you: {$ticket->subject}",
-                            $ticket->id
-                        );
-                    }
-                    break;
-                case 'manager':
-                    // Notify department manager or system admins
-                    if ($ticket->assignedTeam && $ticket->assignedTeam->manager_id) {
-                        $notificationService->create(
-                            $ticket->assignedTeam->manager_id,
-                            'ticket_escalated',
-                            'Ticket Escalated',
-                            "Ticket #{$ticket->ticket_number} has been escalated: {$ticket->subject}",
-                            $ticket->id
-                        );
-                    }
-                    break;
-            }
-        }
-    }
-
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -261,4 +123,3 @@ class EscalationRule extends Model
         return $query->orderBy('priority', 'desc')->orderBy('id');
     }
 }
-

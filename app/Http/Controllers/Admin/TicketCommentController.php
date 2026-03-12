@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Ticket;
 use App\Models\TicketComment;
-use App\Services\NotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -54,16 +53,21 @@ class TicketCommentController extends Controller
             'type' => 'comment',
         ]);
 
-        // Send notifications for new comment
-        try {
-            $notificationService = app(NotificationService::class);
-            $notificationService->notifyCommentAdded($ticket, $comment, Auth::user());
-        } catch (\Exception $e) {
-            Log::warning('Notification service failed on comment creation', [
-                'comment_id' => $comment->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        // Trigger automation rules for comment event in background
+        dispatch(function () use ($ticket, $comment) {
+            try {
+                $automationService = app(\App\Services\AutomationService::class);
+                $automationService->onCommentAdded($ticket, $comment);
+            }
+            catch (\Exception $e) {
+                Log::error('Background comment automation failed', [
+                    'ticket_id' => $ticket->id,
+                    'comment_id' => $comment->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        })->afterResponse();
+
 
         return redirect()
             ->back()
@@ -124,4 +128,3 @@ class TicketCommentController extends Controller
             ->with('success', 'Comment deleted successfully.');
     }
 }
-

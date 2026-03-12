@@ -89,8 +89,8 @@ export function NavMain({ items }: NavMainProps) {
                         )}
                       >
                         {item.icon && <item.icon />}
-                        <span>{item.title}</span>
-                        <IconChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
+                        <IconChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
                       </SidebarMenuButton>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
@@ -146,7 +146,7 @@ export function NavMain({ items }: NavMainProps) {
                 >
                   <Link href={item.url || '#'}>
                     {item.icon && <item.icon />}
-                    <span>{item.title}</span>
+                    <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
                   </Link>
                 </SidebarMenuButton>
                 {item.badge !== undefined && (

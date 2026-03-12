@@ -17,6 +17,7 @@ class Department extends Model
         'is_support_team',
         'is_active',
         'description',
+        'telegram_chat_id',
     ];
 
     protected $casts = [
@@ -31,13 +32,11 @@ class Department extends Model
 
     public function ticketCategories(): HasMany
     {
-        return $this->hasMany(TicketCategory::class, 'default_team_id');
+        return $this->hasMany(TicketCategory::class , 'default_team_id');
     }
 
     public function tickets(): HasMany
     {
-        return $this->hasMany(Ticket::class, 'assigned_team_id');
+        return $this->hasMany(Ticket::class , 'assigned_team_id');
     }
 }
-
-

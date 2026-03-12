@@ -14,6 +14,7 @@ import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import { edit } from '@/routes/profile';
 import { AvatarUpload } from '@/components/avatar-upload';
+import TelegramIntegration from '@/components/telegram-integration';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -211,6 +212,8 @@ export default function Profile({
                         })()}
                     </form>
                 </div>
+
+                <TelegramIntegration />
 
                 <DeleteUser />
             </SettingsLayout>

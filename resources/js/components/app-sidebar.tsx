@@ -36,7 +36,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const { can } = usePermissions();
     const page = usePage<SharedData>();
     const pageProps = page.props as any;
-    const { appName, appLogo } = page.props;
+    const { appName, appLogo, appIcon } = page.props;
     const displayName = appName || 'Acme Inc.';
 
     // Get settings
@@ -88,16 +88,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             className="data-[slot=sidebar-menu-button]:!p-1.5"
                         >
                             <Link href="/">
-                                {appLogo ? (
+                                {appIcon || appLogo ? (
                                     <div className="flex aspect-square size-6 items-center justify-center overflow-hidden rounded-sm bg-sidebar-primary text-sidebar-primary-foreground">
-                                        <img src={appLogo} alt={displayName} className="size-full object-cover" />
+                                        <img src={appIcon || appLogo} alt={displayName} className="size-full object-cover" />
                                     </div>
                                 ) : (
                                     <div className="flex aspect-square size-6 items-center justify-center rounded-sm bg-sidebar-primary text-sidebar-primary-foreground">
                                         <IconInnerShadowTop className="size-4" />
                                     </div>
                                 )}
-                                <span className="text-base font-semibold truncate ml-2">
+                                <span className="text-base font-semibold truncate ml-2 group-data-[collapsible=icon]:hidden">
                                     {displayName}
                                 </span>
                             </Link>
@@ -120,12 +120,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                     >
                                         <Link href={route(quickCreateConfig.routeName)}>
                                             <IconCirclePlusFilled />
-                                            <span>{quickCreateConfig.title}</span>
+                                            <span className="group-data-[collapsible=icon]:hidden">
+                                                {quickCreateConfig.title}
+                                            </span>
                                         </Link>
                                     </SidebarMenuButton>
                                     <Button
                                         size="icon"
-                                        className="size-8 group-data-[collapsible=icon]:opacity-0"
+                                        className="size-8 group-data-[collapsible=icon]:hidden"
                                         variant="outline"
                                     >
                                         <IconMail />

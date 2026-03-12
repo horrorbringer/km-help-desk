@@ -26,6 +26,7 @@ export interface SharedData {
     name: string;
     appName?: string;
     appLogo?: string;
+    appIcon?: string;
     quote: { message: string; author: string };
     auth: Auth;
     sidebarOpen: boolean;
@@ -36,6 +37,8 @@ export interface SharedData {
         info?: string;
     };
     [key: string]: unknown;
+    telegramToken?: string | null;
+    telegramBotUrl?: string | null;
 }
 
 export interface User {
@@ -47,7 +50,9 @@ export interface User {
     two_factor_enabled?: boolean;
     created_at: string;
     updated_at: string;
-    [key: string]: unknown; // This allows for additional properties...
+    telegram_chat_id?: string | null;
+    telegram_username?: string | null;
+    [key: string]: unknown;
 }
 
 // Generic page props type for Inertia pages

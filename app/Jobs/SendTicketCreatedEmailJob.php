@@ -15,6 +15,9 @@ class SendTicketCreatedEmailJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public $tries = 5;
+    public $backoff = 60;
+
     /**
      * Create a new job instance.
      */
@@ -52,8 +55,9 @@ class SendTicketCreatedEmailJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::error('SendTicketCreatedEmailJob: Exception occurred', [
                 'ticket_id' => $this->ticket->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'error_class' => get_class($e),
+                'error_message' => $e->getMessage(),
+                'attempts' => $this->attempts(),
             ]);
 
             throw $e; // Re-throw to mark job as failed

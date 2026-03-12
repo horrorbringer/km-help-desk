@@ -154,6 +154,7 @@ class TicketResource extends JsonResource
                     return [
                         'id' => $approval->id,
                         'approval_level' => $approval->approval_level,
+                        'status_label' => $approval->status_label,
                         'status' => $approval->status,
                         'comments' => $approval->comments,
                         'approved_at' => $approval->approved_at,
@@ -179,6 +180,7 @@ class TicketResource extends JsonResource
                 return [
                     'id' => $current->id,
                     'approval_level' => $current->approval_level,
+                    'status_label' => $current->status_label,
                     'status' => $current->status,
                     'approver' => $current->approver ? [
                         'id' => $current->approver->id,

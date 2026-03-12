@@ -100,6 +100,7 @@ type TicketShowProps = {
       id: number;
       approval_level: 'lm' | 'hod';
       status: 'pending' | 'approved' | 'rejected';
+      status_label?: string | null;
       comments?: string | null;
       approved_at?: string | null;
       rejected_at?: string | null;
@@ -111,6 +112,7 @@ type TicketShowProps = {
     current_approval?: {
       id: number;
       approval_level: 'lm' | 'hod';
+      status_label?: string | null;
       status: 'pending' | 'approved' | 'rejected';
       approver?: BaseOption & { email?: string };
     } | null;
@@ -519,7 +521,9 @@ export default function TicketShow(props: TicketShowProps) {
             <span className="text-sm font-medium text-muted-foreground">#{ticket.ticket_number}</span>
             {ticket.status && (
               <Badge className={cn('text-xs', statusColorMap[ticket.status] ?? '')}>
-                {ticket.status.replace('_', ' ')}
+                {(ticket.status === 'pending' && ticket.current_approval?.status_label) 
+                  ? ticket.current_approval.status_label 
+                  : ticket.status.replace('_', ' ')}
               </Badge>
             )}
             {ticket.priority && (
@@ -1846,52 +1850,70 @@ export default function TicketShow(props: TicketShowProps) {
           {/* Activity Timeline */}
           <Card>
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-semibold">Activity Timeline</CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">Status changes, assignments, and SLA tracking</p>
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-lg font-semibold">Activity Timeline</CardTitle>
+                <Badge variant="outline" className="ml-auto">{ticket.histories?.length ?? 0}</Badge>
+              </div>
             </CardHeader>
             <CardContent>
               {(ticket.histories?.length ?? 0) === 0 ? (
                 <div className="text-center py-8 border rounded-lg bg-muted/20">
-                  <p className="text-sm text-muted-foreground">No history recorded.</p>
+                  <Clock className="h-6 w-6 text-muted-foreground mx-auto mb-2 opacity-50" />
+                  <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {(ticket.histories ?? []).map((history, index) => (
-                    <div key={history.id} className="relative">
-                      {index < (ticket.histories?.length ?? 0) - 1 && (
-                        <div className="absolute left-3 top-8 bottom-0 w-0.5 bg-border" />
-                      )}
-                      <div className="flex gap-2 sm:gap-3">
-                        <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center mt-0.5">
-                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0 rounded-lg border p-2 sm:p-3 bg-card">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-1">
-                            <span className="font-semibold text-xs sm:text-sm">{history.user?.name ?? 'System'}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(history.created_at).toLocaleString()}
-                            </span>
+                <div className="relative">
+                  <div className="absolute left-[15px] sm:left-[17px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-primary/30 via-border to-transparent" />
+                  <div className="space-y-1">
+                    {(ticket.histories ?? []).slice(0, 10).map((history: any) => {
+                      const getActionIcon = (action: string) => {
+                        switch (action) {
+                          case 'status_changed': return { icon: <TrendingUp className="h-3 w-3" />, cls: 'bg-blue-100 dark:bg-blue-950 border-blue-400 dark:border-blue-600 text-blue-600 dark:text-blue-400' };
+                          case 'assigned': return { icon: <UserPlus className="h-3 w-3" />, cls: 'bg-violet-100 dark:bg-violet-950 border-violet-400 dark:border-violet-600 text-violet-600 dark:text-violet-400' };
+                          case 'priority_changed': return { icon: <TrendingDown className="h-3 w-3" />, cls: 'bg-amber-100 dark:bg-amber-950 border-amber-400 dark:border-amber-600 text-amber-600 dark:text-amber-400' };
+                          case 'approval_requested': return { icon: <Shield className="h-3 w-3" />, cls: 'bg-orange-100 dark:bg-orange-950 border-orange-400 dark:border-orange-600 text-orange-600 dark:text-orange-400' };
+                          case 'approved': case 'auto_approved': return { icon: <CheckCircle2 className="h-3 w-3" />, cls: 'bg-emerald-100 dark:bg-emerald-950 border-emerald-400 dark:border-emerald-600 text-emerald-600 dark:text-emerald-400' };
+                          case 'rejected': return { icon: <XCircle className="h-3 w-3" />, cls: 'bg-red-100 dark:bg-red-950 border-red-400 dark:border-red-600 text-red-600 dark:text-red-400' };
+                          case 'routed': return { icon: <ArrowRight className="h-3 w-3" />, cls: 'bg-cyan-100 dark:bg-cyan-950 border-cyan-400 dark:border-cyan-600 text-cyan-600 dark:text-cyan-400' };
+                          default:
+                            if (action.startsWith('system_')) return { icon: <Zap className="h-3 w-3" />, cls: 'bg-indigo-100 dark:bg-indigo-950 border-indigo-400 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400' };
+                            return { icon: <Clock className="h-3 w-3" />, cls: 'bg-gray-100 dark:bg-gray-800 border-gray-400 dark:border-gray-600 text-gray-600 dark:text-gray-400' };
+                        }
+                      };
+                      const s = getActionIcon(history.action);
+                      return (
+                        <div key={history.id} className="relative flex gap-3 py-1.5">
+                          <div className={`relative z-10 flex-shrink-0 w-[32px] h-[32px] rounded-full ${s.cls} border-2 flex items-center justify-center shadow-sm`}>
+                            {s.icon}
                           </div>
-                          <p className="font-medium text-xs sm:text-sm capitalize mb-1 break-words">
-                            {history.action.replace('_', ' ')}
-                          </p>
-                          {history.field_name && (
-                            <div className="text-xs text-muted-foreground space-y-1 break-words">
-                              <p>
-                                <span className="font-medium">{history.field_name}:</span>{' '}
-                                <span className="line-through text-red-600">{history.old_value ?? '—'}</span>
-                                {' → '}
-                                <span className="text-green-600 font-medium">{history.new_value ?? '—'}</span>
-                              </p>
+                          <div className="flex-1 min-w-0 pt-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-medium text-xs truncate">{history.user?.name ?? 'System'}</span>
+                              <span className="text-[10px] text-muted-foreground tabular-nums flex-shrink-0">
+                                {new Date(history.created_at).toLocaleDateString()}
+                              </span>
                             </div>
-                          )}
-                          {history.description && (
-                            <p className="text-xs text-muted-foreground mt-2 italic break-words">{history.description}</p>
-                          )}
+                            <p className="text-xs text-muted-foreground capitalize truncate">
+                              {history.action.replace(/_/g, ' ')}
+                            </p>
+                            {history.field_name && (
+                              <div className="flex items-center gap-1 mt-0.5 text-[10px]">
+                                <span className="line-through text-red-600">{history.old_value ?? '—'}</span>
+                                <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
+                                <span className="text-emerald-600 font-medium">{history.new_value ?? '—'}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                    {(ticket.histories?.length ?? 0) > 10 && (
+                      <p className="text-xs text-muted-foreground text-center pt-2">
+                        +{(ticket.histories?.length ?? 0) - 10} more events — see Activity tab
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -2666,52 +2688,103 @@ export default function TicketShow(props: TicketShowProps) {
         <TabsContent value="activity" className="space-y-6 mt-6">
           <Card>
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-semibold">Activity Timeline</CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">Status changes, assignments, and SLA tracking</p>
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-lg font-semibold">Activity Timeline</CardTitle>
+                <Badge variant="outline" className="ml-auto">{ticket.histories?.length ?? 0} events</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Complete history of status changes, assignments, approvals, and system actions</p>
             </CardHeader>
             <CardContent>
               {(ticket.histories?.length ?? 0) === 0 ? (
-                <div className="text-center py-8 border rounded-lg bg-muted/20">
-                  <p className="text-sm text-muted-foreground">No history recorded.</p>
+                <div className="text-center py-12 border rounded-lg bg-muted/20">
+                  <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+                  <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {(ticket.histories ?? []).map((history, index) => (
-                    <div key={history.id} className="relative">
-                      {index < (ticket.histories?.length ?? 0) - 1 && (
-                        <div className="absolute left-3 top-8 bottom-0 w-0.5 bg-border" />
-                      )}
-                      <div className="flex gap-2 sm:gap-3">
-                        <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center mt-0.5">
-                          <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0 rounded-lg border p-2 sm:p-3 bg-card">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-1">
-                            <span className="font-semibold text-xs sm:text-sm">{history.user?.name ?? 'System'}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(history.created_at).toLocaleString()}
-                            </span>
+                <div className="relative">
+                  {/* Timeline line */}
+                  <div className="absolute left-[15px] sm:left-[17px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-primary/30 via-border to-transparent" />
+
+                  <div className="space-y-1">
+                    {(ticket.histories ?? []).map((history: any, index: number) => {
+                      // Determine icon and color based on action type
+                      const getActionStyle = (action: string) => {
+                        switch (action) {
+                          case 'status_changed':
+                            return { icon: <TrendingUp className="h-3 w-3" />, bg: 'bg-blue-100 dark:bg-blue-950', border: 'border-blue-400 dark:border-blue-600', text: 'text-blue-600 dark:text-blue-400' };
+                          case 'assigned':
+                            return { icon: <UserPlus className="h-3 w-3" />, bg: 'bg-violet-100 dark:bg-violet-950', border: 'border-violet-400 dark:border-violet-600', text: 'text-violet-600 dark:text-violet-400' };
+                          case 'priority_changed':
+                            return { icon: <TrendingDown className="h-3 w-3" />, bg: 'bg-amber-100 dark:bg-amber-950', border: 'border-amber-400 dark:border-amber-600', text: 'text-amber-600 dark:text-amber-400' };
+                          case 'approval_requested':
+                            return { icon: <Shield className="h-3 w-3" />, bg: 'bg-orange-100 dark:bg-orange-950', border: 'border-orange-400 dark:border-orange-600', text: 'text-orange-600 dark:text-orange-400' };
+                          case 'approved': case 'auto_approved':
+                            return { icon: <CheckCircle2 className="h-3 w-3" />, bg: 'bg-emerald-100 dark:bg-emerald-950', border: 'border-emerald-400 dark:border-emerald-600', text: 'text-emerald-600 dark:text-emerald-400' };
+                          case 'rejected':
+                            return { icon: <XCircle className="h-3 w-3" />, bg: 'bg-red-100 dark:bg-red-950', border: 'border-red-400 dark:border-red-600', text: 'text-red-600 dark:text-red-400' };
+                          case 'routed':
+                            return { icon: <ArrowRight className="h-3 w-3" />, bg: 'bg-cyan-100 dark:bg-cyan-950', border: 'border-cyan-400 dark:border-cyan-600', text: 'text-cyan-600 dark:text-cyan-400' };
+                          case 'category_changed':
+                            return { icon: <Filter className="h-3 w-3" />, bg: 'bg-teal-100 dark:bg-teal-950', border: 'border-teal-400 dark:border-teal-600', text: 'text-teal-600 dark:text-teal-400' };
+                          case 'sla_changed':
+                            return { icon: <Timer className="h-3 w-3" />, bg: 'bg-rose-100 dark:bg-rose-950', border: 'border-rose-400 dark:border-rose-600', text: 'text-rose-600 dark:text-rose-400' };
+                          default:
+                            if (action.startsWith('system_'))
+                              return { icon: <Zap className="h-3 w-3" />, bg: 'bg-indigo-100 dark:bg-indigo-950', border: 'border-indigo-400 dark:border-indigo-600', text: 'text-indigo-600 dark:text-indigo-400' };
+                            return { icon: <Clock className="h-3 w-3" />, bg: 'bg-gray-100 dark:bg-gray-800', border: 'border-gray-400 dark:border-gray-600', text: 'text-gray-600 dark:text-gray-400' };
+                        }
+                      };
+
+                      const style = getActionStyle(history.action);
+                      const actionLabel = history.action
+                        .replace(/_/g, ' ')
+                        .replace(/\b\w/g, (l: string) => l.toUpperCase());
+
+                      return (
+                        <div key={history.id} className="relative flex gap-3 py-2 group">
+                          {/* Icon node */}
+                          <div className={`relative z-10 flex-shrink-0 w-[32px] h-[32px] sm:w-[36px] sm:h-[36px] rounded-full ${style.bg} ${style.border} border-2 flex items-center justify-center ${style.text} shadow-sm group-hover:scale-110 transition-transform duration-200`}>
+                            {style.icon}
                           </div>
-                          <p className="font-medium text-xs sm:text-sm capitalize mb-1 break-words">
-                            {history.action.replace('_', ' ')}
-                          </p>
-                          {history.field_name && (
-                            <div className="text-xs text-muted-foreground space-y-1 break-words">
-                              <p>
-                                <span className="font-medium">{history.field_name}:</span>{' '}
-                                <span className="line-through text-red-600">{history.old_value ?? '—'}</span>
-                                {' → '}
-                                <span className="text-green-600 font-medium">{history.new_value ?? '—'}</span>
-                              </p>
+
+                          {/* Content card */}
+                          <div className="flex-1 min-w-0 rounded-lg border p-3 bg-card hover:bg-accent/30 transition-colors duration-200">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-xs sm:text-sm">{history.user?.name ?? 'System'}</span>
+                                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${style.text} border-current`}>
+                                  {actionLabel}
+                                </Badge>
+                              </div>
+                              <span className="text-[10px] sm:text-xs text-muted-foreground tabular-nums">
+                                {new Date(history.created_at).toLocaleString()}
+                              </span>
                             </div>
-                          )}
-                          {history.description && (
-                            <p className="text-xs text-muted-foreground mt-2 italic break-words">{history.description}</p>
-                          )}
+
+                            {/* Field change visualization */}
+                            {history.field_name && (
+                              <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
+                                <span className="font-medium text-muted-foreground capitalize">{history.field_name.replace(/_/g, ' ')}:</span>
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400 line-through text-[11px]">
+                                  {history.old_value ?? '—'}
+                                </span>
+                                <ArrowRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 font-medium text-[11px]">
+                                  {history.new_value ?? '—'}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Description */}
+                            {history.description && !history.field_name && (
+                              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{history.description}</p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </CardContent>

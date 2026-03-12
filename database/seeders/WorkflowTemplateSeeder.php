@@ -19,6 +19,59 @@ class WorkflowTemplateSeeder extends Seeder
 
         $templates = [
             [
+                'name' => 'Global Default Approval Workflow',
+                'description' => 'System-wide default: LM Approval -> Optional HOD (cost/priority) -> Optional CEO (high cost) -> Route to Team.',
+                'category_id' => null,
+                'department_id' => null,
+                'workflow_steps' => [
+                    [
+                        'step_id' => 1,
+                        'type' => 'conditional_approval',
+                        'approval_level' => 'lm',
+                        'approver_type' => 'line_manager',
+                        'condition' => [
+                            'or' => [
+                                ['category.requires_approval', '==', true],
+                                ['priority', 'in', ['high', 'critical']],
+                                ['estimated_cost', '>=', 1000] // Default threshold
+                            ]
+                        ],
+                        'if_false' => 'route_directly'
+                    ],
+                    [
+                        'step_id' => 2,
+                        'type' => 'conditional_approval',
+                        'approval_level' => 'hod',
+                        'approver_type' => 'head_of_department',
+                        'condition' => [
+                            'or' => [
+                                ['category.requires_hod_approval', '==', true],
+                                ['priority', 'in', ['high', 'critical']],
+                                ['estimated_cost', '>=', 5000] // Default HOD threshold
+                            ]
+                        ]
+                    ],
+                    [
+                        'step_id' => 3,
+                        'type' => 'conditional_approval',
+                        'approval_level' => 'ceo',
+                        'approver_type' => 'ceo',
+                        'condition' => [
+                            ['estimated_cost', '>=', 10000] // CEO threshold
+                        ]
+                    ],
+                    [
+                        'step_id' => 4,
+                        'type' => 'routing',
+                        'route_to' => 'category_default_team',
+                    ],
+                ],
+                'routing_rules' => [],
+                'approval_rules' => [],
+                'is_active' => true,
+                'priority' => 1, // Lowest priority, acts as fallback
+            ],
+            [
                 'name' => 'IT Hardware Issue Workflow',
                 'description' => 'For IT hardware issues (computer, printer fixes). HOD notified, LM/DLM approves, routes to IT team.',
                 'category_id' => $itCategory?->id,

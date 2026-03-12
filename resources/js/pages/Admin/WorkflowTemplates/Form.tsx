@@ -54,6 +54,7 @@ interface WorkflowTemplateFormProps {
         departments: Array<{ value: number; label: string }>;
         approval_levels: Array<{ value: string; label: string }>;
         approver_types: Array<{ value: string; label: string }>;
+        notification_types: Array<{ value: string; label: string }>;
         step_types: Array<{ value: string; label: string }>;
         operators: Array<{ value: string; label: string }>;
     };
@@ -215,10 +216,11 @@ export default function WorkflowTemplateForm({
         }
 
         if (step.type === 'notification') {
-            const type = formOptions.approver_types.find(
+            const types = [...formOptions.approver_types, ...formOptions.notification_types];
+            const type = types.find(
                 (t) => t.value === step.notify_type,
             )?.label;
-            return `${typeLabel}: ${type}`;
+            return `${typeLabel}: ${type || step.notify_type}`;
         }
 
         if (step.type === 'routing') {
@@ -787,17 +789,36 @@ export default function WorkflowTemplateForm({
                                                                                             </SelectContent>
                                                                                         </Select>
                                                                                         <p className="text-xs text-muted-foreground">
-                                                                                            Who
-                                                                                            performs
-                                                                                            the
-                                                                                            approval
-                                                                                            (e.g.,
-                                                                                            immediate
-                                                                                            manager
-                                                                                            vs
-                                                                                            department
-                                                                                            head).
+                                                                                            Who performs the approval (e.g., immediate manager vs department head).
                                                                                         </p>
+                                                                                    </div>
+
+                                                                                    <div className="space-y-2">
+                                                                                        <Label>Status Label</Label>
+                                                                                        <Input
+                                                                                            value={step.status_label || ''}
+                                                                                            onChange={(e) => updateWorkflowStep(index, 'status_label', e.target.value)}
+                                                                                            placeholder="e.g. Awaiting HOD Sign-off"
+                                                                                        />
+                                                                                        <p className="text-xs text-muted-foreground">
+                                                                                            Custom status shown to users while this step is active.
+                                                                                        </p>
+                                                                                    </div>
+
+                                                                                    <div className="flex items-center gap-2 pt-2">
+                                                                                        <Checkbox
+                                                                                            id={`auto_notify_${index}`}
+                                                                                            checked={step.auto_notify ?? true}
+                                                                                            onCheckedChange={(checked) => updateWorkflowStep(index, 'auto_notify', checked)}
+                                                                                        />
+                                                                                        <div className="grid gap-1.5 leading-none">
+                                                                                            <Label htmlFor={`auto_notify_${index}`} className="cursor-pointer">
+                                                                                                Auto-Notify Requester
+                                                                                            </Label>
+                                                                                            <p className="text-[11px] text-muted-foreground italic">
+                                                                                                Automatically tell the user when their ticket hits this stage.
+                                                                                            </p>
+                                                                                        </div>
                                                                                     </div>
                                                                                 </>
                                                                             )}
@@ -828,7 +849,7 @@ export default function WorkflowTemplateForm({
                                                                                             <SelectValue />
                                                                                         </SelectTrigger>
                                                                                         <SelectContent>
-                                                                                            {formOptions.approver_types.map(
+                                                                                            {(formOptions.notification_types || formOptions.approver_types).map(
                                                                                                 (
                                                                                                     type,
                                                                                                 ) => (

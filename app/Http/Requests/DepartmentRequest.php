@@ -49,7 +49,7 @@ class DepartmentRequest extends FormRequest
             'is_support_team' => ['boolean'],
             'is_active' => ['boolean'],
             'description' => ['nullable', 'string'],
+            'telegram_chat_id' => ['nullable', 'string', 'max:255'],
         ];
     }
 }
-

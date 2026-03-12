@@ -27,14 +27,8 @@ class ApprovalWorkflowService
      * - Allow bypass for routine/low-priority tickets
      * - Now supports workflow templates via WorkflowEngine
      */
-    public function initializeWorkflow(Ticket $ticket, bool $skipTemplateCheck = false): void
+    public function initializeWorkflow(Ticket $ticket): void
     {
-        // Prevent infinite loops - if we're already in a fallback, don't try WorkflowEngine again
-        if ($skipTemplateCheck) {
-            $this->initializeDefaultWorkflow($ticket);
-            return;
-        }
-        
         // Check if workflow has already been initialized to prevent duplicate initialization
         $existingPendingApproval = $ticket->approvals()
             ->where('status', 'pending')
@@ -53,105 +47,17 @@ class ApprovalWorkflowService
             $workflowEngine->execute($ticket);
             return;
         } catch (\Exception $e) {
-            // If WorkflowEngine fails or no template found, fall back to default workflow
-            Log::info('WorkflowEngine not available or failed, using default workflow', [
+            Log::error('WorkflowEngine failed to execute', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
             ]);
         }
-        
-        // Fallback to default workflow
-        $this->initializeDefaultWorkflow($ticket);
     }
 
     /**
      * Initialize default workflow (original implementation)
      */
-    protected function initializeDefaultWorkflow(Ticket $ticket): void
-    {
-        // Check if there are already pending approvals - don't create duplicates
-        $existingPendingApproval = $ticket->approvals()
-            ->where('status', 'pending')
-            ->exists();
-        
-        if ($existingPendingApproval) {
-            // Only log warnings in development/staging (duplicate initialization is rare)
-            LogHelper::warning('Attempted to initialize workflow but pending approval already exists', [
-                'ticket_id' => $ticket->id,
-            ]);
-            return;
-        }
-        
-        // Check if ticket requires approval workflow
-        // Only create approval if:
-        // 1. Category requires approval (can be configured)
-        // 2. Priority is high/critical
-        // 3. Requester doesn't have auto-approval permission
-        // For now, we'll check priority and category
-        
-        $requiresApproval = $this->requiresApproval($ticket);
-        
-        if (!$requiresApproval) {
-            // No approval needed - route directly to category's default team
-            $this->routeDirectly($ticket);
-            return;
-        }
 
-        // Create Line Manager approval
-        $approvalLevel = ApprovalLevelConstants::LINE_MANAGER;
-        $lmApproval = TicketApproval::create([
-            'ticket_id' => $ticket->id,
-            'approval_level' => $approvalLevel,
-            'status' => 'pending',
-            'sequence' => 1,
-        ]);
-
-        // Find Line Manager (can be based on requester's department manager or assigned approver)
-        $lmApprover = $this->findLineManager($ticket);
-        if ($lmApprover) {
-            $lmApproval->update(['approver_id' => $lmApprover->id]);
-        }
-
-        $levelLabel = ApprovalLevelConstants::getLabel($approvalLevel);
-        // Record in ticket history
-        $ticket->histories()->create([
-            'user_id' => Auth::id(),
-            'action' => 'approval_requested',
-            'field_name' => 'approval',
-            'old_value' => null,
-            'new_value' => "{$levelLabel} Approval",
-            'description' => "Ticket submitted for {$levelLabel} approval",
-            'created_at' => now(),
-        ]);
-
-        // Send notification to Line Manager
-        try {
-            $notificationService = app(NotificationService::class);
-            if ($lmApprover) {
-                $notificationService->notifyApprovalRequested($ticket, $lmApprover, $approvalLevel);
-                // Single log after operation completes (reduces redundant logging)
-                LogHelper::workflow('Approval workflow initialized', [
-                    'ticket_id' => $ticket->id,
-                    'approval_level' => $approvalLevel,
-                    'approver_id' => $lmApprover->id,
-                ]);
-            } else {
-                LogHelper::warning('No Line Manager approver found for ticket', [
-                    'ticket_id' => $ticket->id,
-                    'requester_id' => $ticket->requester_id,
-                    'requester_department_id' => $ticket->requester?->department_id,
-                ]);
-            }
-        } catch (\Exception $e) {
-            // Only include trace in development to reduce log size
-            LogHelper::error('Failed to send approval notification', [
-                'ticket_id' => $ticket->id,
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-            ], includeTrace: true);
-        }
-    }
 
     /**
      * Process approval
@@ -198,20 +104,20 @@ class ApprovalWorkflowService
             ], includeTrace: true);
         }
 
-        // Route ticket based on approval level (dynamic approach)
-        $approvalLevel = $approval->approval_level;
-        $currentLevelOrder = ApprovalLevelConstants::getHierarchyOrder($approvalLevel);
-        
-        // Check if there are higher-level approvals needed (for default workflow)
-        // Note: If using workflow templates, the WorkflowEngine handles sequence
-        $hasHigherLevelApproval = $this->hasPendingHigherLevelApproval($ticket, $currentLevelOrder);
-        
-        if ($hasHigherLevelApproval) {
-            // Higher level approval is still needed - check and create it
-            $this->checkNextApproval($ticket, $approvalLevel);
-        } else {
-            // No further approval needed - route ticket
-            $this->routeAfterApproval($ticket, $approvalLevel, $routedToTeamId);
+        // Use WorkflowEngine to determine and execute next steps
+        try {
+            $workflowEngine = app(WorkflowEngine::class);
+            $workflowEngine->moveNext($ticket);
+        } catch (\Exception $e) {
+            Log::error('WorkflowEngine failed to move to next step', [
+                'ticket_id' => $ticket->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            // Minimal fallback: if no next step and not routed, route to default
+            if ($ticket->status === 'open' && !$ticket->assigned_team_id) {
+                $this->routeDirectly($ticket);
+            }
         }
     }
 
@@ -345,327 +251,13 @@ class ApprovalWorkflowService
         ]);
     }
 
-    /**
-     * Route ticket after LM approval (kept for backward compatibility and special routing logic)
-     * Real-world improvement: Route based on category's default team, not always ITD
-     * 
-     * @param Ticket $ticket
-     * @param int|null $routedToTeamId
-     * @param string|null $levelLabel Optional label for history description
-     */
-    protected function routeAfterLMApproval(Ticket $ticket, ?int $routedToTeamId = null, ?string $levelLabel = null): void
-    {
-        // Real-world routing: Use category's default team
-        // This ensures Finance tickets go to Finance, HR tickets go to HR, etc.
-        $targetTeamId = $routedToTeamId;
-        
-        if (!$targetTeamId && $ticket->category && $ticket->category->default_team_id) {
-            // Route to category's default team (e.g., IT category → IT Dept, Finance → Finance Dept)
-            $targetTeamId = $ticket->category->default_team_id;
-        }
-        
-        // Fallback: Try to find IT Department if no category team
-        if (!$targetTeamId) {
-            $itDepartment = Department::where('code', 'IT-SD')
-                ->orWhere('name', 'like', '%IT%')
-                ->orWhere('name', 'like', '%Information Technology%')
-                ->first();
-            $targetTeamId = $itDepartment ? $itDepartment->id : null;
-        }
 
-        if ($targetTeamId) {
-            $ticket->update([
-                'assigned_team_id' => $targetTeamId,
-                'status' => 'assigned',
-            ]);
 
-            $team = Department::find($targetTeamId);
-            $levelLabel = $levelLabel ?? ApprovalLevelConstants::getLabel(ApprovalLevelConstants::LINE_MANAGER);
-            $ticket->histories()->create([
-                'user_id' => Auth::id(),
-                'action' => 'routed',
-                'field_name' => 'assigned_team_id',
-                'old_value' => null,
-                'new_value' => $targetTeamId,
-                'description' => 'Ticket routed to ' . ($team ? $team->name : 'team') . " after {$levelLabel} approval",
-                'created_at' => now(),
-            ]);
 
-            // Notify department managers when ticket is routed to their team
-            try {
-                $notificationService = app(NotificationService::class);
-                $notificationService->notifyDepartmentManagers($ticket);
-            } catch (\Exception $e) {
-                Log::warning('Failed to notify department managers after routing', [
-                    'ticket_id' => $ticket->id,
-                    'team_id' => $targetTeamId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-    }
 
-    /**
-     * Route ticket after HOD approval (deprecated - use routeAfterApproval instead)
-     * @deprecated Use routeAfterApproval() for dynamic approval level handling
-     */
-    protected function routeAfterHODApproval(Ticket $ticket, ?int $routedToTeamId = null): void
-    {
-        $this->routeAfterApproval($ticket, ApprovalLevelConstants::HEAD_OF_DEPARTMENT, $routedToTeamId);
-    }
 
-    /**
-     * Check if there are pending higher-level approvals
-     * Returns true if a higher level approval is needed and not yet approved
-     * 
-     * @param Ticket $ticket
-     * @param int $currentLevelOrder Current approval level hierarchy order
-     * @return bool
-     */
-    protected function hasPendingHigherLevelApproval(Ticket $ticket, int $currentLevelOrder): bool
-    {
-        // For default workflow: check if HOD/CEO approval is needed based on ticket requirements
-        // This is a simplified check - workflow templates handle this more comprehensively
-        
-        // Custom levels (order 99) from workflow templates should be handled by WorkflowEngine
-        // If we see order 99, assume no higher approvals needed (workflow template handles sequence)
-        if ($currentLevelOrder >= 99) {
-            return false;
-        }
-        
-        // Check HOD approval (order 2) - only if we're at a lower level
-        if ($currentLevelOrder < 2 && $this->requiresHODApproval($ticket)) {
-            // Return true if HOD approval is needed but not yet approved
-            $hasApprovedHOD = $ticket->approvals()
-                ->whereIn('approval_level', [ApprovalLevelConstants::HEAD_OF_DEPARTMENT, ApprovalLevelConstants::DEPUTY_HEAD_OF_DEPARTMENT])
-                ->where('status', 'approved')
-                ->exists();
-            
-            if (!$hasApprovedHOD) {
-                return true; // Still waiting for HOD approval
-            }
-        }
-        
-        // Check CEO approval (order 3) - only if we're below CEO level
-        // AND if HOD is not needed OR already approved
-        if ($currentLevelOrder < 3 && $this->requiresCEOApproval($ticket)) {
-            // First check if HOD approval is required and approved (or not needed)
-            $needsHOD = $this->requiresHODApproval($ticket);
-            $hasApprovedHOD = !$needsHOD || $ticket->approvals()
-                ->whereIn('approval_level', [ApprovalLevelConstants::HEAD_OF_DEPARTMENT, ApprovalLevelConstants::DEPUTY_HEAD_OF_DEPARTMENT])
-                ->where('status', 'approved')
-                ->exists();
-            
-            // Only check CEO if HOD requirement is satisfied
-            if ($hasApprovedHOD) {
-                // Return true if CEO approval is needed but not yet approved
-                $hasApprovedCEO = $ticket->approvals()
-                    ->whereIn('approval_level', [ApprovalLevelConstants::CEO, ApprovalLevelConstants::DEPUTY_CEO, ApprovalLevelConstants::DIRECTOR])
-                    ->where('status', 'approved')
-                    ->exists();
-                
-                if (!$hasApprovedCEO) {
-                    return true; // Still waiting for CEO approval
-                }
-            }
-        }
-        
-        return false; // No higher level approvals needed or all are approved
-    }
 
-    /**
-     * Check if next approval is needed and create it
-     * Creates next approval based on requirements (for default workflow)
-     * 
-     * @param Ticket $ticket
-     * @param string|null $currentLevel Current approval level that was just approved
-     */
-    protected function checkNextApproval(Ticket $ticket, ?string $currentLevel = null): void
-    {
-        // For default workflow: check if HOD approval is needed (and not already approved)
-        // This maintains backward compatibility with existing default workflow logic
-        $needsHODApproval = $this->requiresHODApproval($ticket);
-        $hodLevels = [ApprovalLevelConstants::HEAD_OF_DEPARTMENT, ApprovalLevelConstants::DEPUTY_HEAD_OF_DEPARTMENT];
-        $hasApprovedHOD = $ticket->approvals()
-            ->whereIn('approval_level', $hodLevels)
-            ->where('status', 'approved')
-            ->exists();
 
-        if ($needsHODApproval && !$hasApprovedHOD) {
-            // Check if there's already a pending HOD approval
-            $existingPendingHOD = $ticket->approvals()
-                ->whereIn('approval_level', $hodLevels)
-                ->where('status', 'pending')
-                ->exists();
-
-            // Check if there's already an approved HOD approval (don't create another)
-            $existingApprovedHOD = $ticket->approvals()
-                ->whereIn('approval_level', $hodLevels)
-                ->where('status', 'approved')
-                ->exists();
-
-            // Only create HOD approval if:
-            // 1. No pending HOD approval exists
-            // 2. No approved HOD approval exists (to prevent duplicates)
-            if (!$existingPendingHOD && !$existingApprovedHOD) {
-                $this->createApprovalForLevel($ticket, ApprovalLevelConstants::HEAD_OF_DEPARTMENT);
-            }
-        }
-        
-        // Check if CEO approval is needed (if HOD already approved or not needed)
-        if (!$needsHODApproval || $hasApprovedHOD) {
-            $needsCEOApproval = $this->requiresCEOApproval($ticket);
-            $ceoLevels = [ApprovalLevelConstants::CEO, ApprovalLevelConstants::DEPUTY_CEO, ApprovalLevelConstants::DIRECTOR];
-            $hasApprovedCEO = $ticket->approvals()
-                ->whereIn('approval_level', $ceoLevels)
-                ->where('status', 'approved')
-                ->exists();
-
-            if ($needsCEOApproval && !$hasApprovedCEO) {
-                $existingPendingCEO = $ticket->approvals()
-                    ->whereIn('approval_level', $ceoLevels)
-                    ->where('status', 'pending')
-                    ->exists();
-
-                if (!$existingPendingCEO) {
-                    $this->createApprovalForLevel($ticket, ApprovalLevelConstants::CEO);
-                }
-            }
-        }
-    }
-
-    /**
-     * Create approval for a specific level (dynamic helper method)
-     * 
-     * @param Ticket $ticket
-     * @param string $approvalLevel
-     * @return TicketApproval|null
-     */
-    protected function createApprovalForLevel(Ticket $ticket, string $approvalLevel): ?TicketApproval
-    {
-        // Get the highest sequence number to ensure proper ordering
-        $maxSequence = $ticket->approvals()->max('sequence') ?? 0;
-        
-        $approval = TicketApproval::create([
-            'ticket_id' => $ticket->id,
-            'approval_level' => $approvalLevel,
-            'status' => 'pending',
-            'sequence' => $maxSequence + 1,
-        ]);
-
-        // Find approver dynamically based on approval level
-        $approver = $this->findApproverForLevel($ticket, $approvalLevel);
-        if ($approver) {
-            $approval->update(['approver_id' => $approver->id]);
-        }
-
-        $levelLabel = ApprovalLevelConstants::getLabel($approvalLevel);
-        $ticket->histories()->create([
-            'user_id' => Auth::id(),
-            'action' => 'approval_requested',
-            'field_name' => 'approval',
-            'old_value' => null,
-            'new_value' => "{$levelLabel} Approval",
-            'description' => "Ticket submitted for {$levelLabel} approval",
-            'created_at' => now(),
-        ]);
-
-        // Send notification
-        try {
-            $notificationService = app(NotificationService::class);
-            if ($approver) {
-                Log::info('Sending approval requested notification', [
-                    'ticket_id' => $ticket->id,
-                    'approval_level' => $approvalLevel,
-                    'approver_id' => $approver->id,
-                    'approver_email' => $approver->email,
-                ]);
-                $notificationService->notifyApprovalRequested($ticket, $approver, $approvalLevel);
-            } else {
-                Log::warning('No approver found for approval level', [
-                    'ticket_id' => $ticket->id,
-                    'approval_level' => $approvalLevel,
-                ]);
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to send approval notification', [
-                'ticket_id' => $ticket->id,
-                'approval_level' => $approvalLevel,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
-        
-        return $approval;
-    }
-
-    /**
-     * Determine if ticket requires approval workflow
-     * Real-world: Only require approval when necessary
-     * 
-     * IMPORTANT: Even if a category doesn't require approval, we should still
-     * require approval if the cost exceeds a threshold. This prevents users
-     * from bypassing approval by selecting a non-approval category but entering
-     * a high cost.
-     */
-    protected function requiresApproval(Ticket $ticket): bool
-    {
-        // 1. Check if cost exceeds threshold (takes precedence over category setting)
-        // This ensures high-cost tickets always require approval, even if category doesn't
-        if ($ticket->category && $ticket->category->hod_approval_threshold) {
-            $ticketCost = $ticket->estimated_cost ?? 0;
-            if ($ticketCost >= $ticket->category->hod_approval_threshold) {
-                // Only log in development/staging (cost threshold logic is expected behavior)
-                LogHelper::debug('Approval required due to cost threshold', [
-                    'ticket_id' => $ticket->id,
-                    'cost' => $ticketCost,
-                    'threshold' => $ticket->category->hod_approval_threshold,
-                ]);
-                return true; // Cost exceeds threshold - require approval
-            }
-        }
-        
-        // 2. Check if category requires approval
-        if ($ticket->category && $ticket->category->requires_approval) {
-            return true;
-        }
-        
-        // 3. Tickets from users with auto-approval permission (skip approval)
-        if ($ticket->requester) {
-            // Check if user has auto-approve permission
-            // Using Gate::forUser to check permission for the requester
-            try {
-                if (Gate::forUser($ticket->requester)->allows('tickets.auto-approve')) {
-                    // Only log in development (auto-approval is expected behavior)
-                    LogHelper::debug('Auto-approval granted for user', [
-                        'ticket_id' => $ticket->id,
-                        'user_id' => $ticket->requester->id,
-                    ]);
-                    return false;
-                }
-            } catch (\Exception $e) {
-                // If permission doesn't exist or check fails, continue with approval requirement
-                // Only log in development (permission check failures are expected)
-                LogHelper::debug('Auto-approve permission check failed', [
-                    'user_id' => $ticket->requester->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-        
-        // 4. If category doesn't require approval and cost is below threshold, no approval needed
-        if ($ticket->category && !$ticket->category->requires_approval) {
-            // Only log in development (no approval needed is expected behavior)
-            LogHelper::debug('No approval required - category does not require approval', [
-                'ticket_id' => $ticket->id,
-                'category' => $ticket->category->name,
-            ]);
-            return false;
-        }
-        
-        // 5. Default: Require approval if category doesn't specify otherwise
-        return $ticket->category ? $ticket->category->requires_approval : true;
-    }
 
     /**
      * Route ticket directly without approval
@@ -703,72 +295,7 @@ class ApprovalWorkflowService
         }
     }
 
-    /**
-     * Determine if ticket requires HOD approval
-     * Real-world: Consider multiple factors, not just priority
-     */
-    protected function requiresHODApproval(Ticket $ticket): bool
-    {
-        // Real-world logic: Require HOD approval when:
-        // 1. Priority is high/critical
-        $priorityBased = in_array($ticket->priority, ['high', 'critical']);
-        
-        // 2. Cost exceeds threshold (if cost field exists and category has threshold)
-        // This takes precedence over category flag for cost-based decisions
-        $costExceedsThreshold = false;
-        if ($ticket->category && $ticket->category->hod_approval_threshold) {
-            $ticketCost = $ticket->estimated_cost ?? 0;
-            if ($ticketCost >= $ticket->category->hod_approval_threshold) {
-                $costExceedsThreshold = true;
-                Log::info('HOD approval required due to cost threshold', [
-                    'ticket_id' => $ticket->id,
-                    'cost' => $ticketCost,
-                    'threshold' => $ticket->category->hod_approval_threshold,
-                    'category' => $ticket->category->name,
-                ]);
-            } else {
-                Log::info('HOD approval NOT required - cost below threshold', [
-                    'ticket_id' => $ticket->id,
-                    'cost' => $ticketCost,
-                    'threshold' => $ticket->category->hod_approval_threshold,
-                    'category' => $ticket->category->name,
-                ]);
-            }
-        }
-        
-        // 3. Category explicitly requires HOD approval (only if no cost threshold or cost not set)
-        // If category has a threshold, we use cost-based logic instead
-        $categoryRequiresHOD = false;
-        if ($ticket->category && $ticket->category->requires_hod_approval) {
-            // If category has a threshold, only require HOD if cost exceeds it
-            // Otherwise, use the category flag
-            if ($ticket->category->hod_approval_threshold) {
-                // Category has threshold - use cost-based logic (already checked above)
-                $categoryRequiresHOD = false; // Cost-based logic handles this
-            } else {
-                // Category requires HOD but no threshold - always require HOD
-                $categoryRequiresHOD = true;
-                Log::info('HOD approval required due to category flag (no threshold)', [
-                    'ticket_id' => $ticket->id,
-                    'category' => $ticket->category->name,
-                ]);
-            }
-        }
-        
-        // Return true if priority-based OR cost exceeds threshold OR category requires it (without threshold)
-        $requiresHOD = $priorityBased || $costExceedsThreshold || $categoryRequiresHOD;
-        
-        if ($requiresHOD) {
-            Log::info('HOD approval required', [
-                'ticket_id' => $ticket->id,
-                'priority_based' => $priorityBased,
-                'category_requires' => $ticket->category && $ticket->category->requires_hod_approval,
-                'cost_exceeds' => $costExceedsThreshold,
-            ]);
-        }
-        
-        return $requiresHOD;
-    }
+
 
     /**
      * Find Line Manager for ticket
@@ -1078,48 +605,6 @@ class ApprovalWorkflowService
     }
 
     /**
-     * Determine if ticket requires CEO approval
-     * CEO approval is required for very expensive purchases (typically >$10,000 or $50,000)
-     */
-    protected function requiresCEOApproval(Ticket $ticket): bool
-    {
-        // CEO approval typically required for very high-cost items
-        // Default threshold: $10,000 (can be configured per category)
-        $ceoApprovalThreshold = $ticket->category?->ceo_approval_threshold ?? 10000;
-        
-        $ticketCost = $ticket->estimated_cost ?? 0;
-        
-        if ($ticketCost >= $ceoApprovalThreshold) {
-            Log::info('CEO approval required due to cost threshold', [
-                'ticket_id' => $ticket->id,
-                'cost' => $ticketCost,
-                'threshold' => $ceoApprovalThreshold,
-            ]);
-            return true;
-        }
-
-        // Check if category explicitly requires CEO approval
-        if ($ticket->category && $ticket->category->requires_ceo_approval) {
-            Log::info('CEO approval required due to category flag', [
-                'ticket_id' => $ticket->id,
-                'category' => $ticket->category->name,
-            ]);
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Route ticket after CEO approval (deprecated - use routeAfterApproval instead)
-     * @deprecated Use routeAfterApproval() for dynamic approval level handling
-     */
-    protected function routeAfterCEOApproval(Ticket $ticket, ?int $routedToTeamId = null): void
-    {
-        $this->routeAfterApproval($ticket, ApprovalLevelConstants::CEO, $routedToTeamId);
-    }
-
-    /**
      * Route ticket after approval (generic method for any approval level)
      * Replaces level-specific routing methods (routeAfterLMApproval, routeAfterHODApproval, routeAfterCEOApproval)
      */
@@ -1128,14 +613,7 @@ class ApprovalWorkflowService
         // Use the level label for history description
         $levelLabel = ApprovalLevelConstants::getLabel($approvalLevel);
         
-        // For backward compatibility, keep specific routing logic for LM level
-        if ($approvalLevel === ApprovalLevelConstants::LINE_MANAGER || 
-            $approvalLevel === ApprovalLevelConstants::DEPUTY_LINE_MANAGER) {
-            $this->routeAfterLMApproval($ticket, $routedToTeamId, $levelLabel);
-            return;
-        }
-        
-        // Generic routing for other levels
+        // Generic routing for any level
         $teamId = $routedToTeamId ?? $ticket->category?->default_team_id;
         
         if ($teamId) {
@@ -1292,4 +770,3 @@ class ApprovalWorkflowService
         return $superAdmin;
     }
 }
-

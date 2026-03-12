@@ -20,7 +20,7 @@ export default function AuthCardLayout({
     title?: string;
     description?: string;
 }>) {
-    const { appName, appLogo } = usePage<SharedData>().props;
+    const { appName, appLogo, appIcon } = usePage<SharedData>().props;
     const displayName = appName || 'Acme Inc.';
 
     return (
@@ -31,8 +31,8 @@ export default function AuthCardLayout({
                     className="flex items-center gap-2 self-center font-medium"
                 >
                     <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-                        {appLogo ? (
-                            <img src={appLogo} alt={displayName} className="size-full object-cover" />
+                        {appIcon || appLogo ? (
+                            <img src={appIcon || appLogo} alt={displayName} className="size-full object-cover" />
                         ) : (
                             <AppLogoIcon className="size-9 fill-current text-black dark:text-white" />
                         )}

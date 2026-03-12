@@ -27,6 +27,7 @@ interface Department {
   is_support_team: boolean;
   is_active: boolean;
   description?: string | null;
+  telegram_chat_id?: string | null;
   users: Array<{
     id: number;
     name: string;
@@ -146,52 +147,108 @@ export default function DepartmentShow({ department }: DepartmentShowProps) {
           </div>
         </div>
 
-        {/* Department Info */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Department Information</CardTitle>
-                <CardDescription>Details and configuration</CardDescription>
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Department Info */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Department Information</CardTitle>
+                  <CardDescription>Details and configuration</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  {department.is_support_team && (
+                    <Badge variant="default">Support Team</Badge>
+                  )}
+                  <Badge
+                    variant={department.is_active ? 'default' : 'secondary'}
+                    className={department.is_active ? 'bg-emerald-100 text-emerald-800' : ''}
+                  >
+                    {department.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                </div>
               </div>
-              <div className="flex gap-2">
-                {department.is_support_team && (
-                  <Badge variant="default">Support Team</Badge>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {department.description && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Description</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-line">
+                    {department.description}
+                  </p>
+                </div>
+              )}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Code</h3>
+                  <p className="text-sm font-medium">{department.code}</p>
+                </div>
+                <div>
+                  <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                    Created
+                  </h3>
+                  <p className="text-sm font-medium">
+                    {new Date(department.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Telegram Status Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center justify-between">
+                Telegram Status
+                {department.telegram_chat_id ? (
+                  <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] h-5 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+                    Connected
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[10px] h-5">Offline</Badge>
                 )}
-                <Badge
-                  variant={department.is_active ? 'default' : 'secondary'}
-                  className={department.is_active ? 'bg-emerald-100 text-emerald-800' : ''}
-                >
-                  {department.is_active ? 'Active' : 'Inactive'}
-                </Badge>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {department.description && (
-              <div>
-                <h3 className="text-sm font-medium mb-2">Description</h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-line">
-                  {department.description}
-                </p>
-              </div>
-            )}
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Code</h3>
-                <p className="text-sm font-medium">{department.code}</p>
-              </div>
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
-                  Created
-                </h3>
-                <p className="text-sm font-medium">
-                  {new Date(department.created_at).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardTitle>
+              <CardDescription>Group notification settings</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {department.telegram_chat_id ? (
+                <>
+                  <div>
+                    <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Chat ID</h3>
+                    <p className="text-sm font-mono bg-muted p-2 rounded">{department.telegram_chat_id}</p>
+                  </div>
+                  <div className="pt-2">
+                    <Button 
+                      variant="outline" 
+                      className="w-full text-xs" 
+                      size="sm"
+                      onClick={() => {
+                        router.post(route('admin.departments.test-telegram', department.id), {}, {
+                          preserveScroll: true,
+                          onSuccess: () => toast.success('Test message sent!')
+                        });
+                      }}
+                    >
+                      Test Connection
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-xs text-muted-foreground italic mb-3">
+                    No Telegram group linked. Add the bot to your group and set the Chat ID in edit mode to receive alerts.
+                  </p>
+                  {can('departments.edit') && (
+                    <Button asChild variant="outline" size="sm" className="w-full">
+                      <Link href={route('admin.departments.edit', department.id)}>Configure Now</Link>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Team Members */}

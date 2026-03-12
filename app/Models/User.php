@@ -32,6 +32,8 @@ class User extends Authenticatable
         'department_id',
         'is_active',
         'avatar',
+        'telegram_chat_id',
+        'telegram_username',
     ];
 
     /**
@@ -68,17 +70,17 @@ class User extends Authenticatable
 
     public function submittedTickets(): HasMany
     {
-        return $this->hasMany(Ticket::class, 'requester_id');
+        return $this->hasMany(Ticket::class , 'requester_id');
     }
 
     public function assignedTickets(): HasMany
     {
-        return $this->hasMany(Ticket::class, 'assigned_agent_id');
+        return $this->hasMany(Ticket::class , 'assigned_agent_id');
     }
 
     public function managedProjects(): HasMany
     {
-        return $this->hasMany(Project::class, 'project_manager_id');
+        return $this->hasMany(Project::class , 'project_manager_id');
     }
 
     public function ticketComments(): HasMany
@@ -88,7 +90,7 @@ class User extends Authenticatable
 
     public function ticketAttachments(): HasMany
     {
-        return $this->hasMany(TicketAttachment::class, 'uploaded_by');
+        return $this->hasMany(TicketAttachment::class , 'uploaded_by');
     }
 
     public function ticketHistories(): HasMany
@@ -98,12 +100,12 @@ class User extends Authenticatable
 
     public function createdCannedResponses(): HasMany
     {
-        return $this->hasMany(CannedResponse::class, 'created_by');
+        return $this->hasMany(CannedResponse::class , 'created_by');
     }
 
     public function watchingTickets(): BelongsToMany
     {
-        return $this->belongsToMany(Ticket::class, 'ticket_watchers')->withPivot('created_at');
+        return $this->belongsToMany(Ticket::class , 'ticket_watchers')->withPivot('created_at');
     }
 
     public function bookings(): HasMany

@@ -75,6 +75,7 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'appName' => \App\Models\Setting::get('app_name', config('app.name')),
             'appLogo' => \App\Models\Setting::get('app_logo', null),
+            'appIcon' => \App\Models\Setting::get('app_icon', null),
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'csrf_token' => csrf_token(), // Share CSRF token for file uploads
             'flash' => [
@@ -92,9 +93,13 @@ class HandleInertiaRequests extends Middleware
                     'department_id' => $request->user()->department_id,
                     'roles' => $request->user()->getRoleNames(),
                     'permissions' => $request->user()->getAllPermissions()->pluck('name'),
+                    'telegram_chat_id' => $request->user()->telegram_chat_id,
+                    'telegram_username' => $request->user()->telegram_username,
                 ] : null,
             ],
             'sidebarOpen' => !$request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'telegramToken' => fn() => $request->session()->get('telegramToken'),
+            'telegramBotUrl' => fn() => $request->session()->get('telegramBotUrl'),
             'settings' => [
                 'enable_advanced_options' => $this->getBooleanSetting('enable_advanced_options', true),
             ],

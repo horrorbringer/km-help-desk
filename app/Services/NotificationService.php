@@ -9,6 +9,7 @@ use App\Models\HelpDeskNotification;
 use App\Models\Ticket;
 use App\Models\TicketComment;
 use App\Models\User;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Log;
 
 class NotificationService
@@ -125,92 +126,21 @@ class NotificationService
      */
     public function notifyTicketCreated(Ticket $ticket): void
     {
-        // Dispatch email notification job (non-blocking)
+        // Dispatch email notification job to requester (non-blocking)
         try {
             Log::info('NotificationService: Dispatching SendTicketCreatedEmailJob', [
                 'ticket_id' => $ticket->id,
                 'requester_email' => $ticket->requester?->email,
             ]);
             SendTicketCreatedEmailJob::dispatch($ticket);
-
-            // Notify assigned agent via email (queued)
-            if ($ticket->assigned_agent_id) {
-                Log::info('NotificationService: Dispatching SendTicketAssignedEmailJob for agent', [
-                    'ticket_id' => $ticket->id,
-                    'assigned_agent_id' => $ticket->assigned_agent_id,
-                ]);
-                SendTicketAssignedEmailJob::dispatch($ticket, $ticket->assignedAgent);
-            } elseif ($ticket->assigned_team_id) {
-                // Dispatch jobs for all active team members (non-blocking)
-                $team = $ticket->assignedTeam;
-                if ($team) {
-                    $teamMembers = $team->users()->where('is_active', true)->get();
-                    Log::info('NotificationService: Dispatching email notification jobs to team members', [
-                        'ticket_id' => $ticket->id,
-                        'team_id' => $ticket->assigned_team_id,
-                        'team_name' => $team->name,
-                        'team_member_count' => $teamMembers->count(),
-                    ]);
-
-                    // Get delay setting for staggered job dispatch
-                    $delayBetweenEmails = (int) \App\Models\Setting::get('mail_send_delay_ms', 500);
-                    $memberIndex = 0;
-
-                    foreach ($teamMembers as $user) {
-                        // Dispatch job with a small delay to prevent rate limiting
-                        // Delay increases slightly for each subsequent email
-                        $delay = $memberIndex > 0 ? ($delayBetweenEmails * $memberIndex) / 1000 : 0; // Convert to seconds
-
-                        SendTicketAssignedEmailJob::dispatch($ticket, $user)
-                            ->delay(now()->addSeconds($delay));
-
-                        $memberIndex++;
-                    }
-                }
-            }
         } catch (\Exception $e) {
-            Log::error("Failed to dispatch email notification jobs: {$e->getMessage()}", [
+            Log::error("Failed to dispatch SendTicketCreatedEmailJob: {$e->getMessage()}", [
                 'ticket_id' => $ticket->id,
-                'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
             ]);
         }
 
-        // Notify assigned team/agent if assigned
-        if ($ticket->assigned_agent_id) {
-            $this->createFromTemplate(
-                $ticket->assigned_agent_id,
-                'ticket_assigned',
-                $ticket->id,
-                null,
-                [
-                    'ticket_number' => $ticket->ticket_number,
-                    'subject' => $ticket->subject,
-                    'assigned_agent_name' => $ticket->assignedAgent?->name,
-                ]
-            );
-        } elseif ($ticket->assigned_team_id) {
-            // Notify department managers (LM/DLM/HOD/DHOD) when ticket is routed to their team
-            $this->notifyDepartmentManagers($ticket);
-
-            // Notify all active users in the team
-            $team = $ticket->assignedTeam;
-            if ($team) {
-                foreach ($team->users()->where('is_active', true)->get() as $user) {
-                    $this->createFromTemplate(
-                        $user->id,
-                        'ticket_assigned',
-                        $ticket->id,
-                        null,
-                        [
-                            'ticket_number' => $ticket->ticket_number,
-                            'subject' => $ticket->subject,
-                            'team_name' => $team->name,
-                        ]
-                    );
-                }
-            }
-        }
+        // Note: Assignment notifications are handled by notifyTicketAssigned()
+        // which is typically called after the ticket is created and auto-assigned.
     }
 
     /**
@@ -257,11 +187,14 @@ class NotificationService
                     }
                 }
             }
+
+            // --- Notify Team Telegram Group ---
+            $this->notifyTeamGroup($ticket);
+
         } catch (\Exception $e) {
-            Log::error("Failed to dispatch ticket assigned email jobs: {$e->getMessage()}", [
+            Log::error("Failed to dispatch ticket assigned notification tasks: {$e->getMessage()}", [
                 'ticket_id' => $ticket->id,
                 'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
             ]);
         }
 
@@ -274,10 +207,10 @@ class NotificationService
                 "Ticket #{$ticket->ticket_number} has been assigned to you: {$ticket->subject}"
             );
         } elseif ($ticket->assigned_team_id) {
-            // Notify department managers when ticket is routed to their team
+            // 1. Notify department managers
             $this->notifyDepartmentManagers($ticket);
-        } elseif ($ticket->assigned_team_id) {
-            // Notify all active users in the team
+
+            // 2. Notify all active users in the team
             $team = $ticket->assignedTeam;
             if ($team) {
                 foreach ($team->users()->where('is_active', true)->get() as $user) {
@@ -628,6 +561,45 @@ class NotificationService
             $message,
             $ticket->id
         );
+
+        // Send Telegram notification if linked
+        if ($approver->telegram_chat_id) {
+            $token = Setting::get('telegram_bot_token', config('services.telegram-bot-api.token'));
+            if ($token) {
+                // Find the specific approval record for this level/ticket to get its ID
+                $approval = \App\Models\TicketApproval::where('ticket_id', $ticket->id)
+                    ->where('approval_level', $approvalLevel)
+                    ->where('status', 'pending')
+                    ->first();
+
+                if ($approval) {
+                    $url = config('app.url') . "/admin/tickets/{$ticket->id}";
+                    $telegramMessage = "🚨 *Approval Required*\n\n";
+                    $telegramMessage .= "Ticket: #{$ticket->ticket_number}\n";
+                    $telegramMessage .= "Subject: {$ticket->subject}\n";
+                    $telegramMessage .= "Requester: {$ticket->requester?->name}\n";
+                    $telegramMessage .= "Level: *{$approvalLevelName}*\n\n";
+                    $telegramMessage .= "Please review and take action below:";
+
+                    \Illuminate\Support\Facades\Http::timeout(15)->post("https://api.telegram.org/bot{$token}/sendMessage", [
+                        'chat_id' => $approver->telegram_chat_id,
+                        'text' => $telegramMessage,
+                        'parse_mode' => 'Markdown',
+                        'reply_markup' => json_encode([
+                            'inline_keyboard' => [
+                                [
+                                    ['text' => '✅ Approve', 'callback_data' => "approve_ticket:{$approval->id}"],
+                                    ['text' => '❌ Reject', 'callback_data' => "reject_ticket:{$approval->id}"]
+                                ],
+                                [
+                                    ['text' => '🎫 View Ticket', 'url' => $url]
+                                ]
+                            ]
+                        ])
+                    ]);
+                }
+            }
+        }
     }
 
     /**
@@ -789,12 +761,15 @@ class NotificationService
                 'managers_notified' => $managers->pluck('id')->toArray(),
                 'managers_count' => $managers->count(),
             ]);
+
+            // Dispatch Telegram notifications specifically to managers' private chats
+            $this->notifyDepartmentManagersTelegram($ticket);
+
         } catch (\Exception $e) {
             Log::error('Failed to notify department managers', [
                 'ticket_id' => $ticket->id,
                 'assigned_team_id' => $ticket->assigned_team_id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
         }
     }
@@ -832,6 +807,9 @@ class NotificationService
                 ]);
             }
         }
+
+        // --- NEW: Notify Team Telegram Group ---
+        $this->notifyTeamGroup($ticket);
     }
 
     /**
@@ -924,4 +902,109 @@ class NotificationService
             // We could also send an email here if a "teammate_ticket_created" template exists
         }
     }
+
+    /**
+     * Send notification to Team Telegram Group
+     */
+    public function notifyTeamGroup(Ticket $ticket): void
+    {
+        $team = $ticket->assignedTeam;
+        if (!$team || !$team->telegram_chat_id) {
+            return;
+        }
+
+        $url = config('app.url') . "/admin/tickets/{$ticket->id}";
+        $message = "🎫 *New Ticket Assigned to {$team->name}*\n\n";
+        $message .= "Ticket: #{$ticket->ticket_number}\n";
+        $message .= "Subject: {$ticket->subject}\n";
+        $message .= "Priority: *".ucfirst($ticket->priority)."*\n";
+        $message .= "Requester: {$ticket->requester?->name}\n\n";
+        $message .= "Please check and handle this ticket.";
+
+        $replyMarkup = [
+            'inline_keyboard' => [
+                [
+                    ['text' => '✋ Claim Ticket', 'callback_data' => "pick_ticket:{$ticket->id}"],
+                    ['text' => '🎫 View Ticket', 'url' => $url]
+                ]
+            ]
+        ];
+
+        $response = $this->sendTelegramResponse($team->telegram_chat_id, $message, $replyMarkup);
+
+        if ($response && !$response->successful()) {
+            // Handle Migration
+            $migrateToId = $response->json('parameters.migrate_to_chat_id');
+            if ($migrateToId) {
+                $team->update(['telegram_chat_id' => $migrateToId]);
+                $this->sendTelegramResponse($migrateToId, $message, $replyMarkup);
+            }
+        }
+    }
+
+    /**
+     * Send notification to Team Managers (Telegram)
+     */
+    public function notifyDepartmentManagersTelegram(Ticket $ticket): void
+    {
+        $department = $ticket->assignedTeam;
+        if (!$department) return;
+
+        // Managers are typically Users, who have their own telegram_chat_id.
+        // Migration of private chats is rare/impossible in this context, 
+        // but we'll use the response helper anyway.
+        $managers = \App\Models\User::role(['Manager', 'Department Head'])
+            ->where('department_id', $department->id)
+            ->whereNotNull('telegram_chat_id')
+            ->get();
+
+        $url = config('app.url') . "/admin/tickets/{$ticket->id}";
+        $message = "🚨 *Manager Alert: New Ticket*\n\n";
+        $message .= "Department: {$department->name}\n";
+        $message .= "Ticket: #{$ticket->ticket_number}\n";
+        $message .= "Subject: {$ticket->subject}\n\n";
+        $message .= "Please ensure this is handled.";
+
+        foreach ($managers as $manager) {
+            $loginUrl = \App\Http\Controllers\Api\TelegramLoginController::generateLoginUrl($manager, "/admin/tickets/{$ticket->id}");
+            
+            $response = $this->sendTelegramResponse($manager->telegram_chat_id, $message, [
+                'inline_keyboard' => [[['text' => '🎫 View Ticket', 'url' => $loginUrl]]]
+            ]);
+
+            if ($response && !$response->successful()) {
+                $migrateToId = $response->json('parameters.migrate_to_chat_id');
+                if ($migrateToId) {
+                    $manager->update(['telegram_chat_id' => $migrateToId]);
+                    $this->sendTelegramResponse($migrateToId, $message, [
+                        'inline_keyboard' => [[['text' => '🎫 View Ticket', 'url' => $loginUrl]]]
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
+     * Send Telegram Response helper (returns the response object)
+     */
+    protected function sendTelegramResponse(string $chatId, string $text, ?array $replyMarkup = null): ?\Illuminate\Http\Client\Response
+    {
+        $token = Setting::get('telegram_bot_token', config('services.telegram-bot-api.token'));
+        if (!$token) return null;
+
+        $payload = [
+            'chat_id' => $chatId,
+            'text' => $text,
+            'parse_mode' => 'Markdown',
+        ];
+
+        if ($replyMarkup) {
+            $payload['reply_markup'] = json_encode($replyMarkup);
+        }
+
+        return \Illuminate\Support\Facades\Http::timeout(15)->post("https://api.telegram.org/bot{$token}/sendMessage", $payload);
+    }
 }
+
+
+ 

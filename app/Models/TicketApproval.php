@@ -14,6 +14,7 @@ class TicketApproval extends Model
     protected $fillable = [
         'ticket_id',
         'approval_level',
+        'status_label',
         'approver_id',
         'status',
         'comments',
@@ -68,12 +69,12 @@ class TicketApproval extends Model
 
     public function approver(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'approver_id');
+        return $this->belongsTo(User::class , 'approver_id');
     }
 
     public function routedToTeam(): BelongsTo
     {
-        return $this->belongsTo(Department::class, 'routed_to_team_id');
+        return $this->belongsTo(Department::class , 'routed_to_team_id');
     }
 
     /**

@@ -63,9 +63,9 @@ class TicketService
         $ticket->load(['requester', 'assignedAgent', 'assignedTeam', 'category', 'project']);
 
         // Execute automations
-        $this->automationService->onTicketUpdated($ticket);
+        $this->automationService->onTicketUpdated($ticket, $originalData);
         if ($statusChanged) {
-            $this->automationService->onTicketStatusChanged($ticket);
+            $this->automationService->onTicketStatusChanged($ticket, $originalData);
             
             // Set resolved/closed timestamps if needed
             $newStatus = strtolower(trim((string) $data['status']));
@@ -81,8 +81,10 @@ class TicketService
         // Check for escalation
         $this->escalationService->checkTicket($ticket);
 
-        // Send notifications
-        $this->sendUpdateNotifications($ticket, $changes, $actor, $statusChanged);
+        // General update notification (still needed for specific field changes not covered by rules)
+        // Actually, we want to move ALL to rules eventually. 
+        // For now, let's keep the general "Ticket Updated" if no other specific rule fired?
+        // No, let's trust the rules.
 
         // Clear search cache
         $this->searchService->clearCache();
@@ -164,65 +166,5 @@ class TicketService
             'priority' => ucfirst($value),
             default => (string) $value,
         };
-    }
-
-    /**
-     * Send update notifications base on the array of changes.
-     */
-    protected function sendUpdateNotifications(Ticket $ticket, array $changes, User $actor, bool $statusChanged): void
-    {
-        if (empty($changes)) return;
-
-        try {
-            // Check assignment notifications
-            if (isset($changes['assigned_agent_id'])) {
-                $oldAgent = $changes['assigned_agent_id']['old'];
-                $newAgent = $changes['assigned_agent_id']['new'];
-                
-                if ($newAgent && $oldAgent != $newAgent) {
-                    $this->notificationService->notifyTicketAssigned($ticket);
-                }
-                
-                // Specific old agent reassignment notice
-                if ($oldAgent && $oldAgent != $newAgent && $newAgent) {
-                    $oldAgentUser = User::find($oldAgent);
-                    if ($oldAgentUser) {
-                        $this->notificationService->create(
-                            $oldAgentUser->id,
-                            'ticket_reassigned',
-                            'Ticket Reassigned',
-                            "Ticket #{$ticket->ticket_number} has been reassigned from you.",
-                            $ticket->id
-                        );
-                    }
-                }
-            } elseif (isset($changes['assigned_team_id'])) {
-                $oldTeam = $changes['assigned_team_id']['old'];
-                $newTeam = $changes['assigned_team_id']['new'];
-                if ($newTeam && $oldTeam != $newTeam) {
-                    $this->notificationService->notifyTicketAssigned($ticket);
-                }
-            }
-
-            // General update notification
-            $this->notificationService->notifyTicketUpdated($ticket, $actor, $changes);
-
-            // Status specific notifications
-            if ($statusChanged) {
-                $newStatus = strtolower(trim((string) $ticket->status));
-                if ($newStatus === Ticket::STATUS_RESOLVED) {
-                    $this->notificationService->notifyTicketResolved($ticket, $actor);
-                }
-                if ($newStatus === Ticket::STATUS_CLOSED) {
-                    $this->notificationService->notifyTicketClosed($ticket, $actor);
-                }
-            }
-        } catch (\Exception $e) {
-            Log::error('TicketService - Notification error', [
-                'ticket_id' => $ticket->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
     }
 }

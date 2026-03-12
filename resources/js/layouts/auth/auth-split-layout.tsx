@@ -14,7 +14,7 @@ export default function AuthSplitLayout({
     title,
     description,
 }: PropsWithChildren<AuthLayoutProps>) {
-    const { name, appLogo, appName, quote } = usePage<SharedData>().props;
+    const { name, appLogo, appIcon, appName, quote } = usePage<SharedData>().props;
     const displayName = appName || name || 'Acme Inc.';
 
     return (
@@ -26,8 +26,8 @@ export default function AuthSplitLayout({
                     className="relative z-20 flex items-center text-lg font-medium"
                 >
                     <div className="mr-2 flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-                        {appLogo ? (
-                            <img src={appLogo} alt={displayName} className="size-full object-cover" />
+                        {appIcon || appLogo ? (
+                            <img src={appIcon || appLogo} alt={displayName} className="size-full object-cover" />
                         ) : (
                             <AppLogoIcon className="size-8 fill-current text-white" />
                         )}
@@ -54,8 +54,8 @@ export default function AuthSplitLayout({
                         className="relative z-20 flex items-center justify-center lg:hidden"
                     >
                         <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md bg-sidebar-primary text-sidebar-primary-foreground sm:h-12 sm:w-12">
-                            {appLogo ? (
-                                <img src={appLogo} alt={displayName} className="size-full object-cover" />
+                            {appIcon || appLogo ? (
+                                <img src={appIcon || appLogo} alt={displayName} className="size-full object-cover" />
                             ) : (
                                 <AppLogoIcon className="size-full fill-current" />
                             )}

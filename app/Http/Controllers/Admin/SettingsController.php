@@ -22,6 +22,7 @@ class SettingsController extends Controller
             'email' => $this->getEmailSettings(),
             'ticket' => $this->getTicketSettings(),
             'notification' => $this->getNotificationSettings(),
+            'telegram' => $this->getTelegramSettings(),
             'security' => $this->getSecuritySettings(),
         ];
 
@@ -42,8 +43,13 @@ class SettingsController extends Controller
                 if ($settingKey === 'app_logo' && $request->hasFile('setting_app_logo')) {
                     $file = $request->file('setting_app_logo');
                     $path = $file->store('settings', 'public');
-                    // We store the path relative to storage/app/public, 
-                    // asset('storage/' . $path) will be used to display it
+                    $value = asset('storage/' . $path);
+                }
+
+                // Handle file upload for app_icon
+                if ($settingKey === 'app_icon' && $request->hasFile('setting_app_icon')) {
+                    $file = $request->file('setting_app_icon');
+                    $path = $file->store('settings', 'public');
                     $value = asset('storage/' . $path);
                 }
 
@@ -115,6 +121,7 @@ class SettingsController extends Controller
         return [
             'app_name' => Setting::get('app_name', 'Help Desk System'),
             'app_logo' => Setting::get('app_logo', ''),
+            'app_icon' => Setting::get('app_icon', ''),
             'timezone' => Setting::get('timezone', config('app.timezone')),
             'language' => Setting::get('language', 'en'),
             'date_format' => Setting::get('date_format', 'Y-m-d'),
@@ -169,6 +176,15 @@ class SettingsController extends Controller
         ];
     }
 
+    protected function getTelegramSettings(): array
+    {
+        return [
+            'telegram_bot_token' => Setting::get('telegram_bot_token', config('services.telegram-bot-api.token')),
+            'telegram_bot_name' => Setting::get('telegram_bot_name', config('services.telegram-bot-api.name')),
+            'telegram_secret_token' => Setting::get('telegram_secret_token', config('services.telegram-bot-api.secret_token')),
+        ];
+    }
+
     protected function getSecuritySettings(): array
     {
         return [
@@ -210,6 +226,9 @@ class SettingsController extends Controller
         }
         if (str_starts_with($key, 'password_') || str_starts_with($key, 'session_') || str_starts_with($key, 'login_') || str_starts_with($key, 'two_factor_')) {
             return 'security';
+        }
+        if (str_starts_with($key, 'telegram_')) {
+            return 'telegram';
         }
         return 'general';
     }

@@ -21,6 +21,7 @@ interface Settings {
   general: {
     app_name: string;
     app_logo: string;
+    app_icon: string;
     timezone: string;
     language: string;
     date_format: string;
@@ -70,6 +71,11 @@ interface Settings {
     two_factor_required: boolean;
     login_attempts_limit: number;
   };
+  telegram: {
+    telegram_bot_token: string;
+    telegram_bot_name: string;
+    telegram_secret_token: string;
+  };
 }
 
 interface SettingsIndexProps extends PageProps {
@@ -84,6 +90,7 @@ export default function SettingsIndex() {
     // General
     setting_app_name: settings?.general?.app_name ?? '',
     setting_app_logo: settings?.general?.app_logo ?? '',
+    setting_app_icon: settings?.general?.app_icon ?? '',
     setting_timezone: settings?.general?.timezone ?? 'UTC',
     setting_language: settings?.general?.language ?? 'en',
     setting_date_format: settings?.general?.date_format ?? 'Y-m-d',
@@ -129,6 +136,10 @@ export default function SettingsIndex() {
     setting_session_timeout: settings?.security?.session_timeout ?? 120,
     setting_two_factor_required: settings?.security?.two_factor_required ?? false,
     setting_login_attempts_limit: settings?.security?.login_attempts_limit ?? 5,
+    // Telegram
+    setting_telegram_bot_token: settings?.telegram?.telegram_bot_token ?? '',
+    setting_telegram_bot_name: settings?.telegram?.telegram_bot_name ?? '',
+    setting_telegram_secret_token: settings?.telegram?.telegram_secret_token ?? '',
   });
 
   const handleSubmit = (e: FormEvent) => {
@@ -172,6 +183,7 @@ export default function SettingsIndex() {
               <TabsTrigger value="email">Email</TabsTrigger>
               <TabsTrigger value="ticket">Ticket</TabsTrigger>
               <TabsTrigger value="notification">Notifications</TabsTrigger>
+              <TabsTrigger value="telegram">Telegram Bot</TabsTrigger>
               <TabsTrigger value="security">Security</TabsTrigger>
             </TabsList>
 
@@ -213,7 +225,33 @@ export default function SettingsIndex() {
                         />
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Recommended size: 512x512px. SVG, PNG or JPG.
+                        Main logo (usually horizontal). Used in header and sidebar expansion.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="setting_app_icon">Application Icon</Label>
+                      <div className="flex items-center gap-4">
+                        {settings?.general?.app_icon && (
+                          <div className="flex aspect-square size-12 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                            <img 
+                              src={settings.general.app_icon} 
+                              alt="Icon" 
+                              className="size-full object-cover" 
+                            />
+                          </div>
+                        )}
+                        <Input
+                          id="setting_app_icon"
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setData('setting_app_icon', e.target.files?.[0] || '')}
+                          className="flex-1"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Square icon logo. Used in collapsed sidebar and auth pages.
                       </p>
                     </div>
                   </div>
@@ -603,6 +641,68 @@ export default function SettingsIndex() {
                       />
                       <Label htmlFor="setting_notify_watchers">Notify ticket watchers</Label>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {/* Telegram Settings */}
+            <TabsContent value="telegram">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Telegram Bot Configuration</CardTitle>
+                  <CardDescription>Configure your Telegram bot for notifications and actions</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="setting_telegram_bot_token">Bot API Token</Label>
+                      <Input
+                        id="setting_telegram_bot_token"
+                        type="password"
+                        value={data.setting_telegram_bot_token}
+                        onChange={(e) => setData('setting_telegram_bot_token', e.target.value)}
+                        placeholder="1234567890:ABCdefGHIjklMNO..."
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Obtained from @BotFather on Telegram
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="setting_telegram_bot_name">Bot Username</Label>
+                      <Input
+                        id="setting_telegram_bot_name"
+                        value={data.setting_telegram_bot_name}
+                        onChange={(e) => setData('setting_telegram_bot_name', e.target.value)}
+                        placeholder="YourBotName_bot"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        The username of your bot without the @ symbol
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="setting_telegram_secret_token">Webhook Secret Token</Label>
+                    <Input
+                      id="setting_telegram_secret_token"
+                      type="password"
+                      value={data.setting_telegram_secret_token}
+                      onChange={(e) => setData('setting_telegram_secret_token', e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      A random string used to verify that webhook requests are truly from Telegram.
+                    </p>
+                  </div>
+
+                  <div className="rounded-md bg-muted p-4">
+                    <h4 className="text-sm font-medium mb-1">Webhook URL</h4>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Use this URL when setting up your bot webhook:
+                    </p>
+                    <code className="block p-2 bg-background rounded border text-xs break-all">
+                      {window.location.origin}/api/telegram/webhook
+                    </code>
                   </div>
                 </CardContent>
               </Card>

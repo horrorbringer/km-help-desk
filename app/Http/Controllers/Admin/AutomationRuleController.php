@@ -146,6 +146,7 @@ class AutomationRuleController extends Controller
             'notify_role' => 'Notify Role',
             'notify_user' => 'Notify User',
             'notify_department_managers' => 'Notify Department Managers',
+            'send_telegram_message' => '📱 Send Telegram Message',
         ];
     }
 

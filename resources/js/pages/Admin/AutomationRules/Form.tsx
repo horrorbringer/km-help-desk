@@ -170,6 +170,12 @@ export default function AutomationRuleForm({
         return options.roles;
       case 'notify_user':
         return options.users;
+      case 'send_telegram_message':
+        return [
+          { value: 'requester', label: 'Requester' },
+          { value: 'assigned_agent', label: 'Assigned Agent' },
+          { value: 'assigned_team', label: 'Assigned Team' },
+        ];
       default:
         return [];
     }

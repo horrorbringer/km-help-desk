@@ -149,6 +149,17 @@ class Ticket extends Model
         return $this->belongsTo(User::class , 'assigned_agent_id');
     }
 
+    public function isPending(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isOpen(): bool
+    {
+        return $this->status === self::STATUS_OPEN;
+    }
+
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(TicketCategory::class);

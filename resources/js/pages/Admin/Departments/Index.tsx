@@ -32,6 +32,7 @@ interface Department {
   is_support_team: boolean;
   is_active: boolean;
   description?: string | null;
+  telegram_chat_id?: string | null;
   users_count: number;
   tickets_count: number;
   created_at: string;
@@ -59,6 +60,7 @@ export default function DepartmentsIndex() {
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkDialogAction, setBulkDialogAction] = useState<string>('');
   const [togglingStatus, setTogglingStatus] = useState<number | null>(null);
+  const [viewType, setViewType] = useState<'grid' | 'list'>('grid');
 
   const handleFilter = (key: string, value: string) => {
     const newFilters = { ...filters };
@@ -271,11 +273,31 @@ export default function DepartmentsIndex() {
             <h1 className="text-3xl font-bold">Departments</h1>
             <p className="text-muted-foreground">Manage departments and support teams</p>
           </div>
-          {can('departments.create') && (
-            <Button asChild>
-              <Link href={route('admin.departments.create')}>+ New Department</Link>
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            <div className="flex p-1 bg-muted rounded-md mr-2">
+              <Button 
+                variant={viewType === 'grid' ? 'secondary' : 'ghost'} 
+                size="sm" 
+                className="h-8 px-3"
+                onClick={() => setViewType('grid')}
+              >
+                Grid
+              </Button>
+              <Button 
+                variant={viewType === 'list' ? 'secondary' : 'ghost'} 
+                size="sm" 
+                className="h-8 px-3"
+                onClick={() => setViewType('list')}
+              >
+                List
+              </Button>
+            </div>
+            {can('departments.create') && (
+              <Button asChild>
+                <Link href={route('admin.departments.create')}>+ New Department</Link>
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Filters */}
@@ -365,16 +387,16 @@ export default function DepartmentsIndex() {
           </Card>
         )}
 
-        {/* Departments Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {departments.data.length === 0 ? (
-            <Card className="col-span-full">
-              <CardContent className="py-8 text-center text-muted-foreground">
-                No departments found.
-              </CardContent>
-            </Card>
-          ) : (
-            departments.data.map((department) => {
+        {/* Departments View */}
+        {departments.data.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              No departments found.
+            </CardContent>
+          </Card>
+        ) : viewType === 'grid' ? (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {departments.data.map((department) => {
               const isIT = isITTeam(department);
               return (
                 <Card 
@@ -385,13 +407,19 @@ export default function DepartmentsIndex() {
                     !department.is_active && "opacity-60"
                   )}
                 >
-                  {isIT && (
-                    <div className="absolute top-2 right-2">
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    {department.telegram_chat_id && (
+                      <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] h-5 flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+                        TG
+                      </Badge>
+                    )}
+                    {isIT && (
                       <Badge variant="default" className="text-xs bg-primary text-primary-foreground">
                         IT Team
                       </Badge>
-                    </div>
-                  )}
+                    )}
+                  </div>
                   {can('departments.edit') && (
                     <div className="absolute top-2 left-2">
                       <Checkbox
@@ -401,7 +429,7 @@ export default function DepartmentsIndex() {
                       />
                     </div>
                   )}
-                  <CardHeader className={cn("pt-10", isIT && "pt-12")}>
+                  <CardHeader className={cn("pt-10", (isIT || department.telegram_chat_id) && "pt-12")}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className={cn("text-lg", isIT && "text-primary font-bold")}>
@@ -423,49 +451,149 @@ export default function DepartmentsIndex() {
                             togglingStatus === department.id && 'opacity-50 cursor-wait'
                           )}
                           onClick={() => can('departments.edit') && handleToggleStatus(department)}
-                          title={can('departments.edit') ? `Click to ${department.is_active ? 'deactivate' : 'activate'}` : ''}
                         >
                           {togglingStatus === department.id ? '...' : department.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
                     </div>
                   </CardHeader>
-                <CardContent>
-                  {department.description && (
-                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                      {department.description}
-                    </p>
-                  )}
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex gap-4">
-                      <div>
-                        <span className="text-muted-foreground">Users:</span>{' '}
-                        <span className="font-medium">{department.users_count}</span>
+                  <CardContent>
+                    {department.description && (
+                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                        {department.description}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex gap-4">
+                        <div>
+                          <span className="text-muted-foreground">Users:</span>{' '}
+                          <span className="font-medium">{department.users_count}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Tickets:</span>{' '}
+                          <span className="font-medium">{department.tickets_count}</span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-muted-foreground">Tickets:</span>{' '}
-                        <span className="font-medium">{department.tickets_count}</span>
+                      <div className="flex gap-2">
+                        {can('departments.view') && (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.departments.show', department.id)}>View</Link>
+                          </Button>
+                        )}
+                        {can('departments.edit') && (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={route('admin.departments.edit', department.id)}>Edit</Link>
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      {can('departments.view') && (
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={route('admin.departments.show', department.id)}>View</Link>
-                        </Button>
-                      )}
-                      {can('departments.edit') && (
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={route('admin.departments.edit', department.id)}>Edit</Link>
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        ) : (
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b">
+                  <tr>
+                    <th className="px-6 py-3 w-10">
+                      <Checkbox 
+                        checked={allSelected} 
+                        onCheckedChange={handleSelectAll} 
+                        className={cn(someSelected && "opacity-50")}
+                      />
+                    </th>
+                    <th className="px-6 py-3">Department Name</th>
+                    <th className="px-6 py-3">Code</th>
+                    <th className="px-6 py-3">Type</th>
+                    <th className="px-6 py-3">Telegram</th>
+                    <th className="px-6 py-3">Users</th>
+                    <th className="px-6 py-3 text-right">Status</th>
+                    <th className="px-6 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {departments.data.map((department) => (
+                    <tr 
+                      key={department.id} 
+                      className={cn(
+                        "hover:bg-muted/50 transition-colors",
+                        !department.is_active && "opacity-60"
+                      )}
+                    >
+                      <td className="px-6 py-4">
+                        <Checkbox 
+                          checked={selectedDepartments.includes(department.id)}
+                          onCheckedChange={(checked) => handleSelectDepartment(department.id, checked as boolean)}
+                        />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Link 
+                            href={route('admin.departments.show', department.id)}
+                            className="font-medium hover:underline text-primary"
+                          >
+                            {department.name}
+                          </Link>
+                          {isITTeam(department) && (
+                            <Badge variant="outline" className="text-[10px] h-5 bg-blue-50 text-blue-700 border-blue-200">
+                              IT
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-xs">{department.code}</td>
+                      <td className="px-6 py-4">
+                        {department.is_support_team ? (
+                          <Badge variant="outline" className="font-normal">Support Team</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">Regular</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {department.telegram_chat_id ? (
+                          <div className="flex items-center gap-1.5 text-xs text-sky-700 bg-sky-50 px-2 py-1 rounded-full border border-sky-100 w-fit">
+                            <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+                            Connected
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">Not Configured</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 font-medium">{department.users_count}</td>
+                      <td className="px-6 py-4 text-right">
+                        <Badge
+                          variant={department.is_active ? 'default' : 'secondary'}
+                          className={cn(
+                            department.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600',
+                            can('departments.edit') && 'cursor-pointer hover:opacity-80 transition-opacity',
+                            togglingStatus === department.id && 'opacity-50 cursor-wait'
+                          )}
+                          onClick={() => can('departments.edit') && handleToggleStatus(department)}
+                        >
+                          {department.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-1">
+                          {can('departments.edit') && (
+                            <Button asChild variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <Link href={route('admin.departments.edit', department.id)}>
+                                <Sparkles className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
 
         {/* Bulk Action Dialog */}
         {bulkDialogOpen && (
