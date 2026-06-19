@@ -25,6 +25,7 @@ class WorkflowTemplateRequest extends FormRequest
             'workflow_steps.*.type' => ['required', 'string', Rule::in(['approval', 'conditional_approval', 'notification', 'routing', 'conditional_routing', 'assignment'])],
             'workflow_steps.*.notify_type' => ['nullable', 'string'],
             'workflow_steps.*.assign_to' => ['nullable', 'string'],
+            'workflow_steps.*.user_id' => ['nullable', 'exists:users,id'],
             'workflow_steps.*.approval_level' => [
                 'required_if:workflow_steps.*.type,approval,conditional_approval',
                 'string',

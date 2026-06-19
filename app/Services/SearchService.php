@@ -3,9 +3,7 @@
 namespace App\Services;
 
 use App\Models\Ticket;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 class SearchService
 {
@@ -16,10 +14,10 @@ class SearchService
     public function searchTickets(array $filters, int $perPage = 15, ?\App\Models\User $user = null): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         $user = $user ?? \Illuminate\Support\Facades\Auth::user();
-        
+
         // Create cache key from filters and user ID for proper visibility caching
-        $cacheKey = 'ticket_search_' . md5(json_encode($filters) . $perPage . ($user ? $user->id : 'guest'));
-        
+        $cacheKey = 'ticket_search_'.md5(json_encode($filters).$perPage.($user ? $user->id : 'guest'));
+
         // Cache for 1 minute for better real-time feel
         return Cache::remember($cacheKey, 60, function () use ($filters, $perPage, $user) {
             $query = Ticket::query()
@@ -40,14 +38,14 @@ class SearchService
                     },
                 ])
                 ->select('tickets.*');
-            
+
             // Apply visibility filters based on user role and permissions
             if ($user) {
                 $this->applyVisibilityFilters($query, $user);
             }
 
             // Optimized full-text search
-            if (!empty($filters['q'])) {
+            if (! empty($filters['q'])) {
                 $searchTerm = $filters['q'];
                 $query->where(function ($q) use ($searchTerm) {
                     $q->where('ticket_number', 'like', "%{$searchTerm}%")
@@ -61,7 +59,7 @@ class SearchService
             }
 
             // Optimized status filter
-            if (!empty($filters['status'])) {
+            if (! empty($filters['status'])) {
                 if (is_array($filters['status'])) {
                     $query->whereIn('status', $filters['status']);
                 } else {
@@ -70,7 +68,7 @@ class SearchService
             }
 
             // Optimized priority filter
-            if (!empty($filters['priority'])) {
+            if (! empty($filters['priority'])) {
                 if (is_array($filters['priority'])) {
                     $query->whereIn('priority', $filters['priority']);
                 } else {
@@ -79,7 +77,7 @@ class SearchService
             }
 
             // Optimized team filter
-            if (!empty($filters['team'])) {
+            if (! empty($filters['team'])) {
                 $query->where('assigned_team_id', $filters['team']);
             }
 
@@ -87,32 +85,32 @@ class SearchService
             if (isset($filters['agent'])) {
                 if ($filters['agent'] === '__none') {
                     $query->whereNull('assigned_agent_id');
-                } elseif (!empty($filters['agent'])) {
+                } elseif (! empty($filters['agent'])) {
                     $query->where('assigned_agent_id', $filters['agent']);
                 }
             }
 
             // Optimized category filter
-            if (!empty($filters['category'])) {
+            if (! empty($filters['category'])) {
                 $query->where('category_id', $filters['category']);
             }
 
             // Optimized project filter
-            if (!empty($filters['project'])) {
+            if (! empty($filters['project'])) {
                 $query->where('project_id', $filters['project']);
             }
 
             // Optimized requester filter
-            if (!empty($filters['requester'])) {
+            if (! empty($filters['requester'])) {
                 $query->where('requester_id', $filters['requester']);
             }
 
             // Date range filters
-            if (!empty($filters['date_from'])) {
+            if (! empty($filters['date_from'])) {
                 $query->whereDate('created_at', '>=', $filters['date_from']);
             }
 
-            if (!empty($filters['date_to'])) {
+            if (! empty($filters['date_to'])) {
                 $query->whereDate('created_at', '<=', $filters['date_to']);
             }
 
@@ -133,7 +131,7 @@ class SearchService
             }
 
             // Tag filter
-            if (!empty($filters['tags'])) {
+            if (! empty($filters['tags'])) {
                 $tagIds = is_array($filters['tags']) ? $filters['tags'] : [$filters['tags']];
                 $query->whereHas('tags', function ($tagQuery) use ($tagIds) {
                     $tagQuery->whereIn('tags.id', $tagIds);
@@ -160,7 +158,7 @@ class SearchService
                     $query->whereDoesntHave('approvals');
                 }
             }
-            
+
             // Note: Rejected tickets (status: cancelled) remain visible in the main list
             // They can be filtered using approval_status='rejected' or status='cancelled'
             // Visibility is controlled at the controller level based on user permissions
@@ -168,25 +166,25 @@ class SearchService
             // Ordering
             $orderBy = $filters['order_by'] ?? 'created_at';
             $orderDir = $filters['order_dir'] ?? 'desc';
-            
+
             // Validate order_by field
             $allowedOrderFields = ['created_at', 'updated_at', 'status', 'priority', 'ticket_number', 'subject'];
-            if (!in_array($orderBy, $allowedOrderFields)) {
+            if (! in_array($orderBy, $allowedOrderFields)) {
                 $orderBy = 'created_at';
             }
-            
+
             // Validate order direction
             $orderDir = strtolower($orderDir) === 'asc' ? 'asc' : 'desc';
-            
+
             $query->orderBy($orderBy, $orderDir);
 
             return $query->paginate($perPage);
         });
     }
-    
+
     /**
      * Apply visibility filters based on user role and permissions
-     * 
+     *
      * Visibility Rules:
      * - Admin/Manager with tickets.assign: See ALL tickets
      * - Manager without tickets.assign: See tickets in their department
@@ -201,28 +199,33 @@ class SearchService
             // No filter needed - see all tickets
             return;
         }
-        
+
         // Apply role-based visibility filters
         $query->where(function ($q) use ($user) {
             // 1. Tickets created by the user (requester)
             $q->where('requester_id', $user->id);
-            
+
             // 2. Tickets assigned to the user (agent)
             $q->orWhere('assigned_agent_id', $user->id);
-            
+
             // 3. Tickets assigned to user's team/department
             // Only Agents and Managers can see tickets assigned to their team
             // Requesters can only see tickets they created or are watching
             if ($user->department_id && $user->hasAnyRole(array_merge(\App\Constants\RoleConstants::getAgentRoles(), [\App\Constants\RoleConstants::MANAGER]))) {
                 $q->orWhere('assigned_team_id', $user->department_id);
             }
-            
+
             // 4. Tickets the user is watching
             $q->orWhereHas('watchers', function ($watcherQuery) use ($user) {
                 $watcherQuery->where('users.id', $user->id);
             });
-            
-            // 5. For managers: tickets in their department (even if not assigned)
+
+            // 5. Tickets with an approval explicitly assigned to the user
+            $q->orWhereHas('approvals', function ($approvalQuery) use ($user) {
+                $approvalQuery->where('approver_id', $user->id);
+            });
+
+            // 6. For managers: tickets in their department (even if not assigned)
             // Check if user has Manager role using Spatie's HasRoles trait
             if ($user->hasRole(\App\Constants\RoleConstants::MANAGER)) {
                 if ($user->department_id) {
@@ -231,6 +234,17 @@ class SearchService
                     });
                 }
             }
+        });
+
+        $query->where(function ($q) use ($user) {
+            $q->whereDoesntHave('approvals', function ($approvalQuery) {
+                $approvalQuery->where('status', 'pending');
+            })
+                ->orWhere('requester_id', $user->id)
+                ->orWhereHas('approvals', function ($approvalQuery) use ($user) {
+                    $approvalQuery->where('status', 'pending')
+                        ->where('approver_id', $user->id);
+                });
         });
     }
 
@@ -268,4 +282,3 @@ class SearchService
         return $suggestions;
     }
 }
-

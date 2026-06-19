@@ -1,14 +1,14 @@
 /**
  * Module Permissions Configuration
- * 
+ *
  * This is the SINGLE SOURCE OF TRUTH for all module permissions.
  * Each module defines its CRUD actions and required permissions.
- * 
+ *
  * Usage:
  *   import { useModulePermissions } from '@/hooks/use-module-permissions';
- *   
+ *
  *   const { canCreate, canEdit, canDelete, canView } = useModulePermissions('approval-levels');
- *   
+ *
  *   {canCreate && <Button>Create</Button>}
  *   {canEdit && <Button>Edit</Button>}
  *   {canDelete && <Button>Delete</Button>}
@@ -55,7 +55,13 @@ export const modulePermissions: Record<string, ModulePermissions> = {
     // Core Modules
     // ─────────────────────────────────────────────────────────────────────────
 
-    'tickets': {
+    dashboard: {
+        id: 'dashboard',
+        name: 'Dashboard',
+        view: { permission: 'dashboard.view' },
+    },
+
+    tickets: {
         id: 'tickets',
         name: 'Tickets',
         view: { permission: 'tickets.view' },
@@ -65,7 +71,10 @@ export const modulePermissions: Record<string, ModulePermissions> = {
         custom: {
             assign: { permission: 'tickets.assign' },
             changeStatus: { permission: 'tickets.change-status' },
-            addComment: { permission: 'tickets.add-comment' },
+            changePriority: { permission: 'tickets.change-priority' },
+            updateDetails: { permission: 'tickets.update-details' },
+            addComment: { permission: 'tickets.comment' },
+            manageComments: { permission: 'tickets.manage-comments' },
         },
     },
 
@@ -78,7 +87,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
         delete: { permission: 'ticket-templates.delete' },
     },
 
-    'bookings': {
+    bookings: {
         id: 'bookings',
         name: 'Bookings',
         view: { permission: 'bookings.view' },
@@ -91,7 +100,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
     // Management Modules
     // ─────────────────────────────────────────────────────────────────────────
 
-    'users': {
+    users: {
         id: 'users',
         name: 'Users',
         view: { permission: 'users.view' },
@@ -107,7 +116,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
         },
     },
 
-    'roles': {
+    roles: {
         id: 'roles',
         name: 'Roles & Permissions',
         view: { permission: 'roles.view' },
@@ -116,7 +125,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
         delete: { permission: 'roles.delete' },
     },
 
-    'departments': {
+    departments: {
         id: 'departments',
         name: 'Departments',
         view: { permission: 'departments.view' },
@@ -125,7 +134,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
         delete: { permission: 'departments.delete' },
     },
 
-    'projects': {
+    projects: {
         id: 'projects',
         name: 'Projects',
         view: { permission: 'projects.view' },
@@ -138,7 +147,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
     // Configuration Modules
     // ─────────────────────────────────────────────────────────────────────────
 
-    'categories': {
+    categories: {
         id: 'categories',
         name: 'Categories',
         view: { permission: 'categories.view' },
@@ -203,7 +212,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
     // Analytics Modules
     // ─────────────────────────────────────────────────────────────────────────
 
-    'reports': {
+    reports: {
         id: 'reports',
         name: 'Reports',
         view: { permission: 'reports.view' },
@@ -212,7 +221,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
         delete: { permission: 'reports.delete' },
     },
 
-    'notifications': {
+    notifications: {
         id: 'notifications',
         name: 'Notifications',
         // Notifications are accessible to all authenticated users
@@ -226,7 +235,7 @@ export const modulePermissions: Record<string, ModulePermissions> = {
     // Additional Configuration Modules
     // ─────────────────────────────────────────────────────────────────────────
 
-    'tags': {
+    tags: {
         id: 'tags',
         name: 'Tags',
         view: { permission: 'tags.view' },
@@ -300,7 +309,9 @@ export const modulePermissions: Record<string, ModulePermissions> = {
 /**
  * Get module permissions by module ID
  */
-export function getModulePermissions(moduleId: string): ModulePermissions | undefined {
+export function getModulePermissions(
+    moduleId: string,
+): ModulePermissions | undefined {
     return modulePermissions[moduleId];
 }
 

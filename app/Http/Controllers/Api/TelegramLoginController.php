@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AuthLandingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -43,8 +44,16 @@ class TelegramLoginController extends Controller
         // Consume the token (delete it)
         Cache::forget('tg_login_' . $token);
 
-        // Redirect to intended target or dashboard
-        $redirectUrl = $request->query('redirect', route('dashboard'));
+        $landingService = app(AuthLandingService::class);
+        $redirectUrl = $request->query('redirect', $landingService->resolveFor($user));
+
+        if (
+            is_string($redirectUrl)
+            && str_contains($redirectUrl, '/admin/dashboard')
+            && ! $user->can('dashboard.view')
+        ) {
+            $redirectUrl = $landingService->resolveFor($user);
+        }
 
         return redirect($redirectUrl);
     }

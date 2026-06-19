@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\NotificationType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -31,6 +32,7 @@ class HelpDeskNotification extends Model
         'ticket_id',
         'related_user_id',
         'data',
+        'dedupe_key',
         'is_read',
         'read_at',
     ];
@@ -42,16 +44,23 @@ class HelpDeskNotification extends Model
     ];
 
     public const TYPES = [
-        'ticket_created',
-        'ticket_assigned',
-        'ticket_updated',
-        'ticket_resolved',
-        'ticket_closed',
-        'ticket_commented',
-        'ticket_mentioned',
-        'ticket_watched',
-        'sla_breached',
-        'sla_warning',
+        NotificationType::TICKET_CREATED,
+        NotificationType::TICKET_ASSIGNED,
+        NotificationType::TICKET_UPDATED,
+        NotificationType::TICKET_RESOLVED,
+        NotificationType::TICKET_CLOSED,
+        NotificationType::TICKET_COMMENTED,
+        NotificationType::TICKET_MENTIONED,
+        NotificationType::TICKET_WATCHED,
+        NotificationType::TICKET_ROUTED_TO_TEAM,
+        NotificationType::TEAMMATE_TICKET_CREATED,
+        NotificationType::COMMENT_ADDED,
+        NotificationType::COMMENT_INTERNAL,
+        NotificationType::SLA_BREACHED,
+        NotificationType::SLA_WARNING,
+        NotificationType::APPROVAL_REQUESTED,
+        NotificationType::APPROVAL_APPROVED,
+        NotificationType::APPROVAL_REJECTED,
     ];
 
     public function user(): BelongsTo
@@ -66,12 +75,12 @@ class HelpDeskNotification extends Model
 
     public function relatedUser(): BelongsTo
     {
-        return $this->belongsTo(User::class , 'related_user_id');
+        return $this->belongsTo(User::class, 'related_user_id');
     }
 
     public function markAsRead(): void
     {
-        if (!$this->is_read) {
+        if (! $this->is_read) {
             $this->update([
                 'is_read' => true,
                 'read_at' => now(),

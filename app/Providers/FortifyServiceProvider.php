@@ -4,6 +4,9 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Http\Responses\Auth\LoginResponse;
+use App\Http\Responses\Auth\TwoFactorLoginResponse;
+use App\Http\Responses\Auth\VerifyEmailResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -40,6 +43,19 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::createUsersUsing(CreateNewUser::class);
+
+        $this->app->singleton(
+            \Laravel\Fortify\Contracts\LoginResponse::class,
+            LoginResponse::class,
+        );
+        $this->app->singleton(
+            \Laravel\Fortify\Contracts\TwoFactorLoginResponse::class,
+            TwoFactorLoginResponse::class,
+        );
+        $this->app->singleton(
+            \Laravel\Fortify\Contracts\VerifyEmailResponse::class,
+            VerifyEmailResponse::class,
+        );
     }
 
     /**

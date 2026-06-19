@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Ticket;
+use App\Services\ApprovalWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -14,6 +16,10 @@ class TicketResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $user = $request->user();
+        $approvalWorkflow = app(ApprovalWorkflowService::class);
+        $canViewInternal = $user?->can('tickets.manage-comments') ?? false;
+
         return [
             'id' => $this->id,
             'ticket_number' => $this->ticket_number,
@@ -21,6 +27,24 @@ class TicketResource extends JsonResource
             'description' => $this->description,
             'internal_note' => $this->when($request->user()?->can('tickets.assign'), $this->internal_note),
             'status' => $this->status,
+            'status_label' => $this->statusLabel(),
+            'approval_status' => $this->approvalStatus(),
+            'resolution_summary' => $this->resolution_summary,
+            'capabilities' => [
+                'update_details' => $user?->can('update', $this->resource) ?? false,
+                'change_priority' => $user?->can('tickets.change-priority') ?? false,
+                'comment' => $user?->can('tickets.comment') ?? false,
+                'manage_comments' => $user?->can('tickets.manage-comments') ?? false,
+                'assign' => $user?->can('tickets.assign') ?? false,
+                'resubmit' => $user?->can('resubmit', $this->resource) ?? false,
+            ],
+            'allowed_statuses' => $user
+                ? collect(Ticket::STATUSES)
+                    ->reject(fn (string $status) => $status === $this->status)
+                    ->filter(fn (string $status) => $user->can('changeStatus', [$this->resource, $status]))
+                    ->values()
+                    ->all()
+                : [],
             'priority' => $this->priority,
             'estimated_cost' => $this->estimated_cost,
             'source' => $this->source,
@@ -64,7 +88,7 @@ class TicketResource extends JsonResource
                             }
                         }
                     }
-                    
+
                     return [
                         'id' => $cfv->id,
                         'custom_field_id' => $cfv->custom_field_id,
@@ -79,37 +103,43 @@ class TicketResource extends JsonResource
                     ];
                 });
             }),
-            'comments' => $this->whenLoaded('comments', function () {
-                return $this->comments->map(function ($comment) {
-                    return [
-                        'id' => $comment->id,
-                        'body' => $comment->body,
-                        'is_internal' => $comment->is_internal,
-                        'type' => $comment->type,
-                        'parent_id' => $comment->parent_id,
-                        'created_at' => $comment->created_at,
-                        'user' => $comment->user ? [
-                            'id' => $comment->user->id,
-                            'name' => $comment->user->name,
-                            'email' => $comment->user->email,
-                            'avatar' => $comment->user->avatar,
-                        ] : null,
-                        'replies' => $comment->replies ? $comment->replies->map(function ($reply) {
-                            return [
-                                'id' => $reply->id,
-                                'body' => $reply->body,
-                                'is_internal' => $reply->is_internal,
-                                'created_at' => $reply->created_at,
-                                'user' => $reply->user ? [
-                                    'id' => $reply->user->id,
-                                    'name' => $reply->user->name,
-                                    'email' => $reply->user->email,
-                                    'avatar' => $reply->user->avatar,
-                                ] : null,
-                            ];
-                        }) : [],
-                    ];
-                });
+            'comments' => $this->whenLoaded('comments', function () use ($canViewInternal) {
+                return $this->comments
+                    ->when(! $canViewInternal, fn ($comments) => $comments->where('is_internal', false))
+                    ->values()
+                    ->map(function ($comment) use ($canViewInternal) {
+                        return [
+                            'id' => $comment->id,
+                            'body' => $comment->body,
+                            'is_internal' => $comment->is_internal,
+                            'type' => $comment->type,
+                            'parent_id' => $comment->parent_id,
+                            'created_at' => $comment->created_at,
+                            'user' => $comment->user ? [
+                                'id' => $comment->user->id,
+                                'name' => $comment->user->name,
+                                'email' => $comment->user->email,
+                                'avatar' => $comment->user->avatar,
+                            ] : null,
+                            'replies' => $comment->replies ? $comment->replies
+                                ->when(! $canViewInternal, fn ($replies) => $replies->where('is_internal', false))
+                                ->values()
+                                ->map(function ($reply) {
+                                    return [
+                                        'id' => $reply->id,
+                                        'body' => $reply->body,
+                                        'is_internal' => $reply->is_internal,
+                                        'created_at' => $reply->created_at,
+                                        'user' => $reply->user ? [
+                                            'id' => $reply->user->id,
+                                            'name' => $reply->user->name,
+                                            'email' => $reply->user->email,
+                                            'avatar' => $reply->user->avatar,
+                                        ] : null,
+                                    ];
+                                }) : [],
+                        ];
+                    });
             }),
             'attachments' => $this->whenLoaded('attachments', function () {
                 return $this->attachments->map(function ($attachment) {
@@ -149,21 +179,26 @@ class TicketResource extends JsonResource
                     ];
                 });
             }),
-            'approvals' => $this->whenLoaded('approvals', function () {
-                return $this->approvals->map(function ($approval) {
+            'approvals' => $this->whenLoaded('approvals', function () use ($approvalWorkflow, $canViewInternal, $user) {
+                return $this->approvals->map(function ($approval) use ($approvalWorkflow, $canViewInternal, $user) {
                     return [
                         'id' => $approval->id,
                         'approval_level' => $approval->approval_level,
                         'status_label' => $approval->status_label,
                         'status' => $approval->status,
-                        'comments' => $approval->comments,
+                        'comments' => $canViewInternal || $approval->status === 'rejected'
+                            ? $approval->comments
+                            : null,
                         'approved_at' => $approval->approved_at,
                         'rejected_at' => $approval->rejected_at,
                         'sequence' => $approval->sequence,
+                        'can_approve' => $user
+                            && $approval->status === 'pending'
+                            && $approvalWorkflow->canApprove($approval, $user),
                         'approver' => $approval->approver ? [
                             'id' => $approval->approver->id,
                             'name' => $approval->approver->name,
-                            'email' => $approval->approver->email,
+                            'email' => $canViewInternal ? $approval->approver->email : null,
                             'avatar' => $approval->approver->avatar,
                         ] : null,
                         'routed_to_team' => $approval->routedToTeam ? [
@@ -174,24 +209,33 @@ class TicketResource extends JsonResource
                     ];
                 });
             }),
-            'current_approval' => $this->whenLoaded('approvals', function () {
+            'current_approval' => $this->whenLoaded('approvals', function () use ($approvalWorkflow, $canViewInternal, $user) {
                 $current = $this->currentApproval();
-                if (!$current) return null;
+                if (! $current) {
+                    return null;
+                }
+
                 return [
                     'id' => $current->id,
                     'approval_level' => $current->approval_level,
                     'status_label' => $current->status_label,
                     'status' => $current->status,
+                    'can_approve' => $user
+                        && $current->status === 'pending'
+                        && $approvalWorkflow->canApprove($current, $user),
                     'approver' => $current->approver ? [
                         'id' => $current->approver->id,
                         'name' => $current->approver->name,
-                        'email' => $current->approver->email,
+                        'email' => $canViewInternal ? $current->approver->email : null,
                     ] : null,
                 ];
             }),
-            'rejected_approval' => $this->whenLoaded('approvals', function () {
+            'rejected_approval' => $this->whenLoaded('approvals', function () use ($canViewInternal) {
                 $rejected = $this->rejectedApproval();
-                if (!$rejected) return null;
+                if (! $rejected) {
+                    return null;
+                }
+
                 return [
                     'id' => $rejected->id,
                     'approval_level' => $rejected->approval_level,
@@ -201,7 +245,7 @@ class TicketResource extends JsonResource
                     'approver' => $rejected->approver ? [
                         'id' => $rejected->approver->id,
                         'name' => $rejected->approver->name,
-                        'email' => $rejected->approver->email,
+                        'email' => $canViewInternal ? $rejected->approver->email : null,
                     ] : null,
                 ];
             }),

@@ -4,14 +4,16 @@ namespace App\Services;
 
 use App\Models\PushSubscription;
 use Illuminate\Support\Facades\Log;
+use Minishlink\WebPush\Subscription;
+use Minishlink\WebPush\WebPush;
 
 class PushNotificationService
 {
-    private string $serverKey;
-
-    public function __construct()
+    public function isConfigured(): bool
     {
-        $this->serverKey = config('services.fcm.server_key', '');
+        return filled(config('webpush.vapid.subject'))
+            && filled(config('webpush.vapid.public_key'))
+            && filled(config('webpush.vapid.private_key'));
     }
 
     /**
@@ -67,27 +69,77 @@ class PushNotificationService
         }
     }
 
-    /**
-     * Send push notification to user (placeholder implementation)
-     * In a real implementation, you would integrate with FCM, Web Push API, etc.
-     */
     public function sendToUser(int $userId, string $title, string $body, array $data = []): bool
     {
+        if (! $this->isConfigured()) {
+            Log::warning('Push notification skipped because VAPID is not configured');
+
+            return false;
+        }
+
         $subscriptions = PushSubscription::where('user_id', $userId)->get();
 
         if ($subscriptions->isEmpty()) {
             return true; // No subscriptions, consider success
         }
 
-        // For now, just log the notification
-        // In production, integrate with FCM, Web Push API, or similar service
-        Log::info('Push notification would be sent', [
-            'user_id' => $userId,
+        $webPush = new WebPush([
+            'VAPID' => [
+                'subject' => config('webpush.vapid.subject'),
+                'publicKey' => config('webpush.vapid.public_key'),
+                'privateKey' => config('webpush.vapid.private_key'),
+            ],
+        ]);
+        $payload = json_encode([
             'title' => $title,
             'body' => $body,
             'data' => $data,
-            'subscription_count' => $subscriptions->count(),
-        ]);
+        ], JSON_THROW_ON_ERROR);
+
+        foreach ($subscriptions as $storedSubscription) {
+            $webPush->queueNotification(
+                Subscription::create([
+                    'endpoint' => $storedSubscription->endpoint,
+                    'publicKey' => $storedSubscription->keys['p256dh'],
+                    'authToken' => $storedSubscription->keys['auth'],
+                    'contentEncoding' => 'aes128gcm',
+                ]),
+                $payload
+            );
+        }
+
+        $failed = [];
+        $successful = 0;
+        foreach ($webPush->flush() as $report) {
+            if ($report->isSuccess()) {
+                $successful++;
+
+                continue;
+            }
+
+            $endpoint = (string) $report->getRequest()->getUri();
+            if ($report->isSubscriptionExpired()) {
+                PushSubscription::where('endpoint', $endpoint)->delete();
+
+                continue;
+            }
+
+            $failed[] = $report->getReason();
+        }
+
+        if ($failed !== []) {
+            Log::warning('Push delivery failed for one or more subscriptions', [
+                'user_id' => $userId,
+                'successful_count' => $successful,
+                'failed_reasons' => array_values(array_unique($failed)),
+            ]);
+
+            if ($successful === 0) {
+                throw new \RuntimeException(
+                    'Push delivery failed: '.implode('; ', array_unique($failed))
+                );
+            }
+        }
 
         return true;
     }

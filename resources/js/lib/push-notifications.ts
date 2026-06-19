@@ -1,5 +1,8 @@
 // Push Notification Manager
 export default class PushNotificationManager {
+    private registration: ServiceWorkerRegistration | null;
+    private vapidPublicKey: string | null;
+
     constructor() {
         this.registration = null;
         this.vapidPublicKey = null;
@@ -64,6 +67,9 @@ export default class PushNotificationManager {
     async subscribe() {
         if (!this.registration) {
             throw new Error('Service Worker not registered');
+        }
+        if (!this.vapidPublicKey) {
+            throw new Error('VAPID public key is not configured');
         }
 
         try {
@@ -174,7 +180,7 @@ export default class PushNotificationManager {
     }
 
     // Utility functions
-    urlBase64ToUint8Array(base64String) {
+    urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
         const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
         const base64 = (base64String + padding)
             .replace(/-/g, '+')
@@ -189,7 +195,11 @@ export default class PushNotificationManager {
         return outputArray;
     }
 
-    arrayBufferToBase64(buffer) {
+    arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+        if (!buffer) {
+            throw new Error('Push subscription key is missing');
+        }
+
         const bytes = new Uint8Array(buffer);
         let binary = '';
         for (let i = 0; i < bytes.byteLength; i++) {
@@ -200,4 +210,10 @@ export default class PushNotificationManager {
 }
 
 // Export for global use
+declare global {
+    interface Window {
+        PushNotificationManager: typeof PushNotificationManager;
+    }
+}
+
 window.PushNotificationManager = PushNotificationManager;

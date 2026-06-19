@@ -500,7 +500,7 @@ export default function BookingIndex({
     const breadcrumbs = [
         {
             title: 'Dashboard',
-            href: route('dashboard'),
+            href: route('admin.landing'),
         },
         {
             title: 'Meeting Rooms',

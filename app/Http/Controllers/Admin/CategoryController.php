@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\CategoryRequest;
 use App\Models\Department;
 use App\Models\TicketCategory;
+use App\Models\WorkflowTemplate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,7 +19,7 @@ class CategoryController extends Controller
         $filters = $request->only(['q', 'parent_id', 'is_active', 'default_team_id']);
 
         $categories = TicketCategory::query()
-            ->with(['parent:id,name', 'defaultTeam:id,name'])
+            ->with(['parent:id,name', 'defaultTeam:id,name', 'workflowTemplate:id,name'])
             ->withCount(['children', 'tickets'])
             ->when($filters['q'] ?? null, function ($query, $q) {
                 $query->where(function ($qry) use ($q) {
@@ -61,6 +62,10 @@ class CategoryController extends Controller
                     'id' => $category->defaultTeam->id,
                     'name' => $category->defaultTeam->name,
                 ] : null,
+                'workflow_template' => $category->workflowTemplate ? [
+                    'id' => $category->workflowTemplate->id,
+                    'name' => $category->workflowTemplate->name,
+                ] : null,
                 'is_active' => $category->is_active,
                 'sort_order' => $category->sort_order,
                 'requires_approval' => $category->requires_approval ?? false,
@@ -88,6 +93,7 @@ class CategoryController extends Controller
             'filters' => $filters,
             'rootCategories' => $rootCategories,
             'departments' => $departments,
+            'workflowTemplates' => $this->workflowTemplateOptions(),
         ]);
     }
 
@@ -101,6 +107,7 @@ class CategoryController extends Controller
             'departments' => Department::where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name']),
+            'workflowTemplates' => $this->workflowTemplateOptions(),
         ]);
     }
 
@@ -115,7 +122,7 @@ class CategoryController extends Controller
 
     public function show(TicketCategory $category): Response
     {
-        $category->load(['parent:id,name', 'defaultTeam:id,name', 'children', 'tickets']);
+        $category->load(['parent:id,name', 'defaultTeam:id,name', 'workflowTemplate:id,name', 'children', 'tickets']);
 
         return Inertia::render('Admin/Categories/Show', [
             'category' => [
@@ -130,6 +137,10 @@ class CategoryController extends Controller
                 'default_team' => $category->defaultTeam ? [
                     'id' => $category->defaultTeam->id,
                     'name' => $category->defaultTeam->name,
+                ] : null,
+                'workflow_template' => $category->workflowTemplate ? [
+                    'id' => $category->workflowTemplate->id,
+                    'name' => $category->workflowTemplate->name,
                 ] : null,
                 'is_active' => $category->is_active,
                 'sort_order' => $category->sort_order,
@@ -146,7 +157,7 @@ class CategoryController extends Controller
 
     public function edit(TicketCategory $category): Response
     {
-        $category->load(['parent:id,name', 'defaultTeam:id,name']);
+        $category->load(['parent:id,name', 'defaultTeam:id,name', 'workflowTemplate:id,name']);
 
         return Inertia::render('Admin/Categories/Form', [
             'category' => [
@@ -156,6 +167,7 @@ class CategoryController extends Controller
                 'description' => $category->description,
                 'parent_id' => $category->parent_id ? $category->parent_id : '__none',
                 'default_team_id' => $category->default_team_id ? $category->default_team_id : '',
+                'workflow_template_id' => $category->workflow_template_id ? $category->workflow_template_id : '__none',
                 'is_active' => $category->is_active,
                 'sort_order' => $category->sort_order,
                 'requires_approval' => $category->requires_approval ?? false,
@@ -169,6 +181,7 @@ class CategoryController extends Controller
             'departments' => Department::where('is_active', true)
                 ->orderBy('name')
                 ->get(['id', 'name']),
+            'workflowTemplates' => $this->workflowTemplateOptions(),
         ]);
     }
 
@@ -205,6 +218,14 @@ class CategoryController extends Controller
         return redirect()
             ->route('admin.categories.index')
             ->with('success', 'Category updated successfully.');
+    }
+
+    protected function workflowTemplateOptions()
+    {
+        return WorkflowTemplate::where('is_active', true)
+            ->orderBy('priority', 'desc')
+            ->orderBy('name')
+            ->get(['id', 'name']);
     }
 
     public function destroy(TicketCategory $category): RedirectResponse
@@ -347,4 +368,3 @@ class CategoryController extends Controller
             ->with('success', "Category \"{$category->name}\" has been {$status}.");
     }
 }
-

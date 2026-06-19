@@ -11,7 +11,12 @@ return [
     |
     */
     'permissions_map' => [
-        'tickets' => ['view', 'create', 'edit', 'delete', 'assign', 'resolve', 'close', 'auto-approve', 'create-on-behalf'],
+        'dashboard' => ['view'],
+        'tickets' => [
+            'view', 'create', 'edit', 'update-details', 'change-status',
+            'change-priority', 'comment', 'manage-comments', 'delete',
+            'assign', 'resolve', 'close', 'auto-approve', 'create-on-behalf',
+        ],
         'approvals' => ['view', 'approve', 'approve-any', 'reject'],
         'users' => ['view', 'create', 'edit', 'delete', 'import', 'export'],
         'departments' => ['view', 'create', 'edit', 'delete'],
@@ -114,6 +119,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 10000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -154,6 +160,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 7500, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -196,6 +203,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -239,6 +247,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -271,6 +280,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -306,6 +316,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -341,6 +352,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -376,6 +388,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 5000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -413,6 +426,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 1000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -442,6 +456,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 750, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -471,6 +486,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 1000, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -500,6 +516,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => 5000, 'department_scope' => 'project'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -534,6 +551,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => null, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -572,6 +590,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => null, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -608,6 +627,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => null, 'department_scope' => 'own_department'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -633,6 +653,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => null, 'department_scope' => 'none'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',
@@ -643,6 +664,10 @@ return [
                 'departments.view',
                 'knowledge-base.view',
             ],
+            'excluded_permissions' => [
+                'tickets.change-priority',
+                'tickets.manage-comments',
+            ],
         ],
         'Contractor' => [
             'level' => 0,
@@ -650,6 +675,7 @@ return [
             'is_system' => true,
             'metadata' => ['approval_limit' => null, 'department_scope' => 'none'],
             'permissions' => [
+                'dashboard.view',
                 'tickets.view',
                 'tickets.create',
                 'tickets.edit',

@@ -87,7 +87,7 @@ class EmailService
                 'exception' => get_class($e),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return false;
+            throw $e;
         }
     }
 

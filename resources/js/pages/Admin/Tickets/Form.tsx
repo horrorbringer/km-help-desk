@@ -172,6 +172,10 @@ const priorityIconMap: Record<string, React.ReactNode> = {
 };
 
 const formatStatus = (status: string) => {
+    if (status === 'pending') {
+        return 'Waiting';
+    }
+
     return status
         .split('_')
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -1097,7 +1101,6 @@ export default function TicketForm(props: TicketFormProps) {
                     );
                 if (templateData.priority)
                     setData('priority', templateData.priority);
-                if (templateData.status) setData('status', templateData.status);
                 if (templateData.source) setData('source', templateData.source);
                 if (templateData.sla_policy_id)
                     setData('sla_policy_id', templateData.sla_policy_id);
@@ -1146,7 +1149,6 @@ export default function TicketForm(props: TicketFormProps) {
                 setData('assigned_agent_id', templateData.assigned_agent_id);
             if (templateData.priority)
                 setData('priority', templateData.priority);
-            if (templateData.status) setData('status', templateData.status);
             if (templateData.source) setData('source', templateData.source);
             if (templateData.sla_policy_id)
                 setData('sla_policy_id', templateData.sla_policy_id);
@@ -1314,7 +1316,7 @@ export default function TicketForm(props: TicketFormProps) {
                                 <div>
                                     <Label
                                         htmlFor="internal_note"
-                                        className="text-sm font-medium flex items-center gap-2"
+                                        className="flex items-center gap-2 text-sm font-medium"
                                     >
                                         <Sparkles className="h-4 w-4 text-amber-500" />
                                         Internal Note (Optional)
@@ -1324,13 +1326,17 @@ export default function TicketForm(props: TicketFormProps) {
                                         rows={3}
                                         value={data.internal_note}
                                         onChange={(e) =>
-                                            setData('internal_note', e.target.value)
+                                            setData(
+                                                'internal_note',
+                                                e.target.value,
+                                            )
                                         }
                                         placeholder="Private notes for support staff only..."
-                                        className="mt-1.5 resize-none text-base bg-amber-50/10 border-amber-200/50"
+                                        className="mt-1.5 resize-none border-amber-200/50 bg-amber-50/10 text-base"
                                     />
                                     <p className="mt-1.5 text-xs text-muted-foreground">
-                                        This note is only visible to support team members.
+                                        This note is only visible to support
+                                        team members.
                                     </p>
                                 </div>
                             )}
@@ -1722,286 +1728,249 @@ export default function TicketForm(props: TicketFormProps) {
                                     Status & Priority
                                 </CardTitle>
                                 <CardDescription>
-                                    Set ticket status, priority level, and source
+                                    Set ticket status, priority level, and
+                                    source
                                 </CardDescription>
                             </CardHeader>
-                        <CardContent className="space-y-5">
-                            <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3">
-                                {formOptions.statuses.length > 1 && (
-                                <div>
-                                    <Label className="text-sm font-medium">
-                                        Status
-                                    </Label>
-                                    <Select
-                                        value={data.status}
-                                        onValueChange={(value) =>
-                                            setData('status', value)
-                                        }
-                                    >
-                                        <SelectTrigger
-                                            className={cn(
-                                                'mt-1.5 h-10',
-                                                data.status &&
-                                                    statusColorMap[
-                                                        data.status
-                                                    ] &&
-                                                    'border-2',
-                                            )}
-                                        >
-                                            <div className="flex w-full items-center gap-2">
-                                                {data.status &&
-                                                    statusIconMap[
-                                                        data.status
-                                                    ] && (
-                                                        <span
-                                                            className={cn(
-                                                                'shrink-0',
+                            <CardContent className="space-y-5">
+                                <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3">
+                                    {isEdit &&
+                                        formOptions.statuses.length > 1 && (
+                                            <div>
+                                                <Label className="text-sm font-medium">
+                                                    Status
+                                                </Label>
+                                                <Select
+                                                    value={data.status}
+                                                    onValueChange={(value) =>
+                                                        setData('status', value)
+                                                    }
+                                                >
+                                                    <SelectTrigger
+                                                        className={cn(
+                                                            'mt-1.5 h-10',
+                                                            data.status &&
                                                                 statusColorMap[
                                                                     data.status
-                                                                ]?.includes(
-                                                                    'blue',
-                                                                ) &&
-                                                                    'text-blue-600',
-                                                                statusColorMap[
-                                                                    data.status
-                                                                ]?.includes(
-                                                                    'indigo',
-                                                                ) &&
-                                                                    'text-indigo-600',
-                                                                statusColorMap[
-                                                                    data.status
-                                                                ]?.includes(
-                                                                    'amber',
-                                                                ) &&
-                                                                    'text-amber-600',
-                                                                statusColorMap[
-                                                                    data.status
-                                                                ]?.includes(
-                                                                    'yellow',
-                                                                ) &&
-                                                                    'text-yellow-600',
-                                                                statusColorMap[
-                                                                    data.status
-                                                                ]?.includes(
-                                                                    'emerald',
-                                                                ) &&
-                                                                    'text-emerald-600',
-                                                                statusColorMap[
-                                                                    data.status
-                                                                ]?.includes(
-                                                                    'slate',
-                                                                ) &&
-                                                                    'text-slate-600',
-                                                                statusColorMap[
-                                                                    data.status
-                                                                ]?.includes(
-                                                                    'gray',
-                                                                ) &&
-                                                                    'text-gray-600',
-                                                            )}
-                                                        >
-                                                            {
+                                                                ] &&
+                                                                'border-2',
+                                                        )}
+                                                    >
+                                                        <div className="flex w-full items-center gap-2">
+                                                            {data.status &&
                                                                 statusIconMap[
                                                                     data.status
-                                                                ]
-                                                            }
-                                                        </span>
-                                                    )}
-                                                <SelectValue
-                                                    placeholder="Select status"
-                                                    className="[&_svg]:!hidden [&>span:first-of-type]:!hidden [&>span:last-of-type]:!hidden"
-                                                />
-                                            </div>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {formOptions.statuses.map(
-                                                (status) => (
-                                                    <SelectItem
-                                                        key={status}
-                                                        value={status}
-                                                    >
-                                                        <div className="flex w-full items-center gap-2.5">
-                                                            <span
-                                                                className={cn(
-                                                                    statusColorMap[
-                                                                        status
-                                                                    ]?.includes(
-                                                                        'blue',
-                                                                    ) &&
-                                                                        'text-blue-600',
-                                                                    statusColorMap[
-                                                                        status
-                                                                    ]?.includes(
-                                                                        'indigo',
-                                                                    ) &&
-                                                                        'text-indigo-600',
-                                                                    statusColorMap[
-                                                                        status
-                                                                    ]?.includes(
-                                                                        'amber',
-                                                                    ) &&
-                                                                        'text-amber-600',
-                                                                    statusColorMap[
-                                                                        status
-                                                                    ]?.includes(
-                                                                        'yellow',
-                                                                    ) &&
-                                                                        'text-yellow-600',
-                                                                    statusColorMap[
-                                                                        status
-                                                                    ]?.includes(
-                                                                        'emerald',
-                                                                    ) &&
-                                                                        'text-emerald-600',
-                                                                    statusColorMap[
-                                                                        status
-                                                                    ]?.includes(
-                                                                        'slate',
-                                                                    ) &&
-                                                                        'text-slate-600',
-                                                                    statusColorMap[
-                                                                        status
-                                                                    ]?.includes(
-                                                                        'gray',
-                                                                    ) &&
-                                                                        'text-gray-600',
+                                                                ] && (
+                                                                    <span
+                                                                        className={cn(
+                                                                            'shrink-0',
+                                                                            statusColorMap[
+                                                                                data
+                                                                                    .status
+                                                                            ]?.includes(
+                                                                                'blue',
+                                                                            ) &&
+                                                                                'text-blue-600',
+                                                                            statusColorMap[
+                                                                                data
+                                                                                    .status
+                                                                            ]?.includes(
+                                                                                'indigo',
+                                                                            ) &&
+                                                                                'text-indigo-600',
+                                                                            statusColorMap[
+                                                                                data
+                                                                                    .status
+                                                                            ]?.includes(
+                                                                                'amber',
+                                                                            ) &&
+                                                                                'text-amber-600',
+                                                                            statusColorMap[
+                                                                                data
+                                                                                    .status
+                                                                            ]?.includes(
+                                                                                'yellow',
+                                                                            ) &&
+                                                                                'text-yellow-600',
+                                                                            statusColorMap[
+                                                                                data
+                                                                                    .status
+                                                                            ]?.includes(
+                                                                                'emerald',
+                                                                            ) &&
+                                                                                'text-emerald-600',
+                                                                            statusColorMap[
+                                                                                data
+                                                                                    .status
+                                                                            ]?.includes(
+                                                                                'slate',
+                                                                            ) &&
+                                                                                'text-slate-600',
+                                                                            statusColorMap[
+                                                                                data
+                                                                                    .status
+                                                                            ]?.includes(
+                                                                                'gray',
+                                                                            ) &&
+                                                                                'text-gray-600',
+                                                                        )}
+                                                                    >
+                                                                        {
+                                                                            statusIconMap[
+                                                                                data
+                                                                                    .status
+                                                                            ]
+                                                                        }
+                                                                    </span>
                                                                 )}
-                                                            >
-                                                                {
-                                                                    statusIconMap[
-                                                                        status
-                                                                    ]
-                                                                }
-                                                            </span>
-                                                            <span className="flex-1 font-medium">
-                                                                {formatStatus(
-                                                                    status,
-                                                                )}
-                                                            </span>
-                                                            <Badge
-                                                                variant="outline"
-                                                                className={cn(
-                                                                    'shrink-0 text-xs',
-                                                                    statusColorMap[
-                                                                        status
-                                                                    ] ?? '',
-                                                                )}
-                                                            >
-                                                                {formatStatus(
-                                                                    status,
-                                                                )}
-                                                            </Badge>
+                                                            <SelectValue
+                                                                placeholder="Select status"
+                                                                className="[&_svg]:!hidden [&>span:first-of-type]:!hidden [&>span:last-of-type]:!hidden"
+                                                            />
                                                         </div>
-                                                    </SelectItem>
-                                                ),
-                                            )}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                )}
-
-                                <div>
-                                    <Label className="text-sm font-medium">
-                                        Priority
-                                    </Label>
-                                    <Select
-                                        value={data.priority}
-                                        onValueChange={(value) =>
-                                            setData('priority', value)
-                                        }
-                                    >
-                                        <SelectTrigger
-                                            className={cn(
-                                                'mt-1.5 h-10',
-                                                data.priority &&
-                                                    priorityColorMap[
-                                                        data.priority
-                                                    ] &&
-                                                    'border-2',
-                                            )}
-                                        >
-                                            <div className="flex w-full items-center gap-2">
-                                                {data.priority &&
-                                                    priorityIconMap[
-                                                        data.priority
-                                                    ] && (
-                                                        <span
-                                                            className={cn(
-                                                                'shrink-0',
-                                                                priorityColorMap[
-                                                                    data
-                                                                        .priority
-                                                                ]?.includes(
-                                                                    'slate',
-                                                                ) &&
-                                                                    'text-slate-600',
-                                                                priorityColorMap[
-                                                                    data
-                                                                        .priority
-                                                                ]?.includes(
-                                                                    'blue',
-                                                                ) &&
-                                                                    'text-blue-600',
-                                                                priorityColorMap[
-                                                                    data
-                                                                        .priority
-                                                                ]?.includes(
-                                                                    'orange',
-                                                                ) &&
-                                                                    'text-orange-600',
-                                                                priorityColorMap[
-                                                                    data
-                                                                        .priority
-                                                                ]?.includes(
-                                                                    'red',
-                                                                ) &&
-                                                                    'text-red-600',
-                                                            )}
-                                                        >
-                                                            {
-                                                                priorityIconMap[
-                                                                    data
-                                                                        .priority
-                                                                ]
-                                                            }
-                                                        </span>
-                                                    )}
-                                                <SelectValue
-                                                    placeholder="Select priority"
-                                                    className="[&_svg]:!hidden [&>span:first-of-type]:!hidden [&>span:last-of-type]:!hidden"
-                                                />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {formOptions.statuses.map(
+                                                            (status) => (
+                                                                <SelectItem
+                                                                    key={status}
+                                                                    value={
+                                                                        status
+                                                                    }
+                                                                >
+                                                                    <div className="flex w-full items-center gap-2.5">
+                                                                        <span
+                                                                            className={cn(
+                                                                                statusColorMap[
+                                                                                    status
+                                                                                ]?.includes(
+                                                                                    'blue',
+                                                                                ) &&
+                                                                                    'text-blue-600',
+                                                                                statusColorMap[
+                                                                                    status
+                                                                                ]?.includes(
+                                                                                    'indigo',
+                                                                                ) &&
+                                                                                    'text-indigo-600',
+                                                                                statusColorMap[
+                                                                                    status
+                                                                                ]?.includes(
+                                                                                    'amber',
+                                                                                ) &&
+                                                                                    'text-amber-600',
+                                                                                statusColorMap[
+                                                                                    status
+                                                                                ]?.includes(
+                                                                                    'yellow',
+                                                                                ) &&
+                                                                                    'text-yellow-600',
+                                                                                statusColorMap[
+                                                                                    status
+                                                                                ]?.includes(
+                                                                                    'emerald',
+                                                                                ) &&
+                                                                                    'text-emerald-600',
+                                                                                statusColorMap[
+                                                                                    status
+                                                                                ]?.includes(
+                                                                                    'slate',
+                                                                                ) &&
+                                                                                    'text-slate-600',
+                                                                                statusColorMap[
+                                                                                    status
+                                                                                ]?.includes(
+                                                                                    'gray',
+                                                                                ) &&
+                                                                                    'text-gray-600',
+                                                                            )}
+                                                                        >
+                                                                            {
+                                                                                statusIconMap[
+                                                                                    status
+                                                                                ]
+                                                                            }
+                                                                        </span>
+                                                                        <span className="flex-1 font-medium">
+                                                                            {formatStatus(
+                                                                                status,
+                                                                            )}
+                                                                        </span>
+                                                                        <Badge
+                                                                            variant="outline"
+                                                                            className={cn(
+                                                                                'shrink-0 text-xs',
+                                                                                statusColorMap[
+                                                                                    status
+                                                                                ] ??
+                                                                                    '',
+                                                                            )}
+                                                                        >
+                                                                            {formatStatus(
+                                                                                status,
+                                                                            )}
+                                                                        </Badge>
+                                                                    </div>
+                                                                </SelectItem>
+                                                            ),
+                                                        )}
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {formOptions.priorities.map(
-                                                (priority) => (
-                                                    <SelectItem
-                                                        key={priority}
-                                                        value={priority}
-                                                    >
-                                                        <div className="flex w-full items-center gap-2.5">
+                                        )}
+
+                                    <div>
+                                        <Label className="text-sm font-medium">
+                                            Priority
+                                        </Label>
+                                        <Select
+                                            value={data.priority}
+                                            onValueChange={(value) =>
+                                                setData('priority', value)
+                                            }
+                                        >
+                                            <SelectTrigger
+                                                className={cn(
+                                                    'mt-1.5 h-10',
+                                                    data.priority &&
+                                                        priorityColorMap[
+                                                            data.priority
+                                                        ] &&
+                                                        'border-2',
+                                                )}
+                                            >
+                                                <div className="flex w-full items-center gap-2">
+                                                    {data.priority &&
+                                                        priorityIconMap[
+                                                            data.priority
+                                                        ] && (
                                                             <span
                                                                 className={cn(
+                                                                    'shrink-0',
                                                                     priorityColorMap[
-                                                                        priority
+                                                                        data
+                                                                            .priority
                                                                     ]?.includes(
                                                                         'slate',
                                                                     ) &&
                                                                         'text-slate-600',
                                                                     priorityColorMap[
-                                                                        priority
+                                                                        data
+                                                                            .priority
                                                                     ]?.includes(
                                                                         'blue',
                                                                     ) &&
                                                                         'text-blue-600',
                                                                     priorityColorMap[
-                                                                        priority
+                                                                        data
+                                                                            .priority
                                                                     ]?.includes(
                                                                         'orange',
                                                                     ) &&
                                                                         'text-orange-600',
                                                                     priorityColorMap[
-                                                                        priority
+                                                                        data
+                                                                            .priority
                                                                     ]?.includes(
                                                                         'red',
                                                                     ) &&
@@ -2010,104 +1979,155 @@ export default function TicketForm(props: TicketFormProps) {
                                                             >
                                                                 {
                                                                     priorityIconMap[
-                                                                        priority
+                                                                        data
+                                                                            .priority
                                                                     ]
                                                                 }
                                                             </span>
-                                                            <span className="flex-1 font-medium">
-                                                                {formatPriority(
-                                                                    priority,
-                                                                )}
-                                                            </span>
-                                                            <Badge
-                                                                variant="outline"
-                                                                className={cn(
-                                                                    'shrink-0 text-xs',
-                                                                    priorityColorMap[
-                                                                        priority
-                                                                    ] ?? '',
-                                                                )}
-                                                            >
-                                                                {formatPriority(
-                                                                    priority,
-                                                                )}
-                                                            </Badge>
-                                                        </div>
-                                                    </SelectItem>
-                                                ),
-                                            )}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                {isEdit && (
-                                    <div>
-                                        <Label className="text-sm font-medium">
-                                            Source
-                                        </Label>
-                                        <Select
-                                            value={data.source}
-                                            onValueChange={(value) =>
-                                                setData('source', value)
-                                            }
-                                        >
-                                            <SelectTrigger className="mt-1.5 h-10">
-                                                <SelectValue />
+                                                        )}
+                                                    <SelectValue
+                                                        placeholder="Select priority"
+                                                        className="[&_svg]:!hidden [&>span:first-of-type]:!hidden [&>span:last-of-type]:!hidden"
+                                                    />
+                                                </div>
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {formOptions.sources.map(
-                                                    (source) => (
+                                                {formOptions.priorities.map(
+                                                    (priority) => (
                                                         <SelectItem
-                                                            key={source}
-                                                            value={source}
+                                                            key={priority}
+                                                            value={priority}
                                                         >
-                                                            {source}
+                                                            <div className="flex w-full items-center gap-2.5">
+                                                                <span
+                                                                    className={cn(
+                                                                        priorityColorMap[
+                                                                            priority
+                                                                        ]?.includes(
+                                                                            'slate',
+                                                                        ) &&
+                                                                            'text-slate-600',
+                                                                        priorityColorMap[
+                                                                            priority
+                                                                        ]?.includes(
+                                                                            'blue',
+                                                                        ) &&
+                                                                            'text-blue-600',
+                                                                        priorityColorMap[
+                                                                            priority
+                                                                        ]?.includes(
+                                                                            'orange',
+                                                                        ) &&
+                                                                            'text-orange-600',
+                                                                        priorityColorMap[
+                                                                            priority
+                                                                        ]?.includes(
+                                                                            'red',
+                                                                        ) &&
+                                                                            'text-red-600',
+                                                                    )}
+                                                                >
+                                                                    {
+                                                                        priorityIconMap[
+                                                                            priority
+                                                                        ]
+                                                                    }
+                                                                </span>
+                                                                <span className="flex-1 font-medium">
+                                                                    {formatPriority(
+                                                                        priority,
+                                                                    )}
+                                                                </span>
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className={cn(
+                                                                        'shrink-0 text-xs',
+                                                                        priorityColorMap[
+                                                                            priority
+                                                                        ] ?? '',
+                                                                    )}
+                                                                >
+                                                                    {formatPriority(
+                                                                        priority,
+                                                                    )}
+                                                                </Badge>
+                                                            </div>
                                                         </SelectItem>
                                                     ),
                                                 )}
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                )}
 
-                                <div>
-                                    <Label
-                                        htmlFor="estimated_cost"
-                                        className="text-sm font-medium"
-                                    >
-                                        Estimated Cost
-                                    </Label>
-                                    <Input
-                                        id="estimated_cost"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        placeholder="0.00"
-                                        value={data.estimated_cost ?? ''}
-                                        onChange={(e) =>
-                                            setData(
-                                                'estimated_cost',
-                                                e.target.value === ''
-                                                    ? null
-                                                    : Number(e.target.value) ||
-                                                          null,
-                                            )
-                                        }
-                                        className="mt-1.5 h-10"
-                                    />
-                                    {formErrors.estimated_cost && (
-                                        <p className="mt-1.5 text-xs text-destructive">
-                                            {formErrors.estimated_cost}
-                                        </p>
+                                    {isEdit && (
+                                        <div>
+                                            <Label className="text-sm font-medium">
+                                                Source
+                                            </Label>
+                                            <Select
+                                                value={data.source}
+                                                onValueChange={(value) =>
+                                                    setData('source', value)
+                                                }
+                                            >
+                                                <SelectTrigger className="mt-1.5 h-10">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {formOptions.sources.map(
+                                                        (source) => (
+                                                            <SelectItem
+                                                                key={source}
+                                                                value={source}
+                                                            >
+                                                                {source}
+                                                            </SelectItem>
+                                                        ),
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     )}
+
+                                    <div>
+                                        <Label
+                                            htmlFor="estimated_cost"
+                                            className="text-sm font-medium"
+                                        >
+                                            Estimated Cost
+                                        </Label>
+                                        <Input
+                                            id="estimated_cost"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            placeholder="0.00"
+                                            value={data.estimated_cost ?? ''}
+                                            onChange={(e) =>
+                                                setData(
+                                                    'estimated_cost',
+                                                    e.target.value === ''
+                                                        ? null
+                                                        : Number(
+                                                              e.target.value,
+                                                          ) || null,
+                                                )
+                                            }
+                                            className="mt-1.5 h-10"
+                                        />
+                                        {formErrors.estimated_cost && (
+                                            <p className="mt-1.5 text-xs text-destructive">
+                                                {formErrors.estimated_cost}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                            <p className="-mt-3 text-xs text-muted-foreground">
-                                For purchase/expense tickets. HOD approval
-                                required if cost exceeds category threshold.
-                            </p>
-                        </CardContent>
-                    </Card>
+                                <p className="-mt-3 text-xs text-muted-foreground">
+                                    For purchase/expense tickets. HOD approval
+                                    required if cost exceeds category threshold.
+                                </p>
+                            </CardContent>
+                        </Card>
                     )}
                 </div>
 

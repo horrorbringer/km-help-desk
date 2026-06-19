@@ -59,8 +59,16 @@ const typeColorMap: Record<string, string> = {
     ticket_closed: 'bg-slate-200 text-slate-800',
     ticket_commented: 'bg-purple-100 text-purple-800',
     ticket_mentioned: 'bg-pink-100 text-pink-800',
+    ticket_watched: 'bg-cyan-100 text-cyan-800',
+    ticket_routed_to_team: 'bg-indigo-100 text-indigo-800',
+    teammate_ticket_created: 'bg-sky-100 text-sky-800',
+    comment_added: 'bg-purple-100 text-purple-800',
+    comment_internal: 'bg-zinc-200 text-zinc-800',
     sla_breached: 'bg-red-100 text-red-800',
     sla_warning: 'bg-orange-100 text-orange-800',
+    approval_requested: 'bg-orange-100 text-orange-800',
+    approval_approved: 'bg-emerald-100 text-emerald-800',
+    approval_rejected: 'bg-red-100 text-red-800',
 };
 
 export default function NotificationsIndex() {

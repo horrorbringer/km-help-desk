@@ -6,18 +6,22 @@ use App\Models\Ticket;
 use App\Models\User;
 use App\Services\EmailService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
-class SendTicketAssignedEmailJob implements ShouldQueue
+class SendTicketAssignedEmailJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 5;
+
     public $backoff = 60;
+
+    public $uniqueFor = 300;
 
     /**
      * Create a new job instance.
@@ -25,8 +29,17 @@ class SendTicketAssignedEmailJob implements ShouldQueue
     public function __construct(
         public Ticket $ticket,
         public User $user
-        )
+    ) {}
+
+    public function uniqueId(): string
     {
+        return implode(':', [
+            'ticket-assigned',
+            $this->ticket->id,
+            $this->ticket->assigned_team_id ?? 'no-team',
+            $this->ticket->assigned_agent_id ?? 'no-agent',
+            $this->user->id,
+        ]);
     }
 
     /**
@@ -53,16 +66,14 @@ class SendTicketAssignedEmailJob implements ShouldQueue
                     'user_id' => $this->user->id,
                     'user_email' => $this->user->email,
                 ]);
-            }
-            else {
+            } else {
                 Log::warning('SendTicketAssignedEmailJob: Failed to send email', [
                     'ticket_id' => $this->ticket->id,
                     'user_id' => $this->user->id,
                     'user_email' => $this->user->email,
                 ]);
             }
-        }
-        catch (\Exception $e) {
+        } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
             $isRateLimitError = str_contains($errorMessage, 'Too many emails') ||
                 str_contains($errorMessage, 'rate limit') ||
@@ -76,6 +87,7 @@ class SendTicketAssignedEmailJob implements ShouldQueue
 
                 // Release the job back to the queue with a delay
                 $this->release(60); // Wait 60 seconds before retrying
+
                 return;
             }
 

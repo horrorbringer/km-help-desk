@@ -59,6 +59,18 @@ class WorkflowTemplate extends Model
      */
     public static function forTicket(Ticket $ticket): ?self
     {
+        $category = $ticket->category;
+
+        if ($category?->workflow_template_id) {
+            $selectedTemplate = static::where('id', $category->workflow_template_id)
+                ->where('is_active', true)
+                ->first();
+
+            if ($selectedTemplate) {
+                return $selectedTemplate;
+            }
+        }
+
         return static::where('is_active', true)
             ->where(function ($query) use ($ticket) {
                 $query->whereNull('category_id')

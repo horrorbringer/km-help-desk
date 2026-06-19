@@ -20,11 +20,13 @@ class TicketHistory extends Model
         'old_value',
         'new_value',
         'description',
+        'metadata',
         'created_at',
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
+        'metadata' => 'array',
     ];
 
     public function ticket(): BelongsTo
@@ -37,5 +39,3 @@ class TicketHistory extends Model
         return $this->belongsTo(User::class);
     }
 }
-
-

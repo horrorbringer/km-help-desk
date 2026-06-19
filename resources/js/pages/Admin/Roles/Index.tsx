@@ -1,7 +1,7 @@
 import { usePermissions } from '@/hooks/use-permissions';
 import { useToast } from '@/hooks/use-toast';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Edit, Trash2 } from 'lucide-react';
+import { Edit, Search, Trash2, Users2 } from 'lucide-react';
 import { useState } from 'react';
 
 import {
@@ -110,50 +110,54 @@ export default function RolesIndex() {
         roles.length > 0 && selectedRoles.length === roles.length;
     const isSomeSelected =
         selectedRoles.length > 0 && selectedRoles.length < roles.length;
+    const roleCount = roles.length;
 
     return (
         <AppLayout>
             <Head title="Roles & Permissions" />
 
-            <div className="space-y-6">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold">
-                            Roles & Permissions
-                        </h1>
-                        <p className="text-muted-foreground">
-                            Manage user roles and their permissions
+            <div className="space-y-4">
+                <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                            <Users2 className="h-5 w-5 text-muted-foreground" />
+                            <h1 className="text-2xl font-semibold tracking-tight">
+                                Roles & Permissions
+                            </h1>
+                            <Badge variant="secondary" className="ml-1">
+                                {roleCount}
+                            </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                            Assign roles, review access, and keep protected system
+                            roles intact.
                         </p>
                     </div>
                     {can('roles.create') && (
-                        <Button asChild>
+                        <Button asChild size="sm" className="self-start">
                             <Link href={route('admin.roles.create')}>
-                                + New Role
+                                New Role
                             </Link>
                         </Button>
                     )}
                 </div>
 
-                {/* Flash Messages */}
                 {flash?.success && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                         {flash.success}
                     </div>
                 )}
                 {flash?.error && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                         {flash.error}
                     </div>
                 )}
 
-                {/* Bulk Actions */}
                 {selectedRoles.length > 0 && can('roles.delete') && (
-                    <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                        <span className="text-sm text-gray-600">
+                    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                        <span className="text-sm text-muted-foreground">
                             {selectedRoles.length}{' '}
-                            {selectedRoles.length === 1 ? 'role' : 'roles'}{' '}
-                            selected
+                            {selectedRoles.length === 1 ? 'role' : 'roles'} selected
                         </span>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -200,14 +204,26 @@ export default function RolesIndex() {
                     </div>
                 )}
 
-                {/* Roles Table */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Roles ({roles.length})</CardTitle>
+                <Card className="overflow-hidden">
+                    <CardHeader className="border-b py-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="space-y-1">
+                                <CardTitle className="text-base">
+                                    Roles
+                                </CardTitle>
+                                <p className="text-sm text-muted-foreground">
+                                    {roleCount} roles in the current workspace.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Search className="h-4 w-4" />
+                                <span>Compact access matrix</span>
+                            </div>
+                        </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="p-0">
                         {roles.length === 0 ? (
-                            <p className="py-8 text-center text-sm text-muted-foreground">
+                            <p className="py-10 text-center text-sm text-muted-foreground">
                                 No roles found.
                             </p>
                         ) : (
@@ -218,6 +234,13 @@ export default function RolesIndex() {
                                             <TableHead className="w-12">
                                                 <Checkbox
                                                     checked={isAllSelected}
+                                                    aria-checked={
+                                                        isSomeSelected
+                                                            ? 'mixed'
+                                                            : isAllSelected
+                                                              ? true
+                                                              : false
+                                                    }
                                                     onCheckedChange={
                                                         handleSelectAll
                                                     }
@@ -225,18 +248,18 @@ export default function RolesIndex() {
                                                 />
                                             </TableHead>
                                         )}
-                                        <TableHead>Role Name</TableHead>
-                                        <TableHead>Users</TableHead>
-                                        <TableHead>Permissions</TableHead>
-                                        <TableHead>Created</TableHead>
-                                        <TableHead className="text-right">
+                                        <TableHead>Role</TableHead>
+                                        <TableHead className="w-28">Users</TableHead>
+                                        <TableHead className="w-32">Permissions</TableHead>
+                                        <TableHead className="w-32">Created</TableHead>
+                                        <TableHead className="w-24 text-right">
                                             Actions
                                         </TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {roles.map((role) => (
-                                        <TableRow key={role.id}>
+                                        <TableRow key={role.id} className="h-12">
                                             {can('roles.delete') && (
                                                 <TableCell>
                                                     <Checkbox
@@ -256,15 +279,15 @@ export default function RolesIndex() {
                                                 </TableCell>
                                             )}
                                             <TableCell>
-                                                <div>
-                                                    <p className="font-medium">
+                                                <div className="space-y-1">
+                                                    <p className="font-medium leading-none">
                                                         {role.name}
                                                     </p>
                                                     {role.name ===
                                                         SUPER_ADMIN && (
                                                         <Badge
                                                             variant="default"
-                                                            className="mt-1 text-xs"
+                                                            className="text-[10px] uppercase tracking-wide"
                                                         >
                                                             System Role
                                                         </Badge>
@@ -272,12 +295,15 @@ export default function RolesIndex() {
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <span className="text-sm">
+                                                <span className="text-sm text-muted-foreground">
                                                     {role.users_count} users
                                                 </span>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant="secondary">
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="font-normal"
+                                                >
                                                     {role.permissions_count}{' '}
                                                     permissions
                                                 </Badge>
@@ -295,7 +321,7 @@ export default function RolesIndex() {
                                                         <Button
                                                             asChild
                                                             variant="outline"
-                                                            size="sm"
+                                                            size="icon"
                                                         >
                                                             <Link
                                                                 href={route(
@@ -304,6 +330,9 @@ export default function RolesIndex() {
                                                                 )}
                                                             >
                                                                 <Edit className="h-4 w-4" />
+                                                                <span className="sr-only">
+                                                                    Edit role
+                                                                </span>
                                                             </Link>
                                                         </Button>
                                                     )}
@@ -316,10 +345,13 @@ export default function RolesIndex() {
                                                             >
                                                                 <Button
                                                                     variant="outline"
-                                                                    size="sm"
+                                                                    size="icon"
                                                                     className="text-destructive hover:text-destructive"
                                                                 >
                                                                     <Trash2 className="h-4 w-4" />
+                                                                    <span className="sr-only">
+                                                                        Delete role
+                                                                    </span>
                                                                 </Button>
                                                             </AlertDialogTrigger>
                                                             <AlertDialogContent>

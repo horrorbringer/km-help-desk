@@ -17,23 +17,24 @@ class TicketCommentController extends Controller
      */
     public function store(Request $request, Ticket $ticket): RedirectResponse
     {
-        // Check if user has permission to view tickets (minimum requirement)
-        abort_unless(Auth::user()->can('tickets.view'), 403);
+        $this->authorize('view', $ticket);
+        abort_unless(Auth::user()->can('tickets.comment'), 403);
 
         $validated = $request->validate([
             'body' => ['required', 'string', 'max:5000'],
             'is_internal' => ['sometimes', 'boolean'],
+            'parent_id' => ['nullable', 'integer', 'exists:ticket_comments,id'],
         ]);
 
         // Only agents can create internal comments
         $isInternal = $validated['is_internal'] ?? false;
-        if ($isInternal && !Auth::user()->can('tickets.edit')) {
+        if ($isInternal && ! $this->canUseInternalComments()) {
             $isInternal = false;
         }
 
         // If replying to a comment, inherit internal status from parent
         $parentComment = null;
-        if (!empty($validated['parent_id'])) {
+        if (! empty($validated['parent_id'])) {
             $parentComment = TicketComment::find($validated['parent_id']);
             if ($parentComment && $parentComment->ticket_id !== $ticket->id) {
                 abort(400, 'Parent comment does not belong to this ticket.');
@@ -56,18 +57,23 @@ class TicketCommentController extends Controller
         // Trigger automation rules for comment event in background
         dispatch(function () use ($ticket, $comment) {
             try {
+                $notificationService = app(\App\Services\NotificationService::class);
+                $commenter = $comment->user;
+
+                if ($commenter) {
+                    $notificationService->notifyCommentAdded($ticket, $comment, $commenter);
+                }
+
                 $automationService = app(\App\Services\AutomationService::class);
                 $automationService->onCommentAdded($ticket, $comment);
-            }
-            catch (\Exception $e) {
+            } catch (\Exception $e) {
                 Log::error('Background comment automation failed', [
                     'ticket_id' => $ticket->id,
                     'comment_id' => $comment->id,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
             }
         })->afterResponse();
-
 
         return redirect()
             ->back()
@@ -79,11 +85,15 @@ class TicketCommentController extends Controller
      */
     public function update(Request $request, Ticket $ticket, TicketComment $comment): RedirectResponse
     {
-        // Check if user has permission to view tickets
-        abort_unless(Auth::user()->can('tickets.view'), 403);
+        $this->authorize('view', $ticket);
+        abort_unless($comment->ticket_id === $ticket->id, 404);
+        abort_unless(
+            Auth::user()->can('tickets.comment') || Auth::user()->can('tickets.manage-comments'),
+            403
+        );
 
         // Only the comment author or users with edit permission can update
-        if ($comment->user_id !== Auth::id() && !Auth::user()->can('tickets.edit')) {
+        if ($comment->user_id !== Auth::id() && ! Auth::user()->can('tickets.manage-comments')) {
             abort(403, 'You can only edit your own comments.');
         }
 
@@ -94,7 +104,7 @@ class TicketCommentController extends Controller
 
         // Only agents can make comments internal
         $isInternal = $validated['is_internal'] ?? $comment->is_internal;
-        if ($isInternal && !Auth::user()->can('tickets.edit')) {
+        if ($isInternal && ! $this->canUseInternalComments()) {
             $isInternal = false;
         }
 
@@ -113,11 +123,15 @@ class TicketCommentController extends Controller
      */
     public function destroy(Ticket $ticket, TicketComment $comment): RedirectResponse
     {
-        // Check if user has permission to view tickets
-        abort_unless(Auth::user()->can('tickets.view'), 403);
+        $this->authorize('view', $ticket);
+        abort_unless($comment->ticket_id === $ticket->id, 404);
+        abort_unless(
+            Auth::user()->can('tickets.comment') || Auth::user()->can('tickets.manage-comments'),
+            403
+        );
 
         // Only the comment author or users with edit permission can delete
-        if ($comment->user_id !== Auth::id() && !Auth::user()->can('tickets.edit')) {
+        if ($comment->user_id !== Auth::id() && ! Auth::user()->can('tickets.manage-comments')) {
             abort(403, 'You can only delete your own comments.');
         }
 
@@ -126,5 +140,10 @@ class TicketCommentController extends Controller
         return redirect()
             ->back()
             ->with('success', 'Comment deleted successfully.');
+    }
+
+    private function canUseInternalComments(): bool
+    {
+        return Auth::user()->can('tickets.manage-comments');
     }
 }

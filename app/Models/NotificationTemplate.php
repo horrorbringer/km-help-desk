@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\NotificationType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -24,18 +25,23 @@ class NotificationTemplate extends Model
     ];
 
     public const TYPES = [
-        'ticket_created',
-        'ticket_assigned',
-        'ticket_updated',
-        'ticket_resolved',
-        'ticket_closed',
-        'ticket_commented',
-        'ticket_mentioned',
-        'sla_breached',
-        'sla_warning',
-        'approval_requested',
-        'approval_approved',
-        'approval_rejected',
+        NotificationType::TICKET_CREATED,
+        NotificationType::TICKET_ASSIGNED,
+        NotificationType::TICKET_UPDATED,
+        NotificationType::TICKET_RESOLVED,
+        NotificationType::TICKET_CLOSED,
+        NotificationType::TICKET_COMMENTED,
+        NotificationType::TICKET_MENTIONED,
+        NotificationType::TICKET_WATCHED,
+        NotificationType::TICKET_ROUTED_TO_TEAM,
+        NotificationType::TEAMMATE_TICKET_CREATED,
+        NotificationType::COMMENT_ADDED,
+        NotificationType::COMMENT_INTERNAL,
+        NotificationType::SLA_BREACHED,
+        NotificationType::SLA_WARNING,
+        NotificationType::APPROVAL_REQUESTED,
+        NotificationType::APPROVAL_APPROVED,
+        NotificationType::APPROVAL_REJECTED,
     ];
 
     public function scopeActive($query)

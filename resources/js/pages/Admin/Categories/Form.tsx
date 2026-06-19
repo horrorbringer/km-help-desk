@@ -1,359 +1,396 @@
-import React, { FormEvent } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { FormEvent } from 'react';
 
-import AppLayout from '@/layouts/app-layout';
+import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import AppLayout from '@/layouts/app-layout';
 import type { PageProps } from '@/types';
 
 interface Category {
-  id: number;
-  name: string;
-  slug: string;
-  description?: string | null;
-  parent_id?: string | number | null;
-  default_team_id?: string | number | null;
-  is_active: boolean;
-  sort_order: number;
-  requires_approval?: boolean;
-  requires_hod_approval?: boolean;
-  hod_approval_threshold?: number | null;
+    id: number;
+    name: string;
+    slug: string;
+    description?: string | null;
+    parent_id?: string | number | null;
+    default_team_id?: string | number | null;
+    workflow_template_id?: string | number | null;
+    is_active: boolean;
+    sort_order: number;
 }
 
 interface CategoryFormProps {
-  category?: Category;
-  parentCategories: Array<{ id: number; name: string }>;
-  departments: Array<{ id: number; name: string }>;
+    category?: Category;
+    parentCategories: Array<{ id: number; name: string }>;
+    departments: Array<{ id: number; name: string }>;
+    workflowTemplates: Array<{ id: number; name: string }>;
 }
 
 export default function CategoryForm({
-  category,
-  parentCategories,
-  departments,
+    category,
+    parentCategories,
+    departments,
+    workflowTemplates,
 }: CategoryFormProps) {
-  const isEdit = !!category;
-  const { errors } = usePage<PageProps>().props;
+    const isEdit = !!category;
+    const { errors } = usePage<PageProps>().props;
 
-  const { data, setData, post, put, processing, transform } = useForm({
-    name: category?.name ?? '',
-    slug: category?.slug ?? '',
-    description: category?.description ?? '',
-    parent_id: category?.parent_id ?? '__none',
-    default_team_id: category?.default_team_id ? category.default_team_id.toString() : '',
-    is_active: category?.is_active ?? true,
-    sort_order: category?.sort_order ?? 0,
-    requires_approval: category?.requires_approval ?? false,
-    requires_hod_approval: category?.requires_hod_approval ?? false,
-    hod_approval_threshold: category?.hod_approval_threshold ?? null,
-  });
+    const { data, setData, post, put, processing, transform } = useForm({
+        name: category?.name ?? '',
+        slug: category?.slug ?? '',
+        description: category?.description ?? '',
+        parent_id: category?.parent_id ?? '__none',
+        default_team_id: category?.default_team_id
+            ? category.default_team_id.toString()
+            : '',
+        workflow_template_id: category?.workflow_template_id
+            ? category.workflow_template_id.toString()
+            : '__none',
+        is_active: category?.is_active ?? true,
+        sort_order: category?.sort_order ?? 0,
+    });
 
-  // Transform data before submission
-  transform((data) => {
-    const transformed: any = {
-      ...data,
-      parent_id: data.parent_id === '__none' ? null : Number(data.parent_id),
-      default_team_id: data.default_team_id && data.default_team_id !== '' ? Number(data.default_team_id) : undefined,
-      sort_order: Number(data.sort_order) || 0,
-      hod_approval_threshold: data.hod_approval_threshold ? Number(data.hod_approval_threshold) : null,
+    // Transform data before submission
+    transform((data) => {
+        const transformed: Record<string, unknown> = {
+            ...data,
+            parent_id:
+                data.parent_id === '__none' ? null : Number(data.parent_id),
+            default_team_id:
+                data.default_team_id && data.default_team_id !== ''
+                    ? Number(data.default_team_id)
+                    : undefined,
+            workflow_template_id:
+                data.workflow_template_id === '__none'
+                    ? null
+                    : Number(data.workflow_template_id),
+            sort_order: Number(data.sort_order) || 0,
+        };
+
+        // Remove slug if empty (let backend auto-generate)
+        if (!transformed.slug || transformed.slug.trim() === '') {
+            delete transformed.slug;
+        }
+
+        return transformed;
+    });
+
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
+
+        if (isEdit && category) {
+            put(route('admin.categories.update', category.id));
+        } else {
+            post(route('admin.categories.store'));
+        }
     };
-    
-    // Remove slug if empty (let backend auto-generate)
-    if (!transformed.slug || transformed.slug.trim() === '') {
-      delete transformed.slug;
-    }
-    
-    return transformed;
-  });
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
+    return (
+        <AppLayout>
+            <Head title={isEdit ? 'Edit Category' : 'New Category'} />
 
-    if (isEdit && category) {
-      put(route('admin.categories.update', category.id));
-    } else {
-      post(route('admin.categories.store'));
-    }
-  };
-
-  return (
-    <AppLayout>
-      <Head title={isEdit ? 'Edit Category' : 'New Category'} />
-
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">{isEdit ? 'Edit Category' : 'New Category'}</h1>
-            <p className="text-muted-foreground">
-              {isEdit ? 'Update category information.' : 'Create a new ticket category.'}
-            </p>
-          </div>
-          <Button asChild variant="outline">
-            <Link href={route('admin.categories.index')}>← Back</Link>
-          </Button>
-        </div>
-
-        {/* Form */}
-        <Card>
-          <form onSubmit={handleSubmit}>
-            <CardHeader>
-              <CardTitle>Category Information</CardTitle>
-              <CardDescription>
-                {isEdit
-                  ? 'Update the category details below.'
-                  : 'Fill in the information to create a new category.'}
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              {/* Name */}
-              <div className="space-y-2">
-                <Label htmlFor="name">Name *</Label>
-                <Input
-                  id="name"
-                  value={data.name}
-                  onChange={(e) => setData('name', e.target.value)}
-                  placeholder="e.g. IT Support, Equipment Issue, Site Problem"
-                  required
-                />
-                {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
-              </div>
-
-              {/* Slug */}
-              <div className="space-y-2">
-                <Label htmlFor="slug">Slug</Label>
-                <Input
-                  id="slug"
-                  value={data.slug}
-                  onChange={(e) => setData('slug', e.target.value)}
-                  placeholder="Auto-generated from name"
-                />
-                <p className="text-xs text-muted-foreground">
-                  URL-friendly identifier (auto-generated if left blank)
-                </p>
-                {errors.slug && <p className="text-xs text-red-500">{errors.slug}</p>}
-              </div>
-
-              {/* Description */}
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={data.description}
-                  onChange={(e) => setData('description', e.target.value)}
-                  placeholder="Describe when this category should be used..."
-                  rows={3}
-                />
-                {errors.description && (
-                  <p className="text-xs text-red-500">{errors.description}</p>
-                )}
-              </div>
-
-              {/* Parent Category & Default Team */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="parent_id">Parent Category</Label>
-                  <Select
-                    value={data.parent_id.toString()}
-                    onValueChange={(value) => setData('parent_id', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="No parent (root category)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none">No parent (root category)</SelectItem>
-                      {parentCategories.map((parent) => (
-                        <SelectItem key={parent.id} value={parent.id.toString()}>
-                          {parent.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Create a hierarchical structure (e.g., IT → Hardware → Laptop)
-                  </p>
-                  {errors.parent_id && (
-                    <p className="text-xs text-red-500">{errors.parent_id}</p>
-                  )}
+            <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold">
+                            {isEdit ? 'Edit Category' : 'New Category'}
+                        </h1>
+                        <p className="text-muted-foreground">
+                            {isEdit
+                                ? 'Update category information.'
+                                : 'Create a new ticket category.'}
+                        </p>
+                    </div>
+                    <Button asChild variant="outline">
+                        <Link href={route('admin.categories.index')}>
+                            ← Back
+                        </Link>
+                    </Button>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="default_team_id">Default Team *</Label>
-                  <Select
-                    value={data.default_team_id}
-                    onValueChange={(value) => setData('default_team_id', value)}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select default team" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id.toString()}>
-                          {dept.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Tickets in this category will be auto-assigned to this team
-                  </p>
-                  {errors.default_team_id && (
-                    <p className="text-xs text-red-500">{errors.default_team_id}</p>
-                  )}
-                </div>
-              </div>
+                {/* Form */}
+                <Card>
+                    <form onSubmit={handleSubmit}>
+                        <CardHeader>
+                            <CardTitle>Category Information</CardTitle>
+                            <CardDescription>
+                                {isEdit
+                                    ? 'Update the category details below.'
+                                    : 'Fill in the information to create a new category.'}
+                            </CardDescription>
+                        </CardHeader>
 
-              {/* Sort Order & Active Status */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="sort_order">Sort Order</Label>
-                    <Input
-                      id="sort_order"
-                      type="number"
-                      min="0"
-                      value={data.sort_order}
-                      onChange={(e) => setData('sort_order', Number(e.target.value) || 0)}
-                      placeholder="0"
-                    />
-                  <p className="text-xs text-muted-foreground">
-                    Lower numbers appear first in lists
-                  </p>
-                  {errors.sort_order && (
-                    <p className="text-xs text-red-500">{errors.sort_order}</p>
-                  )}
-                </div>
+                        <CardContent className="space-y-4">
+                            {/* Name */}
+                            <div className="space-y-2">
+                                <Label htmlFor="name">Name *</Label>
+                                <Input
+                                    id="name"
+                                    value={data.name}
+                                    onChange={(e) =>
+                                        setData('name', e.target.value)
+                                    }
+                                    placeholder="e.g. IT Support, Equipment Issue, Site Problem"
+                                    required
+                                />
+                                {errors.name && (
+                                    <p className="text-xs text-red-500">
+                                        {errors.name}
+                                    </p>
+                                )}
+                            </div>
 
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <div className="flex items-center space-x-2 pt-2">
-                    <Checkbox
-                      id="is_active"
-                      checked={data.is_active}
-                      onCheckedChange={(checked) => setData('is_active', Boolean(checked))}
-                    />
-                    <Label htmlFor="is_active" className="text-sm font-normal cursor-pointer">
-                      Category is active
-                    </Label>
-                  </div>
-                  <p className="text-xs text-muted-foreground ml-6">
-                    Inactive categories won't appear in ticket creation forms
-                  </p>
-                </div>
-              </div>
+                            {/* Slug */}
+                            <div className="space-y-2">
+                                <Label htmlFor="slug">Slug</Label>
+                                <Input
+                                    id="slug"
+                                    value={data.slug}
+                                    onChange={(e) =>
+                                        setData('slug', e.target.value)
+                                    }
+                                    placeholder="Auto-generated from name"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    URL-friendly identifier (auto-generated if
+                                    left blank)
+                                </p>
+                                {errors.slug && (
+                                    <p className="text-xs text-red-500">
+                                        {errors.slug}
+                                    </p>
+                                )}
+                            </div>
 
-              {/* Approval Settings */}
-              <div className="space-y-4 border-t pt-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">Approval Workflow Settings</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Configure how tickets in this category flow through the approval process
-                  </p>
-                </div>
+                            {/* Description */}
+                            <div className="space-y-2">
+                                <Label htmlFor="description">Description</Label>
+                                <Textarea
+                                    id="description"
+                                    value={data.description}
+                                    onChange={(e) =>
+                                        setData('description', e.target.value)
+                                    }
+                                    placeholder="Describe when this category should be used..."
+                                    rows={3}
+                                />
+                                {errors.description && (
+                                    <p className="text-xs text-red-500">
+                                        {errors.description}
+                                    </p>
+                                )}
+                            </div>
 
-                {/* Requires Approval */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="requires_approval"
-                      checked={data.requires_approval}
-                      onCheckedChange={(checked) => setData('requires_approval', Boolean(checked))}
-                    />
-                    <Label htmlFor="requires_approval" className="text-sm font-normal cursor-pointer">
-                      Require Line Manager (LM) approval
-                    </Label>
-                  </div>
-                  <p className="text-xs text-muted-foreground ml-6">
-                    Tickets in this category will require Line Manager approval before routing to the assigned team
-                  </p>
-                  {errors.requires_approval && (
-                    <p className="text-xs text-red-500 ml-6">{errors.requires_approval}</p>
-                  )}
-                </div>
+                            {/* Parent Category & Default Team */}
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="parent_id">
+                                        Parent Category
+                                    </Label>
+                                    <Select
+                                        value={data.parent_id.toString()}
+                                        onValueChange={(value) =>
+                                            setData('parent_id', value)
+                                        }
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="No parent (root category)" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__none">
+                                                No parent (root category)
+                                            </SelectItem>
+                                            {parentCategories.map((parent) => (
+                                                <SelectItem
+                                                    key={parent.id}
+                                                    value={parent.id.toString()}
+                                                >
+                                                    {parent.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        Create a hierarchical structure (e.g.,
+                                        IT → Hardware → Laptop)
+                                    </p>
+                                    {errors.parent_id && (
+                                        <p className="text-xs text-red-500">
+                                            {errors.parent_id}
+                                        </p>
+                                    )}
+                                </div>
 
-                {/* Requires HOD Approval */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="requires_hod_approval"
-                      checked={data.requires_hod_approval}
-                      onCheckedChange={(checked) => setData('requires_hod_approval', Boolean(checked))}
-                      disabled={!!data.hod_approval_threshold}
-                    />
-                    <Label 
-                      htmlFor="requires_hod_approval" 
-                      className={`text-sm font-normal cursor-pointer ${data.hod_approval_threshold ? 'text-muted-foreground' : ''}`}
-                    >
-                      Always require Head of Department (HOD) approval
-                    </Label>
-                  </div>
-                  <p className="text-xs text-muted-foreground ml-6">
-                    {data.hod_approval_threshold 
-                      ? 'Disabled: Cost-based HOD approval is enabled (threshold takes precedence)'
-                      : 'If enabled, all tickets in this category will require HOD approval regardless of cost or priority'}
-                  </p>
-                  {errors.requires_hod_approval && (
-                    <p className="text-xs text-red-500 ml-6">{errors.requires_hod_approval}</p>
-                  )}
-                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="default_team_id">
+                                        Default Team *
+                                    </Label>
+                                    <Select
+                                        value={data.default_team_id}
+                                        onValueChange={(value) =>
+                                            setData('default_team_id', value)
+                                        }
+                                        required
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select default team" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {departments.map((dept) => (
+                                                <SelectItem
+                                                    key={dept.id}
+                                                    value={dept.id.toString()}
+                                                >
+                                                    {dept.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        Tickets in this category will be
+                                        auto-assigned to this team
+                                    </p>
+                                    {errors.default_team_id && (
+                                        <p className="text-xs text-red-500">
+                                            {errors.default_team_id}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
 
-                {/* HOD Approval Threshold */}
-                <div className="space-y-2">
-                  <Label htmlFor="hod_approval_threshold">
-                    HOD Approval Cost Threshold ($)
-                  </Label>
-                    <Input
-                      id="hod_approval_threshold"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={data.hod_approval_threshold ?? ''}
-                      onChange={(e) => setData('hod_approval_threshold', e.target.value === '' ? null : Number(e.target.value))}
-                      placeholder="e.g. 1000.00"
-                    />
-                  <p className="text-xs text-muted-foreground">
-                    If set, HOD approval will be required when ticket cost exceeds this amount. 
-                    This takes precedence over the "Always require HOD approval" checkbox above.
-                    <br />
-                    <strong>Example:</strong> Set to $1,000 means tickets with cost ≥ $1,000 will require HOD approval.
-                  </p>
-                  {errors.hod_approval_threshold && (
-                    <p className="text-xs text-red-500">{errors.hod_approval_threshold}</p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
+                            {/* Workflow Template */}
+                            <div className="space-y-2">
+                                <Label htmlFor="workflow_template_id">
+                                    Workflow Template
+                                </Label>
+                                <Select
+                                    value={data.workflow_template_id.toString()}
+                                    onValueChange={(value) =>
+                                        setData('workflow_template_id', value)
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Use automatic workflow matching" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__none">
+                                            Use automatic workflow matching
+                                        </SelectItem>
+                                        {workflowTemplates.map((template) => (
+                                            <SelectItem
+                                                key={template.id}
+                                                value={template.id.toString()}
+                                            >
+                                                {template.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Select a workflow to use for all tickets in
+                                    this category. If empty, the system will
+                                    pick the best matching active workflow
+                                    template.
+                                </p>
+                                {errors.workflow_template_id && (
+                                    <p className="text-xs text-red-500">
+                                        {errors.workflow_template_id}
+                                    </p>
+                                )}
+                            </div>
 
-            <CardFooter className="flex justify-between border-t pt-4">
-              <Button type="button" variant="outline" asChild>
-                <Link href={route('admin.categories.index')}>Cancel</Link>
-              </Button>
-              <Button type="submit" disabled={processing}>
-                {processing ? 'Saving...' : isEdit ? 'Update Category' : 'Create Category'}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-      </div>
-    </AppLayout>
-  );
+                            {/* Sort Order & Active Status */}
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="sort_order">
+                                        Sort Order
+                                    </Label>
+                                    <Input
+                                        id="sort_order"
+                                        type="number"
+                                        min="0"
+                                        value={data.sort_order}
+                                        onChange={(e) =>
+                                            setData(
+                                                'sort_order',
+                                                Number(e.target.value) || 0,
+                                            )
+                                        }
+                                        placeholder="0"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Lower numbers appear first in lists
+                                    </p>
+                                    {errors.sort_order && (
+                                        <p className="text-xs text-red-500">
+                                            {errors.sort_order}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Status</Label>
+                                    <div className="flex items-center space-x-2 pt-2">
+                                        <Checkbox
+                                            id="is_active"
+                                            checked={data.is_active}
+                                            onCheckedChange={(checked) =>
+                                                setData(
+                                                    'is_active',
+                                                    Boolean(checked),
+                                                )
+                                            }
+                                        />
+                                        <Label
+                                            htmlFor="is_active"
+                                            className="cursor-pointer text-sm font-normal"
+                                        >
+                                            Category is active
+                                        </Label>
+                                    </div>
+                                    <p className="ml-6 text-xs text-muted-foreground">
+                                        Inactive categories won't appear in
+                                        ticket creation forms
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+
+                        <CardFooter className="flex justify-between border-t pt-4">
+                            <Button type="button" variant="outline" asChild>
+                                <Link href={route('admin.categories.index')}>
+                                    Cancel
+                                </Link>
+                            </Button>
+                            <Button type="submit" disabled={processing}>
+                                {processing
+                                    ? 'Saving...'
+                                    : isEdit
+                                      ? 'Update Category'
+                                      : 'Create Category'}
+                            </Button>
+                        </CardFooter>
+                    </form>
+                </Card>
+            </div>
+        </AppLayout>
+    );
 }
-

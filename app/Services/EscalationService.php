@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\EscalationRule;
 use App\Models\Ticket;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class EscalationService
@@ -15,7 +16,7 @@ class EscalationService
     {
         try {
             $rules = EscalationRule::active()->ordered()->get();
-            
+
             if ($rules->isEmpty()) {
                 return;
             }
@@ -29,14 +30,13 @@ class EscalationService
 
             foreach ($tickets as $ticket) {
                 foreach ($rules as $rule) {
-                    if ($rule->matches($ticket)) {
-                        $rule->execute($ticket);
+                    if ($rule->matches($ticket) && $this->executeOnce($rule, $ticket)) {
                         $escalatedCount++;
-                        
+
                         // Refresh ticket to get updated values
                         $ticket->refresh();
-                        
-                        Log::info("Ticket escalated", [
+
+                        Log::info('Ticket escalated', [
                             'ticket_id' => $ticket->id,
                             'ticket_number' => $ticket->ticket_number,
                             'rule_id' => $rule->id,
@@ -49,7 +49,7 @@ class EscalationService
                 }
             }
 
-            Log::info("Escalation check completed", [
+            Log::info('Escalation check completed', [
                 'tickets_checked' => $tickets->count(),
                 'tickets_escalated' => $escalatedCount,
             ]);
@@ -68,12 +68,44 @@ class EscalationService
         $rules = EscalationRule::active()->ordered()->get();
 
         foreach ($rules as $rule) {
-            if ($rule->matches($ticket)) {
-                $rule->execute($ticket);
+            if ($rule->matches($ticket) && $this->executeOnce($rule, $ticket)) {
                 $ticket->refresh();
                 break; // Only apply one rule per check
             }
         }
     }
-}
 
+    protected function executeOnce(EscalationRule $rule, Ticket $ticket): bool
+    {
+        $now = now();
+        $occurrenceKey = $rule->occurrenceKey($ticket);
+        $reserved = DB::table('escalation_executions')->insertOrIgnore([
+            'escalation_rule_id' => $rule->id,
+            'ticket_id' => $ticket->id,
+            'occurrence_key' => $occurrenceKey,
+            'executed_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        if ($reserved === 0) {
+            return false;
+        }
+
+        try {
+            $rule->execute($ticket, [
+                'occurrence_key' => $occurrenceKey,
+            ]);
+
+            return true;
+        } catch (\Throwable $exception) {
+            DB::table('escalation_executions')
+                ->where('escalation_rule_id', $rule->id)
+                ->where('ticket_id', $ticket->id)
+                ->where('occurrence_key', $occurrenceKey)
+                ->delete();
+
+            throw $exception;
+        }
+    }
+}

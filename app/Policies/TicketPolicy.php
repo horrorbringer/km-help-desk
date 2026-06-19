@@ -4,10 +4,44 @@ namespace App\Policies;
 
 use App\Models\Ticket;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
 
 class TicketPolicy
 {
+    private const STATUS_TRANSITIONS = [
+        Ticket::STATUS_OPEN => [
+            Ticket::STATUS_ASSIGNED,
+            Ticket::STATUS_IN_PROGRESS,
+            Ticket::STATUS_WAITING,
+            Ticket::STATUS_CLOSED,
+            Ticket::STATUS_CANCELLED,
+        ],
+        Ticket::STATUS_ASSIGNED => [
+            Ticket::STATUS_OPEN,
+            Ticket::STATUS_IN_PROGRESS,
+            Ticket::STATUS_WAITING,
+            Ticket::STATUS_CLOSED,
+            Ticket::STATUS_CANCELLED,
+        ],
+        Ticket::STATUS_IN_PROGRESS => [
+            Ticket::STATUS_WAITING,
+            Ticket::STATUS_RESOLVED,
+            Ticket::STATUS_CLOSED,
+            Ticket::STATUS_CANCELLED,
+        ],
+        Ticket::STATUS_WAITING => [
+            Ticket::STATUS_IN_PROGRESS,
+            Ticket::STATUS_RESOLVED,
+            Ticket::STATUS_CLOSED,
+            Ticket::STATUS_CANCELLED,
+        ],
+        Ticket::STATUS_RESOLVED => [
+            Ticket::STATUS_IN_PROGRESS,
+            Ticket::STATUS_CLOSED,
+        ],
+        Ticket::STATUS_CLOSED => [Ticket::STATUS_OPEN],
+        Ticket::STATUS_CANCELLED => [Ticket::STATUS_OPEN],
+    ];
+
     /**
      * Determine whether the user can view any models.
      */
@@ -21,7 +55,7 @@ class TicketPolicy
      */
     public function view(User $user, Ticket $ticket): bool
     {
-        if (!$user->can('tickets.view')) {
+        if (! $user->can('tickets.view')) {
             return false;
         }
 
@@ -33,6 +67,10 @@ class TicketPolicy
         // Check if user is the requester
         if ($ticket->requester_id === $user->id) {
             return true;
+        }
+
+        if ($this->hasPendingApproval($ticket) && ! $this->isApprovalParticipant($user, $ticket)) {
+            return false;
         }
 
         // Check if user is the assigned agent
@@ -71,6 +109,18 @@ class TicketPolicy
         return false;
     }
 
+    private function hasPendingApproval(Ticket $ticket): bool
+    {
+        return $ticket->approvals()->where('status', 'pending')->exists();
+    }
+
+    private function isApprovalParticipant(User $user, Ticket $ticket): bool
+    {
+        return \App\Models\TicketApproval::where('ticket_id', $ticket->id)
+            ->where('approver_id', $user->id)
+            ->exists();
+    }
+
     /**
      * Determine whether the user can create models.
      */
@@ -84,7 +134,7 @@ class TicketPolicy
      */
     public function update(User $user, Ticket $ticket): bool
     {
-        if (!$user->can('tickets.edit')) {
+        if (! $user->can('tickets.update-details')) {
             return false;
         }
 
@@ -97,9 +147,18 @@ class TicketPolicy
      */
     public function changeStatus(User $user, Ticket $ticket, ?string $newStatus = null): bool
     {
-        // Managers/admins with assign permission can always change status
-        if ($user->can('tickets.assign')) {
-            return true;
+        if (! $user->can('tickets.change-status')) {
+            return false;
+        }
+
+        if (! $newStatus || ! in_array($newStatus, self::STATUS_TRANSITIONS[$ticket->status] ?? [], true)) {
+            return false;
+        }
+
+        // Approval decisions own the lifecycle while a workflow is pending.
+        // Cancellation remains available as an explicit escape hatch.
+        if ($ticket->hasPendingApproval()) {
+            return $newStatus === Ticket::STATUS_CANCELLED;
         }
 
         // Check if user is the requester
@@ -107,12 +166,16 @@ class TicketPolicy
 
         // If user is the requester, they can only change status to "closed" or "cancelled"
         if ($isRequester && $newStatus) {
-            $requesterAllowedStatuses = [Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED];
-            // Also allow reopening closed/cancelled tickets (changing back to open)
-            if (in_array($ticket->status, [Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED]) && $newStatus === Ticket::STATUS_OPEN) {
-                return true;
+            if (in_array($ticket->status, [Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED])) {
+                return $newStatus === Ticket::STATUS_OPEN;
             }
-            return in_array($newStatus, $requesterAllowedStatuses);
+
+            return in_array($newStatus, [Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED]);
+        }
+
+        // Managers/admins can use every valid lifecycle transition.
+        if ($user->can('tickets.assign')) {
+            return true;
         }
 
         // If ticket is assigned to an agent
@@ -129,6 +192,7 @@ class TicketPolicy
                 // Requesters cannot change status of tickets assigned to teams
                 return $user->hasAnyRole(\App\Constants\RoleConstants::getAgentRoles());
             }
+
             return false;
         }
 
@@ -136,12 +200,11 @@ class TicketPolicy
         // - Agents can change to any status
         // - Requesters can only close/cancel or reopen
         if ($isRequester && $newStatus) {
-            $requesterAllowedStatuses = [Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED];
-            // Allow reopening closed/cancelled tickets
-            if (in_array($ticket->status, [Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED]) && $newStatus === Ticket::STATUS_OPEN) {
-                return true;
+            if (in_array($ticket->status, [Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED])) {
+                return $newStatus === Ticket::STATUS_OPEN;
             }
-            return in_array($newStatus, $requesterAllowedStatuses);
+
+            return in_array($newStatus, [Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED]);
         }
 
         // For agents on unassigned tickets, allow status change
@@ -173,6 +236,10 @@ class TicketPolicy
      */
     public function pick(User $user, Ticket $ticket): bool
     {
+        if ($ticket->hasPendingApproval()) {
+            return false;
+        }
+
         // Admins/Managers can reassign (bypasses picking restriction)
         if ($user->can('tickets.assign')) {
             return true;
@@ -182,7 +249,23 @@ class TicketPolicy
         // Can pick if:
         // 1. Ticket is unassigned (no agent assigned)
         // 2. Ticket is assigned to their team (and they're in that team)
-        return !$ticket->assigned_agent_id && $ticket->assigned_team_id == $user->department_id;
+        return ! $ticket->assigned_agent_id && $ticket->assigned_team_id == $user->department_id;
+    }
+
+    /**
+     * Determine if a user can resubmit a rejected ticket.
+     */
+    public function resubmit(User $user, Ticket $ticket): bool
+    {
+        if (! $user->can('tickets.edit') || ! $this->view($user, $ticket)) {
+            return false;
+        }
+
+        if ($ticket->status !== Ticket::STATUS_CANCELLED || ! $ticket->hasRejectedApproval()) {
+            return false;
+        }
+
+        return $ticket->requester_id === $user->id || $user->can('tickets.assign');
     }
 
     /**

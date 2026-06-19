@@ -22,7 +22,7 @@ self.addEventListener('push', function (event) {
         icon: data.icon || '/favicon.ico',
         badge: data.badge || '/favicon.ico',
         data: data.data || {},
-        requireInteraction: data.requireInteraction || true,
+        requireInteraction: data.requireInteraction ?? true,
         actions: [
             {
                 action: 'view',

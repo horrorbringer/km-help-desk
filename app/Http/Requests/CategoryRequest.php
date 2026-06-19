@@ -28,6 +28,7 @@ class CategoryRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'parent_id' => ['nullable', 'exists:ticket_categories,id'],
             'default_team_id' => ['required', 'exists:departments,id'],
+            'workflow_template_id' => ['nullable', 'exists:workflow_templates,id'],
             'is_active' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
             'requires_approval' => ['boolean'],
@@ -38,6 +39,14 @@ class CategoryRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if ($this->parent_id === '__none') {
+            $this->merge(['parent_id' => null]);
+        }
+
+        if ($this->workflow_template_id === '__none') {
+            $this->merge(['workflow_template_id' => null]);
+        }
+
         // Auto-generate slug if not provided or empty
         if ((!$this->has('slug') || empty($this->slug)) && $this->has('name') && !empty($this->name)) {
             $this->merge([
@@ -46,4 +55,3 @@ class CategoryRequest extends FormRequest
         }
     }
 }
-

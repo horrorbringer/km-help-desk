@@ -62,16 +62,13 @@ class TicketController extends Controller
             ->whereHas('ticket', function ($query) {
                 $query->whereNotIn('status', ['resolved', 'closed', 'cancelled']);
             });
-        
-        // If user can assign tickets, they can see all pending approvals
-        // Otherwise, they only see approvals assigned to them or unassigned
-        if (!$user->can('tickets.assign')) {
-            $pendingApprovalsQuery->where(function ($query) use ($user) {
-                $query->where('approver_id', $user->id)
-                    ->orWhereNull('approver_id');
-            });
+
+        // Users without assignment authority only see approvals assigned to them.
+        // Unassigned approvals are reserved for users who can assign tickets.
+        if (! $user->can('tickets.assign')) {
+            $pendingApprovalsQuery->where('approver_id', $user->id);
         }
-        
+
         $pendingApprovalsCount = $pendingApprovalsQuery->count();
 
         // Get rejected tickets count (same logic as TicketController::rejected)
@@ -80,7 +77,7 @@ class TicketController extends Controller
         });
 
         // Apply visibility filters based on user role
-        if (!$user->can('tickets.assign')) {
+        if (! $user->can('tickets.assign')) {
             // Regular users (Requester/Agent) can only see:
             // 1. Tickets they created (requester)
             // 2. Tickets assigned to them (agent)
@@ -131,32 +128,20 @@ class TicketController extends Controller
 
             $this->syncRelations($ticket, $request->validated());
 
-            // Initialize approval workflow (synchronous - needed immediately)
-            // This is kept synchronous because it affects ticket status and routing
-            // Check if workflow already initialized to prevent duplicate initialization
-            $hasPendingApproval = $ticket->approvals()
-                ->where('status', 'pending')
-                ->exists();
-            
-            if (!$hasPendingApproval) {
-                try {
-                    $approvalService = app(\App\Services\ApprovalWorkflowService::class);
-                    $approvalService->initializeWorkflow($ticket);
-                } catch (\Exception $e) {
-                    \Log::warning('Approval workflow service failed on ticket creation', [
-                        'ticket_id' => $ticket->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            } else {
-                \Log::info('Workflow already initialized, skipping duplicate initialization', [
+            // Synchronous because workflow may update ticket status or routing.
+            try {
+                $approvalService = app(\App\Services\ApprovalWorkflowService::class);
+                $approvalService->initializeWorkflow($ticket);
+            } catch (\Exception $e) {
+                \Log::warning('Approval workflow service failed on ticket creation', [
                     'ticket_id' => $ticket->id,
+                    'error' => $e->getMessage(),
                 ]);
             }
 
             // Queue heavy operations to run asynchronously (non-blocking)
             // This allows the response to return immediately while processing continues in background
-            
+
             // Execute automation rules (async)
             dispatch(function () use ($ticket) {
                 try {
@@ -179,7 +164,7 @@ class TicketController extends Controller
 
                     // Notify assignment (includes Telegram group notification)
                     $notificationService->notifyTicketAssigned($ticket);
-                    
+
                     // Notify teammates of the requester
                     $notificationService->notifyTeammates($ticket);
                 } catch (\Exception $e) {
@@ -192,7 +177,7 @@ class TicketController extends Controller
             })->afterResponse();
 
             // Clear search cache (async)
-            dispatch(function () use ($ticket) {
+            dispatch(function () {
                 try {
                     app(SearchService::class)->clearCache();
                 } catch (\Exception $e) {
@@ -204,7 +189,7 @@ class TicketController extends Controller
 
             // Refresh the ticket to ensure all relations are loaded
             $ticket->refresh();
-            
+
             return redirect()
                 ->route('admin.tickets.show', $ticket->id)
                 ->with('success', 'Ticket created successfully!');
@@ -217,7 +202,7 @@ class TicketController extends Controller
             return redirect()
                 ->back()
                 ->withInput()
-                ->with('error', 'Failed to create ticket: ' . $e->getMessage());
+                ->with('error', 'Failed to create ticket: '.$e->getMessage());
         }
     }
 
@@ -226,11 +211,11 @@ class TicketController extends Controller
         abort_unless(Auth::user()->can('tickets.view'), 403, 'You do not have permission to view tickets.');
 
         $user = Auth::user();
-        
+
         // Apply visibility check for all tickets (not just rejected)
         $canView = $this->canUserViewTicket($user, $ticket);
-        
-        if (!$canView) {
+
+        if (! $canView) {
             abort(403, 'You do not have permission to view this ticket.');
         }
 
@@ -276,7 +261,7 @@ class TicketController extends Controller
 
     public function edit(Ticket $ticket): Response
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403, 'You do not have permission to edit tickets.');
+        $this->authorize('update', $ticket);
 
         $ticket->load([
             'requester:id,name',
@@ -298,202 +283,206 @@ class TicketController extends Controller
 
     public function update(TicketRequest $request, Ticket $ticket): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403, 'You do not have permission to edit tickets.');
+        $this->authorize('view', $ticket);
 
         try {
             $originalData = $ticket->getOriginal();
             $validated = $request->validated();
             $data = $this->preparePayload($validated, $ticket);
             $user = Auth::user();
-            
-            // Check if this is a simple "pick ticket" operation (agent picking ticket)
-            $isPickingTicket = isset($data['assigned_agent_id']) && 
-                               $data['assigned_agent_id'] == $user->id && 
-                               !$user->can('tickets.assign') &&
-                               count($validated) === 1; // Only assigned_agent_id in request
-        
-            // Check if user is trying to assign ticket to themselves (picking/claiming)
-            // Allow agents to pick tickets assigned to their team or unassigned tickets
-            if (isset($data['assigned_agent_id']) && $data['assigned_agent_id'] == $user->id) {
-                // Check if user has assign permission OR if they're picking a ticket they're allowed to pick
-                if (!$user->can('tickets.assign')) {
-                    // Agent is trying to pick/claim a ticket
-                    $canPick = false;
-                    
-                    // Can pick if:
-                    // 1. Ticket is unassigned (no agent assigned)
-                    // 2. Ticket is assigned to their team (and they're in that team)
-                    if (!$ticket->assigned_agent_id && $ticket->assigned_team_id == $user->department_id) {
-                        $canPick = true;
-                    }
-                    // Note: Agents cannot pick tickets that already have an agent assigned
-                    // Only managers/admins with tickets.assign permission can reassign tickets
-                    
-                    if (!$canPick) {
-                        return redirect()
-                            ->back()
-                            ->withInput()
-                            ->with('error', 'You can only pick tickets assigned to your team or unassigned tickets.');
-                    }
-                }
-            } elseif (isset($data['assigned_agent_id']) && $data['assigned_agent_id'] != $user->id) {
-                // User is trying to assign to someone else - requires tickets.assign permission
-                if (!$user->can('tickets.assign')) {
-                    return redirect()
-                        ->back()
-                        ->withInput()
-                        ->with('error', 'You can only assign tickets to yourself. Only managers and admins can assign tickets to others.');
-                }
+
+            $detailFields = array_diff(array_keys($data), [
+                'status',
+                'resolution_summary',
+                'priority',
+                'assigned_agent_id',
+                'assigned_team_id',
+            ]);
+            if ($detailFields && ! $user->can('update', $ticket)) {
+                abort(403, 'You do not have permission to update ticket details.');
             }
-        
-        // Check if user is trying to change status and has permission
-        if (isset($data['status']) && $data['status'] !== $originalData['status']) {
-            if (!$this->canUserChangeStatus($user, $ticket, $data['status'])) {
-                // Check if user is the requester
-                if ($ticket->requester_id === $user->id) {
-                    return redirect()
-                        ->back()
-                        ->withInput()
-                        ->with('error', 'As the requester, you can only close or cancel your tickets, or reopen closed/cancelled tickets. Please contact an agent to change the status to other values.');
-                }
+
+            if (isset($data['priority'])
+                && $data['priority'] !== $originalData['priority']
+                && ! $user->can('tickets.change-priority')) {
+                abort(403, 'You do not have permission to change ticket priority.');
+            }
+
+            // Check if this is a simple "pick ticket" operation (agent picking ticket)
+            $isPickingTicket = isset($data['assigned_agent_id']) &&
+                               $data['assigned_agent_id'] == $user->id &&
+                               ! $user->can('tickets.assign') &&
+                               count($validated) === 1; // Only assigned_agent_id in request
+
+            if (array_key_exists('assigned_agent_id', $data)
+                && ! $user->can('assignAgent', [$ticket, $data['assigned_agent_id']])) {
                 return redirect()
                     ->back()
                     ->withInput()
-                    ->with('error', 'You can only change the status of tickets assigned to you or your team. Managers and admins can change any ticket status.');
+                    ->with('error', $ticket->hasPendingApproval()
+                        ? 'This ticket is waiting for approval. It cannot be picked or reassigned until approval is completed.'
+                        : 'You can only pick tickets assigned to your team or unassigned tickets. Only managers and admins can assign tickets to others.');
             }
-        }
 
-        // Track changes - normalize values for comparison
-        // Skip array values (they're handled by syncRelations)
-        $changes = [];
-        foreach ($data as $key => $value) {
-            // Skip array values - they're handled separately by syncRelations
-            if (is_array($value)) {
-                continue;
-            }
-            
-            $oldValue = $originalData[$key] ?? null;
-            $newValue = $value;
-            
-            // Normalize null/empty string comparisons
-            if (($oldValue === null || $oldValue === '') && ($newValue === null || $newValue === '')) {
-                continue; // Both are empty, no change
-            }
-            
-            // Normalize for comparison (convert to string for comparison)
-            $oldNormalized = $oldValue === null ? null : (string) $oldValue;
-            $newNormalized = $newValue === null ? null : (string) $newValue;
-            
-            if ($oldNormalized !== $newNormalized) {
-                $changes[$key] = [
-                    'old' => $oldValue,
-                    'new' => $newValue,
-                ];
-            }
-        }
-        
-        $statusChanged = isset($changes['status']);
-        
-        // For simple pick operations, skip heavy logging
-        if (!$isPickingTicket) {
-            if (isset($data['status'])) {
-                \Log::info('TicketController::update - Status field in data', [
-                    'ticket_id' => $ticket->id,
-                    'old_status' => $originalData['status'] ?? null,
-                    'new_status' => $data['status'],
-                    'status_in_changes' => isset($changes['status']),
-                ]);
-            }
-            
-            \Log::info('TicketController::update - Changes detected', [
-                'ticket_id' => $ticket->id,
-                'changes_count' => count($changes),
-                'changes' => $changes,
-            ]);
-        }
-        
-        // Handle agent picking ticket - keep team assignment
-        if (isset($data['assigned_agent_id']) && $data['assigned_agent_id'] == $user->id && !$user->can('tickets.assign')) {
-            // Agent is picking ticket - keep team assignment if ticket is assigned to their team
-            if ($ticket->assigned_team_id && $ticket->assigned_team_id == $user->department_id) {
-                // Don't clear team assignment when agent picks
-                // The team assignment stays, agent just claims it
-                // Ensure team assignment is preserved in the data
-                if (!isset($data['assigned_team_id'])) {
-                    $data['assigned_team_id'] = $ticket->assigned_team_id;
+            // Check if user is trying to change status and has permission
+            if (isset($data['status']) && $data['status'] !== $originalData['status']) {
+                if (! $user->can('changeStatus', [$ticket, $data['status']])) {
+                    // Check if user is the requester
+                    if ($ticket->requester_id === $user->id) {
+                        return redirect()
+                            ->back()
+                            ->withInput()
+                            ->with('error', 'As the requester, you can only close or cancel your tickets, or reopen closed/cancelled tickets. Please contact an agent to change the status to other values.');
+                    }
+
+                    return redirect()
+                        ->back()
+                        ->withInput()
+                        ->with('error', 'You can only change the status of tickets assigned to you or your team. Managers and admins can change any ticket status.');
                 }
             }
-        }
-        
-        $ticket->update($data);
 
-        $this->syncRelations($ticket, $request->validated());
-        
-        // Record history for changes
-        foreach ($changes as $field => $change) {
-            $action = match($field) {
-                'status' => 'status_changed',
-                'priority' => 'priority_changed',
-                'assigned_agent_id' => 'assigned',
-                'assigned_team_id' => 'assigned',
-                'category_id' => 'category_changed',
-                'sla_policy_id' => 'sla_changed',
-                default => 'field_changed',
-            };
-
-            // Get human-readable values for certain fields
-            $oldValue = $this->formatHistoryValue($field, $change['old']);
-            $newValue = $this->formatHistoryValue($field, $change['new']);
-
-            $ticket->histories()->create([
-                'user_id' => Auth::id(),
-                'action' => $action,
-                'field_name' => $field,
-                'old_value' => $oldValue,
-                'new_value' => $newValue,
-                'description' => ucfirst(str_replace('_', ' ', $field)) . " changed from {$oldValue} to {$newValue}",
-                'created_at' => now(),
-            ]);
-        }
-
-        // For simple pick operations, skip heavy operations and return quickly
-        if ($isPickingTicket) {
-            // Skip heavy operations (automation, escalation, notifications, cache) for instant response
-            // These can be handled later by a scheduled job or on the next page load
-            // The ticket assignment is already saved, so the user gets immediate feedback
-            
-            // Return immediately for fast response
-            return redirect()
-                ->route('admin.tickets.show', $ticket)
-                ->with('success', 'Ticket picked successfully!');
-        }
-
-        // Execute heavy operations (automation, escalation, cache clearing) asynchronously
-        // This ensures the user gets an immediate response while emails and rules process in the background
-        dispatch(function () use ($ticket, $statusChanged) {
-            try {
-                // Execute automation rules
-                $automationService = app(AutomationService::class);
-                $automationService->onTicketUpdated($ticket, $originalData);
-                
-                if ($statusChanged) {
-                    $automationService->onTicketStatusChanged($ticket, $originalData);
+            // Track changes - normalize values for comparison
+            // Skip array values (they're handled by syncRelations)
+            $changes = [];
+            foreach ($data as $key => $value) {
+                // Skip array values - they're handled separately by syncRelations
+                if (is_array($value)) {
+                    continue;
                 }
 
-                // Check for escalation
-                $escalationService = app(EscalationService::class);
-                $escalationService->checkTicket($ticket);
+                $oldValue = $originalData[$key] ?? null;
+                $newValue = $value;
 
-                // Clear search cache
-                app(SearchService::class)->clearCache();
-            } catch (\Exception $e) {
-                \Log::error('Background processing failed on ticket update', [
+                // Normalize null/empty string comparisons
+                if (($oldValue === null || $oldValue === '') && ($newValue === null || $newValue === '')) {
+                    continue; // Both are empty, no change
+                }
+
+                // Normalize for comparison (convert to string for comparison)
+                $oldNormalized = $oldValue === null ? null : (string) $oldValue;
+                $newNormalized = $newValue === null ? null : (string) $newValue;
+
+                if ($oldNormalized !== $newNormalized) {
+                    $changes[$key] = [
+                        'old' => $oldValue,
+                        'new' => $newValue,
+                    ];
+                }
+            }
+
+            $statusChanged = isset($changes['status']);
+
+            // For simple pick operations, skip heavy logging
+            if (! $isPickingTicket) {
+                if (isset($data['status'])) {
+                    \Log::info('TicketController::update - Status field in data', [
+                        'ticket_id' => $ticket->id,
+                        'old_status' => $originalData['status'] ?? null,
+                        'new_status' => $data['status'],
+                        'status_in_changes' => isset($changes['status']),
+                    ]);
+                }
+
+                \Log::info('TicketController::update - Changes detected', [
                     'ticket_id' => $ticket->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
+                    'changes_count' => count($changes),
+                    'changes' => $changes,
                 ]);
             }
-        })->afterResponse();
+
+            // Handle agent picking ticket - keep team assignment
+            if (isset($data['assigned_agent_id']) && $data['assigned_agent_id'] == $user->id && ! $user->can('tickets.assign')) {
+                // Agent is picking ticket - keep team assignment if ticket is assigned to their team
+                if ($ticket->assigned_team_id && $ticket->assigned_team_id == $user->department_id) {
+                    // Don't clear team assignment when agent picks
+                    // The team assignment stays, agent just claims it
+                    // Ensure team assignment is preserved in the data
+                    if (! isset($data['assigned_team_id'])) {
+                        $data['assigned_team_id'] = $ticket->assigned_team_id;
+                    }
+                }
+            }
+
+            $ticket->update($data);
+
+            $this->syncRelations($ticket, $request->validated());
+
+            // Record history for changes
+            foreach ($changes as $field => $change) {
+                $action = match ($field) {
+                    'status' => 'status_changed',
+                    'priority' => 'priority_changed',
+                    'assigned_agent_id' => 'assigned',
+                    'assigned_team_id' => 'assigned',
+                    'category_id' => 'category_changed',
+                    'sla_policy_id' => 'sla_changed',
+                    default => 'field_changed',
+                };
+
+                // Get human-readable values for certain fields
+                $oldValue = $this->formatHistoryValue($field, $change['old']);
+                $newValue = $this->formatHistoryValue($field, $change['new']);
+
+                $ticket->histories()->create([
+                    'user_id' => Auth::id(),
+                    'action' => $action,
+                    'field_name' => $field,
+                    'old_value' => $oldValue,
+                    'new_value' => $newValue,
+                    'description' => ucfirst(str_replace('_', ' ', $field))." changed from {$oldValue} to {$newValue}",
+                    'created_at' => now(),
+                ]);
+            }
+
+            // For simple pick operations, skip heavy operations and return quickly
+            if ($isPickingTicket) {
+                // Skip heavy operations (automation, escalation, notifications, cache) for instant response
+                // These can be handled later by a scheduled job or on the next page load
+                // The ticket assignment is already saved, so the user gets immediate feedback
+
+                // Return immediately for fast response
+                return redirect()
+                    ->route('admin.tickets.show', $ticket)
+                    ->with('success', 'Ticket picked successfully!');
+            }
+
+            // Execute heavy operations (automation, escalation, cache clearing) asynchronously
+            // This ensures the user gets an immediate response while emails and rules process in the background
+            $updatedById = Auth::id();
+            dispatch(function () use ($ticket, $statusChanged, $originalData, $changes, $updatedById) {
+                try {
+                    // Execute automation rules
+                    $automationService = app(AutomationService::class);
+                    $automationService->onTicketUpdated($ticket, $originalData);
+
+                    if ($statusChanged) {
+                        $automationService->onTicketStatusChanged($ticket, $originalData);
+                    }
+
+                    $updatedBy = User::find($updatedById);
+                    if ($updatedBy) {
+                        app(NotificationService::class)->notifyTicketLifecycleUpdate(
+                            $ticket,
+                            $updatedBy,
+                            $changes
+                        );
+                    }
+
+                    // Check for escalation
+                    $escalationService = app(EscalationService::class);
+                    $escalationService->checkTicket($ticket);
+
+                    // Clear search cache
+                    app(SearchService::class)->clearCache();
+                } catch (\Exception $e) {
+                    \Log::error('Background processing failed on ticket update', [
+                        'ticket_id' => $ticket->id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
+            })->afterResponse();
 
             return redirect()
                 ->route('admin.tickets.show', $ticket)
@@ -504,17 +493,19 @@ class TicketController extends Controller
                 'errors' => $e->errors(),
             ]);
             throw $e; // Re-throw to let Laravel handle it
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (\Exception $e) {
             \Log::error('TicketController::update - Error', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return redirect()
                 ->back()
                 ->withInput()
-                ->with('error', 'Failed to update ticket: ' . $e->getMessage());
+                ->with('error', 'Failed to update ticket: '.$e->getMessage());
         }
     }
 
@@ -543,11 +534,13 @@ class TicketController extends Controller
         $value = $request->input('value');
 
         // Check permission based on action type
-        // Assignment actions require tickets.assign, others require tickets.edit
+        // Each bulk action uses its dedicated permission.
         if (in_array($action, ['assign_agent', 'assign_team'])) {
             abort_unless(Auth::user()->can('tickets.assign'), 403, 'You do not have permission to assign tickets.');
-        } else {
-            abort_unless(Auth::user()->can('tickets.edit'), 403, 'You do not have permission to edit tickets.');
+        } elseif ($action === 'priority') {
+            abort_unless(Auth::user()->can('tickets.change-priority'), 403, 'You do not have permission to change ticket priority.');
+        } elseif ($action !== 'status') {
+            abort_unless(Auth::user()->can('tickets.update-details'), 403, 'You do not have permission to edit ticket details.');
         }
 
         $tickets = Ticket::whereIn('id', $ticketIds)->get();
@@ -569,10 +562,17 @@ class TicketController extends Controller
             $ticket->refresh();
             $ticket->load(['requester', 'assignedAgent', 'assignedTeam', 'category', 'project']);
 
+            if (! Auth::user()->can('view', $ticket)) {
+                $failedCount++;
+                $failedMessages[] = "Ticket #{$ticket->ticket_number}: You do not have permission to access this ticket.";
+
+                continue;
+            }
+
             switch ($action) {
                 case 'status':
                     // Check if user can change status for this ticket
-                    if (!$this->canUserChangeStatus(Auth::user(), $ticket, $value)) {
+                    if (! Auth::user()->can('changeStatus', [$ticket, $value])) {
                         \Log::warning('TicketController::bulkUpdate - User attempted to change status without permission', [
                             'ticket_id' => $ticket->id,
                             'ticket_number' => $ticket->ticket_number,
@@ -584,28 +584,31 @@ class TicketController extends Controller
                         ]);
                         $failedCount++;
                         // Check if user is the requester
-                        if ($ticket->requester_id === Auth::id()) {
+                        if ($ticket->hasPendingApproval() && $value !== Ticket::STATUS_CANCELLED) {
+                            $failedMessages[] = "Ticket #{$ticket->ticket_number}: Approval is still pending. Only cancellation is allowed until approval is completed.";
+                        } elseif ($ticket->requester_id === Auth::id()) {
                             $failedMessages[] = "Ticket #{$ticket->ticket_number}: As the requester, you can only close or cancel your tickets, or reopen closed/cancelled tickets.";
                         } else {
                             $failedMessages[] = "Ticket #{$ticket->ticket_number}: You can only change the status of tickets assigned to you or your team. Managers and admins can change any ticket status.";
                         }
+
                         continue 2; // Skip this ticket (continue outer foreach loop)
                     }
-                    
+
                     if (in_array($value, Ticket::STATUSES)) {
                         $oldStatus = $ticket->status;
                         $ticket->status = $value;
-                        
+
                         // Update resolved_at or closed_at based on status
-                        if ($value === 'resolved' && !$ticket->resolved_at) {
+                        if ($value === 'resolved' && ! $ticket->resolved_at) {
                             $ticket->resolved_at = now();
-                        } elseif ($value === 'closed' && !$ticket->closed_at) {
+                        } elseif ($value === 'closed' && ! $ticket->closed_at) {
                             $ticket->closed_at = now();
-                        } elseif (!in_array($value, ['resolved', 'closed'])) {
+                        } elseif (! in_array($value, ['resolved', 'closed'])) {
                             $ticket->resolved_at = null;
                             $ticket->closed_at = null;
                         }
-                        
+
                         $ticket->save();
                         $changed = true;
 
@@ -628,7 +631,7 @@ class TicketController extends Controller
                             } catch (\Exception $e) {
                                 \Log::error('Background status automation failed', [
                                     'ticket_id' => $ticket->id,
-                                    'error' => $e->getMessage()
+                                    'error' => $e->getMessage(),
                                 ]);
                             }
                         })->afterResponse();
@@ -663,7 +666,7 @@ class TicketController extends Controller
                             } catch (\Exception $e) {
                                 \Log::error('Background priority automation failed', [
                                     'ticket_id' => $ticket->id,
-                                    'error' => $e->getMessage()
+                                    'error' => $e->getMessage(),
                                 ]);
                             }
                         })->afterResponse();
@@ -673,68 +676,45 @@ class TicketController extends Controller
                 case 'assign_agent':
                     $user = Auth::user();
                     $agent = User::find($value);
-                    
-                    if (!$agent) {
+
+                    if (! $agent) {
                         $failedCount++;
                         $failedMessages[] = "Ticket #{$ticket->ticket_number}: Invalid agent selected.";
+
                         continue 2;
                     }
-                    
+
                     // Check if user is assigning to themselves (picking/claiming)
                     $isPickingSelf = $value == $user->id;
-                    
-                    if (!$user->can('tickets.assign')) {
-                        // Agent without assign permission - can only pick tickets assigned to their team or unassigned
-                        if (!$isPickingSelf) {
-                            \Log::warning('TicketController::bulkUpdate - Agent attempted to assign ticket to someone else', [
-                                'ticket_id' => $ticket->id,
-                                'user_id' => Auth::id(),
-                                'target_agent_id' => $value,
-                            ]);
-                            $failedCount++;
-                            $failedMessages[] = "Ticket #{$ticket->ticket_number}: You can only assign tickets to yourself. Only managers and admins can assign tickets to others.";
-                            continue 2;
-                        }
-                        
-                        // Check if agent can pick this ticket
-                        $canPick = false;
-                        
-                        // Can pick if:
-                        // 1. Ticket is unassigned (no agent assigned)
-                        // 2. Ticket is assigned to their team (and they're in that team)
-                        if (!$ticket->assigned_agent_id && $ticket->assigned_team_id == $user->department_id) {
-                            $canPick = true;
-                        }
-                        // Note: Agents cannot pick tickets that already have an agent assigned
-                        // Only managers/admins with tickets.assign permission can reassign tickets
-                        
-                        if (!$canPick) {
-                            \Log::warning('TicketController::bulkUpdate - Agent attempted to pick ticket not assigned to their team', [
-                                'ticket_id' => $ticket->id,
-                                'user_id' => Auth::id(),
-                                'user_department_id' => $user->department_id,
-                                'ticket_team_id' => $ticket->assigned_team_id,
-                                'ticket_agent_id' => $ticket->assigned_agent_id,
-                            ]);
-                            $failedCount++;
-                            $failedMessages[] = "Ticket #{$ticket->ticket_number}: You can only pick tickets assigned to your team or unassigned tickets.";
-                            continue 2;
-                        }
+
+                    if (! $user->can('assignAgent', [$ticket, (int) $value])) {
+                        \Log::warning('TicketController::bulkUpdate - User attempted unauthorized agent assignment', [
+                            'ticket_id' => $ticket->id,
+                            'user_id' => Auth::id(),
+                            'target_agent_id' => $value,
+                            'is_picking_self' => $isPickingSelf,
+                        ]);
+                        $failedCount++;
+                        $failedMessages[] = $ticket->hasPendingApproval()
+                            ? "Ticket #{$ticket->ticket_number}: Approval is still pending. The ticket cannot be picked or reassigned yet."
+                            : "Ticket #{$ticket->ticket_number}: You can only pick tickets assigned to your team or unassigned tickets. Only managers and admins can assign tickets to others.";
+
+                        continue 2;
                     }
-                    
+
                     // User has permission or is picking a valid ticket
                     $oldAgent = $ticket->assigned_agent_id;
-                    
+
                     // If reassigning to a different agent, notify the old agent
                     $shouldNotifyOldAgent = $oldAgent && $oldAgent != $value && $value;
-                    
+
                     $ticket->assigned_agent_id = $value;
                     // Keep team assignment when agent picks (don't clear it)
                     // Only clear team assignment if manager/admin is explicitly reassigning to a different agent
                     if ($user->can('tickets.assign') && $oldAgent && $oldAgent != $value) {
                         // Manager/admin reassigning to different agent - clear team assignment
                         $ticket->assigned_team_id = null;
-                    } elseif (!$user->can('tickets.assign') && $isPickingSelf && $ticket->assigned_team_id && $ticket->assigned_team_id == $user->department_id) {
+                    } elseif (! $user->can('tickets.assign') && $isPickingSelf && $ticket->assigned_team_id && $ticket->assigned_team_id == $user->department_id) {
                         // Agent picking ticket assigned to their team - keep team assignment
                         // Team assignment is already set, no need to change it
                     }
@@ -764,7 +744,7 @@ class TicketController extends Controller
                         } catch (\Exception $e) {
                             \Log::error('Background assignment automation failed', [
                                 'ticket_id' => $ticket->id,
-                                'error' => $e->getMessage()
+                                'error' => $e->getMessage(),
                             ]);
                         }
                     })->afterResponse();
@@ -772,7 +752,7 @@ class TicketController extends Controller
 
                 case 'assign_team':
                     // Check if user has permission to assign tickets
-                    if (!Auth::user()->can('tickets.assign')) {
+                    if (! Auth::user()->can('tickets.assign')) {
                         \Log::warning('TicketController::bulkUpdate - User attempted to assign ticket without permission', [
                             'ticket_id' => $ticket->id,
                             'user_id' => Auth::id(),
@@ -780,17 +760,18 @@ class TicketController extends Controller
                         ]);
                         $failedCount++;
                         $failedMessages[] = "Ticket #{$ticket->ticket_number}: You don't have permission to assign tickets. Only managers and admins can reassign tickets.";
+
                         continue 2; // Skip this ticket (continue outer foreach loop)
                     }
-                    
+
                     $team = Department::find($value);
                     if ($team) {
                         $oldTeam = $ticket->assigned_team_id;
                         $oldAgent = $ticket->assigned_agent_id;
-                        
+
                         // If ticket was assigned to an agent, notify them of team reassignment
                         $shouldNotifyOldAgent = $oldAgent && $oldAgent;
-                        
+
                         $ticket->assigned_team_id = $value;
                         $ticket->assigned_agent_id = null; // Clear agent assignment when assigning team
                         $ticket->save();
@@ -821,8 +802,8 @@ class TicketController extends Controller
                     $tagIds = is_array($value) ? $value : [$value];
                     $existingTagIds = $ticket->tags()->pluck('tags.id')->toArray();
                     $newTagIds = array_diff($tagIds, $existingTagIds);
-                    
-                    if (!empty($newTagIds)) {
+
+                    if (! empty($newTagIds)) {
                         $ticket->tags()->attach($newTagIds);
                         $changed = true;
 
@@ -842,7 +823,7 @@ class TicketController extends Controller
                 case 'remove_tags':
                     $tagIds = is_array($value) ? $value : [$value];
                     $removedTags = $ticket->tags()->whereIn('tags.id', $tagIds)->get();
-                    
+
                     if ($removedTags->isNotEmpty()) {
                         $ticket->tags()->detach($tagIds);
                         $changed = true;
@@ -881,12 +862,13 @@ class TicketController extends Controller
         if ($failedCount > 0 && $updatedCount > 0) {
             // Some succeeded, some failed
             $message = "Successfully updated {$updatedCount} ticket(s). {$failedCount} ticket(s) could not be updated.";
-            if (!empty($failedMessages)) {
-                $message .= " " . implode(' ', array_slice($failedMessages, 0, 3)); // Show first 3 error messages
+            if (! empty($failedMessages)) {
+                $message .= ' '.implode(' ', array_slice($failedMessages, 0, 3)); // Show first 3 error messages
                 if (count($failedMessages) > 3) {
-                    $message .= " (and " . (count($failedMessages) - 3) . " more)";
+                    $message .= ' (and '.(count($failedMessages) - 3).' more)';
                 }
             }
+
             return redirect()
                 ->route('admin.tickets.index')
                 ->with('warning', $message)
@@ -894,12 +876,13 @@ class TicketController extends Controller
         } elseif ($failedCount > 0) {
             // All failed
             $message = "Failed to update {$failedCount} ticket(s).";
-            if (!empty($failedMessages)) {
-                $message .= " " . implode(' ', array_slice($failedMessages, 0, 2)); // Show first 2 error messages
+            if (! empty($failedMessages)) {
+                $message .= ' '.implode(' ', array_slice($failedMessages, 0, 2)); // Show first 2 error messages
                 if (count($failedMessages) > 2) {
-                    $message .= " (and " . (count($failedMessages) - 2) . " more)";
+                    $message .= ' (and '.(count($failedMessages) - 2).' more)';
                 }
             }
+
             return redirect()
                 ->route('admin.tickets.index')
                 ->with('error', $message)
@@ -907,12 +890,14 @@ class TicketController extends Controller
         } elseif ($updatedCount > 0) {
             // All succeeded
             $message = "Successfully updated {$updatedCount} ticket(s).";
+
             return redirect()
                 ->route('admin.tickets.index')
                 ->with('success', $message);
         } else {
             // Nothing changed
-            $message = "No tickets were updated.";
+            $message = 'No tickets were updated.';
+
             return redirect()
                 ->route('admin.tickets.index')
                 ->with('info', $message);
@@ -949,16 +934,16 @@ class TicketController extends Controller
             }
         }
 
-        if (empty($data['ticket_number'])) {
-            $data['ticket_number'] = $ticket?->ticket_number ?? Ticket::generateTicketNumber();
+        if (! $ticket && empty($data['ticket_number'])) {
+            $data['ticket_number'] = Ticket::generateTicketNumber();
         }
 
         // Auto-detect source if not provided or empty
-        if (empty($data['source']) || !in_array($data['source'], Ticket::SOURCES)) {
+        if (! $ticket && (empty($data['source']) || ! in_array($data['source'], Ticket::SOURCES))) {
             $data['source'] = $this->detectSource(request());
         }
 
-        if (!empty($data['sla_policy_id'])) {
+        if (! empty($data['sla_policy_id'])) {
             $sla = SlaPolicy::find($data['sla_policy_id']);
 
             if ($sla) {
@@ -982,7 +967,7 @@ class TicketController extends Controller
 
         // Check for mobile app identifier in headers or user agent
         // Common patterns: "KimmixApp", "MobileApp", custom headers
-        if ($request->hasHeader('X-Client-Type') || 
+        if ($request->hasHeader('X-Client-Type') ||
             $request->hasHeader('X-App-Version') ||
             strpos($userAgentLower, 'kimmix') !== false ||
             strpos($userAgentLower, 'mobile-app') !== false ||
@@ -1025,7 +1010,7 @@ class TicketController extends Controller
         if (array_key_exists('custom_fields', $data) && is_array($data['custom_fields'])) {
             foreach ($data['custom_fields'] as $fieldId => $value) {
                 $customField = CustomField::find($fieldId);
-                if (!$customField) {
+                if (! $customField) {
                     continue;
                 }
 
@@ -1034,6 +1019,7 @@ class TicketController extends Controller
                     TicketCustomFieldValue::where('ticket_id', $ticket->id)
                         ->where('custom_field_id', $fieldId)
                         ->delete();
+
                     continue;
                 }
 
@@ -1061,77 +1047,13 @@ class TicketController extends Controller
     }
 
     /**
-     * Check if user can change the status of a ticket
-     * 
-     * Rules:
-     * 1. Managers/admins with tickets.assign permission can always change status
-     * 2. If ticket is assigned to an agent: only that agent OR managers/admins can change status
-     * 3. If ticket is assigned to a team: any agent in that team OR managers/admins can change status
-     * 4. Requesters can only change status to "closed" or "cancelled" for their own tickets
-     * 5. If unassigned: agents can change status, requesters can only close/cancel
-     */
-    protected function canUserChangeStatus(User $user, Ticket $ticket, ?string $newStatus = null): bool
-    {
-        // Managers/admins with assign permission can always change status
-        if ($user->can('tickets.assign')) {
-            return true;
-        }
-        
-        // Check if user is the requester
-        $isRequester = $ticket->requester_id === $user->id;
-        
-        // If user is the requester, they can only change status to "closed" or "cancelled"
-        if ($isRequester && $newStatus) {
-            $requesterAllowedStatuses = ['closed', 'cancelled'];
-            // Also allow reopening closed/cancelled tickets (changing back to open)
-            if (in_array($ticket->status, ['closed', 'cancelled']) && $newStatus === 'open') {
-                return true;
-            }
-            return in_array($newStatus, $requesterAllowedStatuses);
-        }
-        
-        // If ticket is assigned to an agent
-        if ($ticket->assigned_agent_id) {
-            // Only the assigned agent can change status (not requesters)
-            return $ticket->assigned_agent_id === $user->id;
-        }
-        
-        // If ticket is assigned to a team
-        if ($ticket->assigned_team_id) {
-            // Check if user is in the assigned team
-            if ($user->department_id === $ticket->assigned_team_id) {
-                // Check if user is an agent (has Agent or Senior Agent role)
-                // Requesters cannot change status of tickets assigned to teams
-                return $user->hasAnyRole(RoleConstants::getAgentRoles());
-            }
-            return false;
-        }
-        
-        // If ticket is unassigned:
-        // - Agents can change to any status
-        // - Requesters can only close/cancel or reopen
-        if ($isRequester && $newStatus) {
-            $requesterAllowedStatuses = ['closed', 'cancelled'];
-            // Allow reopening closed/cancelled tickets
-            if (in_array($ticket->status, ['closed', 'cancelled']) && $newStatus === 'open') {
-                return true;
-            }
-            return in_array($newStatus, $requesterAllowedStatuses);
-        }
-        
-        // For agents on unassigned tickets, allow status change
-        // (This check is already done at the controller level for tickets.edit permission)
-        return true;
-    }
-
-    /**
      * Get available statuses based on current user role.
      * Requesters are restricted to 'open' only.
      */
     protected function getAvailableStatuses(): array
     {
         $user = Auth::user();
-        
+
         // Determine available statuses based on role
         $statuses = Ticket::STATUSES;
         $isPrivileged = $user->hasAnyRole(array_merge(
@@ -1140,7 +1062,7 @@ class TicketController extends Controller
             RoleConstants::getExecutiveRoles()
         )) || $user->hasRole(RoleConstants::SUPER_ADMIN) || $user->hasRole(RoleConstants::IT_ADMINISTRATOR);
 
-        if (!$isPrivileged) {
+        if (! $isPrivileged) {
             // Requesters can only see/select 'open'
             return ['open'];
         }
@@ -1165,7 +1087,7 @@ class TicketController extends Controller
     protected function formOptions(): array
     {
         $user = Auth::user();
-        
+
         // Check if user can create tickets on behalf of others
         // IMPORTANT: Check department-limited roles FIRST to override permission
         // Most managers manage their department/team, not cross-functional teams
@@ -1182,10 +1104,10 @@ class TicketController extends Controller
         $isExecutiveOrAdmin = $user->hasAnyRole(RoleConstants::getExecutiveRoles());
         $isProjectManager = $user->hasRole(RoleConstants::PROJECT_MANAGER);
         $hasCreateOnBehalfPermission = $user->can('tickets.create-on-behalf');
-        
+
         // Optimize: Load user roles once to avoid multiple queries
         $user->load('roles');
-        
+
         // Filter requesters based on permission and role
         if (($isHOD || $isLineManager || $isDepartmentManager) && $user->department_id) {
             // Department managers can only select users from their own department
@@ -1214,7 +1136,7 @@ class TicketController extends Controller
             $requesters = collect([$user->only(['id', 'name', 'avatar'])]);
             $canCreateOnBehalf = false;
         }
-        
+
         // Filter agents: Only show users with Agent or Senior Agent roles
         // Optimize: Use eager loading and cache role names
         $agentRoleNames = RoleConstants::getAgentRoles();
@@ -1229,6 +1151,7 @@ class TicketController extends Controller
             ->map(function ($agent) {
                 // Get primary role (first agent role found)
                 $primaryRole = $agent->roles->first();
+
                 return [
                     'id' => $agent->id,
                     'name' => $agent->name,
@@ -1237,7 +1160,7 @@ class TicketController extends Controller
                     'department' => $agent->department ? $agent->department->name : null,
                 ];
             });
-        
+
         // Optimize: Cache settings to avoid multiple queries
         $canAssign = $user->can('tickets.assign');
         $isAgent = $user->hasAnyRole(RoleConstants::getAgentRoles());
@@ -1249,10 +1172,10 @@ class TicketController extends Controller
         $enableCustomFields = $canAssign ? \App\Models\Setting::get('enable_custom_fields', true) : false;
         $enableTags = $canAssign ? \App\Models\Setting::get('enable_tags', true) : false;
         $enableWatchers = $canAssign ? \App\Models\Setting::get('enable_watchers', true) : false;
-        
+
         // Departments: Show all support teams for internal users, but keep IT-SD for external users
         $departmentsQuery = Department::where('is_active', true)->select('id', 'name')->orderBy('name');
-        if (!$isInternal) {
+        if (! $isInternal) {
             $departmentsQuery->where('code', 'IT-SD');
         } else {
             $departmentsQuery->where('is_support_team', true);
@@ -1296,7 +1219,7 @@ class TicketController extends Controller
                         }
                     }
                 }
-                
+
                 return [
                     'id' => $field->id,
                     'name' => $field->name,
@@ -1321,7 +1244,7 @@ class TicketController extends Controller
             return '—';
         }
 
-        return match($field) {
+        return match ($field) {
             'assigned_agent_id' => \App\Models\User::find($value)?->name ?? $value,
             'assigned_team_id' => \App\Models\Department::find($value)?->name ?? $value,
             'category_id' => \App\Models\TicketCategory::find($value)?->name ?? $value,
@@ -1367,7 +1290,7 @@ class TicketController extends Controller
             ]);
 
         // Apply filters (same logic as SearchService)
-        if (!empty($filters['q'])) {
+        if (! empty($filters['q'])) {
             $searchTerm = $filters['q'];
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('ticket_number', 'like', "%{$searchTerm}%")
@@ -1380,7 +1303,7 @@ class TicketController extends Controller
             });
         }
 
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             if (is_array($filters['status'])) {
                 $query->whereIn('status', $filters['status']);
             } else {
@@ -1388,7 +1311,7 @@ class TicketController extends Controller
             }
         }
 
-        if (!empty($filters['priority'])) {
+        if (! empty($filters['priority'])) {
             if (is_array($filters['priority'])) {
                 $query->whereIn('priority', $filters['priority']);
             } else {
@@ -1396,42 +1319,42 @@ class TicketController extends Controller
             }
         }
 
-        if (!empty($filters['team'])) {
+        if (! empty($filters['team'])) {
             $query->where('assigned_team_id', $filters['team']);
         }
 
-        if (!empty($filters['agent'])) {
+        if (! empty($filters['agent'])) {
             $query->where('assigned_agent_id', $filters['agent']);
         }
 
-        if (!empty($filters['category'])) {
+        if (! empty($filters['category'])) {
             $query->where('category_id', $filters['category']);
         }
 
-        if (!empty($filters['project'])) {
+        if (! empty($filters['project'])) {
             $query->where('project_id', $filters['project']);
         }
 
-        if (!empty($filters['requester'])) {
+        if (! empty($filters['requester'])) {
             $query->where('requester_id', $filters['requester']);
         }
 
-        if (!empty($filters['date_from'])) {
+        if (! empty($filters['date_from'])) {
             $query->whereDate('created_at', '>=', $filters['date_from']);
         }
 
-        if (!empty($filters['date_to'])) {
+        if (! empty($filters['date_to'])) {
             $query->whereDate('created_at', '<=', $filters['date_to']);
         }
 
-        if (!empty($filters['sla_breached'])) {
+        if (! empty($filters['sla_breached'])) {
             $query->where(function ($q) {
                 $q->where('response_sla_breached', true)
                     ->orWhere('resolution_sla_breached', true);
             });
         }
 
-        if (!empty($filters['tags'])) {
+        if (! empty($filters['tags'])) {
             $tagIds = is_array($filters['tags']) ? $filters['tags'] : [$filters['tags']];
             $query->whereHas('tags', function ($tagQuery) use ($tagIds) {
                 $tagQuery->whereIn('tags.id', $tagIds);
@@ -1440,7 +1363,7 @@ class TicketController extends Controller
 
         $tickets = $query->orderBy('created_at', 'desc')->get();
 
-        $filename = 'tickets_export_' . date('Y-m-d_His') . '.csv';
+        $filename = 'tickets_export_'.date('Y-m-d_His').'.csv';
 
         $headers = [
             'Content-Type' => 'text/csv',
@@ -1515,7 +1438,7 @@ class TicketController extends Controller
         abort_unless(Auth::user()->can('tickets.view'), 403, 'You do not have permission to view tickets.');
 
         $user = Auth::user();
-        
+
         $query = Ticket::with([
             'requester:id,name',
             'category:id,name',
@@ -1527,13 +1450,13 @@ class TicketController extends Controller
                     ->with('approver:id,name');
             },
         ])
-        ->whereHas('approvals', function ($query) {
-            $query->where('status', 'rejected');
-        });
+            ->whereHas('approvals', function ($query) {
+                $query->where('status', 'rejected');
+            });
 
         // Apply visibility filters based on user role
         // Admin/Manager can see all rejected tickets
-        if (!$user->can('tickets.assign')) {
+        if (! $user->can('tickets.assign')) {
             // Regular users (Requester/Agent) can only see:
             // 1. Tickets they created (requester)
             // 2. Tickets assigned to them (agent)
@@ -1565,7 +1488,7 @@ class TicketController extends Controller
      */
     public function resubmit(Ticket $ticket): RedirectResponse
     {
-        abort_unless(Auth::user()->can('tickets.edit'), 403, 'You do not have permission to edit tickets.');
+        $this->authorize('resubmit', $ticket);
 
         try {
             $approvalService = app(\App\Services\ApprovalWorkflowService::class);
@@ -1582,13 +1505,13 @@ class TicketController extends Controller
 
             return redirect()
                 ->back()
-                ->with('error', 'Failed to resubmit ticket: ' . $e->getMessage());
+                ->with('error', 'Failed to resubmit ticket: '.$e->getMessage());
         }
     }
-    
+
     /**
      * Check if user can view a specific ticket
-     * 
+     *
      * Visibility Rules:
      * - Admin/Manager with tickets.assign: Can see ALL tickets
      * - Manager without tickets.assign: Can see tickets in their department
@@ -1601,17 +1524,23 @@ class TicketController extends Controller
         if ($user->can('tickets.assign')) {
             return true;
         }
-        
+
         // Check if user is the requester
         if ($ticket->requester_id === $user->id) {
             return true;
         }
-        
+
+        if ($ticket->approvals()->where('status', 'pending')->exists()) {
+            return $ticket->approvals()
+                ->where('approver_id', $user->id)
+                ->exists();
+        }
+
         // Check if user is the assigned agent
         if ($ticket->assigned_agent_id === $user->id) {
             return true;
         }
-        
+
         // Check if ticket is assigned to user's team/department
         // Only Agents and Managers can see tickets assigned to their team
         // Requesters can only see tickets they created or are watching
@@ -1621,12 +1550,12 @@ class TicketController extends Controller
                 return true;
             }
         }
-        
+
         // Check if user is watching the ticket
         if ($ticket->watchers()->where('users.id', $user->id)->exists()) {
             return true;
         }
-        
+
         // For managers: can see tickets in their department (even if not assigned)
         // Check if user has Manager role using Spatie's HasRoles trait
         if ($user->hasRole(RoleConstants::MANAGER) && $user->department_id) {
@@ -1634,7 +1563,7 @@ class TicketController extends Controller
                 return true;
             }
         }
-        
+
         return false;
     }
 }

@@ -13,34 +13,62 @@ class Ticket extends Model
 {
     // Statuses
     public const STATUS_OPEN = 'open';
+
     public const STATUS_ASSIGNED = 'assigned';
+
     public const STATUS_IN_PROGRESS = 'in_progress';
-    public const STATUS_PENDING = 'pending';
+
+    /**
+     * Waiting/on-hold work state. Approval pending is tracked by
+     * ticket_approvals.status, not by this ticket status.
+     */
+    public const STATUS_WAITING = 'pending';
+
+    /**
+     * @deprecated Use STATUS_WAITING for ticket work state checks.
+     */
+    public const STATUS_PENDING = self::STATUS_WAITING;
+
     public const STATUS_RESOLVED = 'resolved';
+
     public const STATUS_CLOSED = 'closed';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     public const STATUSES = [
         self::STATUS_OPEN,
         self::STATUS_ASSIGNED,
         self::STATUS_IN_PROGRESS,
-        self::STATUS_PENDING,
+        self::STATUS_WAITING,
         self::STATUS_RESOLVED,
         self::STATUS_CLOSED,
-        self::STATUS_CANCELLED
+        self::STATUS_CANCELLED,
+    ];
+
+    public const STATUS_LABELS = [
+        self::STATUS_OPEN => 'Open',
+        self::STATUS_ASSIGNED => 'Assigned',
+        self::STATUS_IN_PROGRESS => 'In Progress',
+        self::STATUS_WAITING => 'Waiting',
+        self::STATUS_RESOLVED => 'Resolved',
+        self::STATUS_CLOSED => 'Closed',
+        self::STATUS_CANCELLED => 'Cancelled',
     ];
 
     // Priorities
     public const PRIORITY_LOW = 'low';
+
     public const PRIORITY_MEDIUM = 'medium';
+
     public const PRIORITY_HIGH = 'high';
+
     public const PRIORITY_CRITICAL = 'critical';
 
     public const PRIORITIES = [
         self::PRIORITY_LOW,
         self::PRIORITY_MEDIUM,
         self::PRIORITY_HIGH,
-        self::PRIORITY_CRITICAL
+        self::PRIORITY_CRITICAL,
     ];
 
     public const SOURCES = ['web', 'email', 'phone', 'mobile_app', 'walk_in'];
@@ -59,6 +87,7 @@ class Ticket extends Model
         'project_id',
         'sla_policy_id',
         'status',
+        'resolution_summary',
         'priority',
         'estimated_cost',
         'source',
@@ -85,7 +114,7 @@ class Ticket extends Model
     public static function generateTicketNumber(): string
     {
         do {
-            $number = 'KT-' . random_int(10000, 99999);
+            $number = 'KT-'.random_int(10000, 99999);
         } while (self::where('ticket_number', $number)->exists());
 
         return $number;
@@ -118,47 +147,73 @@ class Ticket extends Model
     {
         return $query
             ->when($filters['q'] ?? null, function ($query, $q) {
-            $query->where(function ($sub) use ($q) {
+                $query->where(function ($sub) use ($q) {
                     $sub->where('ticket_number', 'like', "%{$q}%")
                         ->orWhere('subject', 'like', "%{$q}%")
                         ->orWhere('description', 'like', "%{$q}%");
                 }
                 );
             })
-            ->when($filters['status'] ?? null, fn($query, $status) => $query->where('status', $status))
-            ->when($filters['priority'] ?? null, fn($query, $priority) => $query->where('priority', $priority))
-            ->when($filters['team'] ?? null, fn($query, $team) => $query->where('assigned_team_id', $team))
-            ->when($filters['agent'] ?? null, fn($query, $agent) => $query->where('assigned_agent_id', $agent))
-            ->when($filters['category'] ?? null, fn($query, $category) => $query->where('category_id', $category))
-            ->when($filters['project'] ?? null, fn($query, $project) => $query->where('project_id', $project))
-            ->when($filters['requester'] ?? null, fn($query, $requester) => $query->where('requester_id', $requester));
+            ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when($filters['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
+            ->when($filters['team'] ?? null, fn ($query, $team) => $query->where('assigned_team_id', $team))
+            ->when($filters['agent'] ?? null, fn ($query, $agent) => $query->where('assigned_agent_id', $agent))
+            ->when($filters['category'] ?? null, fn ($query, $category) => $query->where('category_id', $category))
+            ->when($filters['project'] ?? null, fn ($query, $project) => $query->where('project_id', $project))
+            ->when($filters['requester'] ?? null, fn ($query, $requester) => $query->where('requester_id', $requester));
     }
 
     public function requester(): BelongsTo
     {
-        return $this->belongsTo(User::class , 'requester_id');
+        return $this->belongsTo(User::class, 'requester_id');
     }
 
     public function assignedTeam(): BelongsTo
     {
-        return $this->belongsTo(Department::class , 'assigned_team_id');
+        return $this->belongsTo(Department::class, 'assigned_team_id');
     }
 
     public function assignedAgent(): BelongsTo
     {
-        return $this->belongsTo(User::class , 'assigned_agent_id');
+        return $this->belongsTo(User::class, 'assigned_agent_id');
     }
 
     public function isPending(): bool
     {
-        return $this->status === self::STATUS_PENDING;
+        return $this->status === self::STATUS_WAITING;
+    }
+
+    public function hasPendingApproval(): bool
+    {
+        return $this->approvals()->where('status', 'pending')->exists();
+    }
+
+    public function approvalStatus(): string
+    {
+        if ($this->approvals()->where('status', 'pending')->exists()) {
+            return 'pending';
+        }
+
+        if ($this->approvals()->where('status', 'rejected')->exists()) {
+            return 'rejected';
+        }
+
+        if ($this->approvals()->exists()) {
+            return 'approved';
+        }
+
+        return 'none';
+    }
+
+    public function statusLabel(): string
+    {
+        return self::STATUS_LABELS[$this->status] ?? ucfirst(str_replace('_', ' ', $this->status));
     }
 
     public function isOpen(): bool
     {
         return $this->status === self::STATUS_OPEN;
     }
-
 
     public function category(): BelongsTo
     {
@@ -227,11 +282,11 @@ class Ticket extends Model
 
     public function tags(): BelongsToMany
     {
-        return $this->belongsToMany(Tag::class , 'ticket_tag')->withPivot('created_at');
+        return $this->belongsToMany(Tag::class, 'ticket_tag')->withPivot('created_at');
     }
 
     public function watchers(): BelongsToMany
     {
-        return $this->belongsToMany(User::class , 'ticket_watchers')->withPivot('created_at');
+        return $this->belongsToMany(User::class, 'ticket_watchers')->withPivot('created_at');
     }
 }

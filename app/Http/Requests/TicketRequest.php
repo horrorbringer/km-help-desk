@@ -3,10 +3,19 @@
 namespace App\Http\Requests;
 
 use App\Constants\RoleConstants;
+use App\Models\Ticket;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class TicketRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (! $this->route('ticket')) {
+            $this->merge(['status' => 'open']);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -18,18 +27,8 @@ class TicketRequest extends FormRequest
         $isUpdate = $ticketId !== null;
         $user = $this->user();
 
-        $isPrivileged = $user->hasAnyRole(array_merge(
-            RoleConstants::getManagementRoles(),
-            RoleConstants::getAgentRoles(),
-            RoleConstants::getExecutiveRoles()
-        )) || $user->hasRole(RoleConstants::SUPER_ADMIN) || $user->hasRole(RoleConstants::IT_ADMINISTRATOR);
-
-        $allowedStatuses = $isPrivileged 
-            ? 'open,assigned,in_progress,pending,resolved,closed,cancelled' 
-            : 'open';
-
         return [
-            'ticket_number' => ['nullable', 'string', 'max:20', 'unique:tickets,ticket_number,' . $ticketId],
+            'ticket_number' => ['nullable', 'string', 'max:20', 'unique:tickets,ticket_number,'.$ticketId],
             'subject' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
             'description' => [$isUpdate ? 'sometimes' : 'required', 'string'],
             'requester_id' => [$isUpdate ? 'sometimes' : 'required', 'exists:users,id'],
@@ -38,7 +37,13 @@ class TicketRequest extends FormRequest
             'category_id' => [$isUpdate ? 'sometimes' : 'required', 'exists:ticket_categories,id'],
             'project_id' => ['nullable', 'exists:projects,id'],
             'sla_policy_id' => ['nullable', 'exists:sla_policies,id'],
-            'status' => [$isUpdate ? 'sometimes' : 'required', "in:{$allowedStatuses}"],
+            'status' => [$isUpdate ? 'sometimes' : 'required', Rule::in(Ticket::STATUSES)],
+            'resolution_summary' => [
+                Rule::requiredIf($isUpdate && $this->input('status') === Ticket::STATUS_RESOLVED),
+                'nullable',
+                'string',
+                'max:5000',
+            ],
             'priority' => [$isUpdate ? 'sometimes' : 'required', 'in:low,medium,high,critical'],
             'estimated_cost' => ['nullable', 'numeric', 'min:0'],
             'source' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:50'],
@@ -61,21 +66,21 @@ class TicketRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             // Only validate requester_id if it's present in the request (for partial updates)
-            if (!$this->has('requester_id')) {
+            if (! $this->has('requester_id')) {
                 // Skip requester validation for partial updates
                 // Continue to custom fields validation
                 if ($this->has('custom_fields') && is_array($this->custom_fields)) {
                     $customFields = \App\Models\CustomField::active()->get()->keyBy('id');
-                    
+
                     foreach ($this->custom_fields as $fieldId => $value) {
                         $field = $customFields->get($fieldId);
-                        if (!$field) {
+                        if (! $field) {
                             continue;
                         }
 
                         $rules = $field->getValidationRules();
                         $fieldName = "custom_fields.{$fieldId}";
-                        
+
                         $fieldValidator = \Illuminate\Support\Facades\Validator::make(
                             [$fieldName => $value],
                             [$fieldName => $rules]
@@ -88,17 +93,18 @@ class TicketRequest extends FormRequest
                         }
                     }
                 }
+
                 return;
             }
-            
+
             $user = $this->user();
             $requesterId = $this->input('requester_id');
-            
+
             // If user is creating ticket for themselves, always allow
             if ($requesterId == $user->id) {
                 return;
             }
-            
+
             // IMPORTANT: Check department-limited roles FIRST to override permission
             // Most managers manage their department/team, not cross-functional teams
             $isHOD = $user->hasRole(RoleConstants::HEAD_OF_DEPARTMENT);
@@ -114,7 +120,7 @@ class TicketRequest extends FormRequest
             $isExecutiveOrAdmin = $user->hasAnyRole(RoleConstants::getExecutiveRoles());
             $isProjectManager = $user->hasRole(RoleConstants::PROJECT_MANAGER);
             $hasCreateOnBehalfPermission = $user->can('tickets.create-on-behalf');
-            
+
             // Department managers can only create tickets for users in their department
             if (($isHOD || $isLineManager || $isDepartmentManager) && $user->department_id) {
                 $requester = \App\Models\User::find($requesterId);
@@ -122,26 +128,27 @@ class TicketRequest extends FormRequest
                     return; // Allowed: requester is in their department
                 }
                 // Get the role name for error message
-                $roleName = $isHOD ? 'Head of Department' 
-                    : ($isLineManager ? 'Line Manager' 
+                $roleName = $isHOD ? 'Head of Department'
+                    : ($isLineManager ? 'Line Manager'
                     : ($user->roles->first()?->name ?? 'Manager'));
                 $validator->errors()->add(
                     'requester_id',
                     "As {$roleName}, you can only create tickets for users in your department."
                 );
+
                 return;
             }
-            
+
             // Executives and Project Managers can create tickets for anyone
             if ($isExecutiveOrAdmin || $isProjectManager) {
                 return;
             }
-            
+
             // Users with permission (Managers, Admins) can create tickets for anyone
             if ($hasCreateOnBehalfPermission) {
                 return;
             }
-            
+
             // Regular users can only create tickets for themselves
             $validator->errors()->add(
                 'requester_id',
@@ -149,16 +156,16 @@ class TicketRequest extends FormRequest
             );
             if ($this->has('custom_fields') && is_array($this->custom_fields)) {
                 $customFields = \App\Models\CustomField::active()->get()->keyBy('id');
-                
+
                 foreach ($this->custom_fields as $fieldId => $value) {
                     $field = $customFields->get($fieldId);
-                    if (!$field) {
+                    if (! $field) {
                         continue;
                     }
 
                     $rules = $field->getValidationRules();
                     $fieldName = "custom_fields.{$fieldId}";
-                    
+
                     $fieldValidator = \Illuminate\Support\Facades\Validator::make(
                         [$fieldName => $value],
                         [$fieldName => $rules]

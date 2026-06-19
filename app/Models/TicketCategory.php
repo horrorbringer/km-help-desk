@@ -18,6 +18,7 @@ class TicketCategory extends Model
         'description',
         'parent_id',
         'default_team_id',
+        'workflow_template_id',
         'is_active',
         'sort_order',
         'requires_approval',
@@ -46,6 +47,11 @@ class TicketCategory extends Model
     public function defaultTeam(): BelongsTo
     {
         return $this->belongsTo(Department::class, 'default_team_id');
+    }
+
+    public function workflowTemplate(): BelongsTo
+    {
+        return $this->belongsTo(WorkflowTemplate::class, 'workflow_template_id');
     }
 
     public function tickets(): HasMany
@@ -81,5 +87,4 @@ class TicketCategory extends Model
         return new \Illuminate\Database\Eloquent\Collection($allDescendants);
     }
 }
-
 

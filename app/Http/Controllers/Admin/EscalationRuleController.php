@@ -5,9 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\EscalationRuleRequest;
 use App\Models\Department;
+use App\Models\EscalationExecution;
 use App\Models\EscalationRule;
+use App\Models\Project;
 use App\Models\Ticket;
+use App\Models\TicketCategory;
 use App\Models\User;
+use App\Support\TicketRuleCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -38,6 +42,7 @@ class EscalationRuleController extends Controller
                 'description' => $rule->description,
                 'time_trigger_type' => $rule->time_trigger_type,
                 'time_trigger_minutes' => $rule->time_trigger_minutes,
+                'repeat_interval_minutes' => $rule->repeat_interval_minutes,
                 'priority' => $rule->priority,
                 'is_active' => $rule->is_active,
                 'execution_count' => $rule->execution_count,
@@ -82,7 +87,8 @@ class EscalationRuleController extends Controller
                 'conditions' => $escalationRule->conditions ?? [],
                 'time_trigger_type' => $escalationRule->time_trigger_type,
                 'time_trigger_minutes' => $escalationRule->time_trigger_minutes,
-                'actions' => $escalationRule->actions ?? [],
+                'repeat_interval_minutes' => $escalationRule->repeat_interval_minutes,
+                'actions' => TicketRuleCatalog::normalizeActions($escalationRule->actions),
                 'priority' => $escalationRule->priority,
                 'is_active' => $escalationRule->is_active,
             ],
@@ -95,7 +101,19 @@ class EscalationRuleController extends Controller
 
     public function update(EscalationRuleRequest $request, EscalationRule $escalationRule): RedirectResponse
     {
-        $escalationRule->update($request->validated());
+        $escalationRule->fill($request->validated());
+        $shouldResetExecutions = $escalationRule->isDirty([
+            'conditions',
+            'time_trigger_type',
+            'time_trigger_minutes',
+            'repeat_interval_minutes',
+            'actions',
+        ]);
+        $escalationRule->save();
+
+        if ($shouldResetExecutions) {
+            EscalationExecution::where('escalation_rule_id', $escalationRule->id)->delete();
+        }
 
         return redirect()
             ->route('admin.escalation-rules.index')
@@ -113,27 +131,12 @@ class EscalationRuleController extends Controller
 
     protected function getConditionOperators(): array
     {
-        return [
-            'equals' => 'Equals',
-            'not_equals' => 'Not Equals',
-            'in' => 'In',
-            'not_in' => 'Not In',
-            'is_empty' => 'Is Empty',
-            'is_not_empty' => 'Is Not Empty',
-        ];
+        return TicketRuleCatalog::conditionOperators();
     }
 
     protected function getActionTypes(): array
     {
-        return [
-            'change_priority' => 'Change Priority',
-            'reassign_to_team' => 'Reassign to Team',
-            'reassign_to_agent' => 'Reassign to Agent',
-            'change_status' => 'Change Status',
-            'notify_team' => 'Notify Team',
-            'notify_agent' => 'Notify Agent',
-            'notify_manager' => 'Notify Manager',
-        ];
+        return TicketRuleCatalog::escalationActionTypes();
     }
 
     protected function getOptions(): array
@@ -141,6 +144,15 @@ class EscalationRuleController extends Controller
         return [
             'priorities' => Ticket::PRIORITIES,
             'statuses' => Ticket::STATUSES,
+            'sources' => Ticket::SOURCES,
+            'categories' => TicketCategory::orderBy('name')->get(['id', 'name'])->map(fn ($category) => [
+                'value' => $category->id,
+                'label' => $category->name,
+            ]),
+            'projects' => Project::orderBy('name')->get(['id', 'name'])->map(fn ($project) => [
+                'value' => $project->id,
+                'label' => $project->name,
+            ]),
             'departments' => Department::orderBy('name')->get(['id', 'name'])->map(fn ($d) => [
                 'value' => $d->id,
                 'label' => $d->name,
@@ -152,4 +164,3 @@ class EscalationRuleController extends Controller
         ];
     }
 }
-

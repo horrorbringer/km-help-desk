@@ -21,7 +21,7 @@ class AutomationService
 
             foreach ($rules as $rule) {
                 if ($rule->matches($ticket, $originalData)) {
-                    $rule->execute($ticket);
+                    $rule->execute($ticket, $originalData);
 
                     // Refresh ticket to get updated values
                     $ticket->refresh();

@@ -8,10 +8,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class EscalationRule extends Model
 {
-    use HasFactory, SoftDeletes;
     use \App\Traits\HandlesRuleLogic {
         matches as traitMatches;
     }
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -19,6 +19,7 @@ class EscalationRule extends Model
         'conditions',
         'time_trigger_type',
         'time_trigger_minutes',
+        'repeat_interval_minutes',
         'actions',
         'priority',
         'is_active',
@@ -30,6 +31,7 @@ class EscalationRule extends Model
         'conditions' => 'array',
         'actions' => 'array',
         'time_trigger_minutes' => 'integer',
+        'repeat_interval_minutes' => 'integer',
         'priority' => 'integer',
         'is_active' => 'boolean',
         'execution_count' => 'integer',
@@ -49,13 +51,13 @@ class EscalationRule extends Model
     public function matches(Ticket $ticket, array $originalData = []): bool
     {
         // Use trait's condition matching
-        if (!$this->traitMatches($ticket, $originalData)) {
+        if (! $this->traitMatches($ticket, $originalData)) {
             return false;
         }
 
         // Check time trigger (model specific)
         if ($this->time_trigger_type && $this->time_trigger_minutes) {
-            if (!$this->checkTimeTrigger($ticket)) {
+            if (! $this->checkTimeTrigger($ticket)) {
                 return false;
             }
         }
@@ -66,7 +68,7 @@ class EscalationRule extends Model
     /**
      * Execute escalation actions on ticket
      */
-    public function execute(Ticket $ticket): void
+    public function execute(Ticket $ticket, array $context = []): void
     {
         if (empty($this->actions)) {
             return;
@@ -76,7 +78,8 @@ class EscalationRule extends Model
             $ticket,
             $this->actions,
             'escalation_rule',
-            $this->id
+            $this->id,
+            $context
         );
 
         // Update execution stats
@@ -89,20 +92,14 @@ class EscalationRule extends Model
      */
     protected function checkTimeTrigger(Ticket $ticket): bool
     {
-        $triggerTime = match ($this->time_trigger_type) {
-                'created_at' => $ticket->created_at,
-                'updated_at' => $ticket->updated_at,
-                'first_response_due_at' => $ticket->first_response_due_at,
-                'resolution_due_at' => $ticket->resolution_due_at,
-                default => null,
-            };
+        $triggerTime = $this->triggerTime($ticket);
 
-        if (!$triggerTime) {
+        if (! $triggerTime) {
             return false;
         }
 
         $now = now();
-        $diffMinutes = $now->diffInMinutes($triggerTime);
+        $diffMinutes = $triggerTime->diffInMinutes($now, true);
 
         // For "due_at" fields, check if we're past the due time
         if (in_array($this->time_trigger_type, ['first_response_due_at', 'resolution_due_at'])) {
@@ -111,6 +108,42 @@ class EscalationRule extends Model
 
         // For "created_at" and "updated_at", check if enough time has passed
         return $diffMinutes >= $this->time_trigger_minutes;
+    }
+
+    public function occurrenceKey(Ticket $ticket): string
+    {
+        $triggerTime = $this->triggerTime($ticket);
+        $isResettableTrigger = in_array(
+            $this->time_trigger_type,
+            ['first_response_due_at', 'resolution_due_at'],
+            true
+        );
+        $baseKey = $isResettableTrigger && $triggerTime
+            ? "{$this->time_trigger_type}:{$triggerTime->getTimestamp()}"
+            : 'once';
+
+        if (! $this->repeat_interval_minutes) {
+            return $baseKey;
+        }
+
+        $eligibleAt = $triggerTime
+            ? $triggerTime->copy()->addMinutes($this->time_trigger_minutes)
+            : now();
+        $elapsedSeconds = max(0, $eligibleAt->diffInSeconds(now(), false));
+        $window = intdiv($elapsedSeconds, $this->repeat_interval_minutes * 60);
+
+        return "{$this->time_trigger_type}:{$triggerTime?->getTimestamp()}:repeat:{$window}";
+    }
+
+    protected function triggerTime(Ticket $ticket): mixed
+    {
+        return match ($this->time_trigger_type) {
+            'created_at' => $ticket->created_at,
+            'updated_at' => $ticket->updated_at,
+            'first_response_due_at' => $ticket->first_response_due_at,
+            'resolution_due_at' => $ticket->resolution_due_at,
+            default => null,
+        };
     }
 
     public function scopeActive($query)

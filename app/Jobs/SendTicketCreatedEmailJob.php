@@ -5,25 +5,33 @@ namespace App\Jobs;
 use App\Models\Ticket;
 use App\Services\EmailService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
-class SendTicketCreatedEmailJob implements ShouldQueue
+class SendTicketCreatedEmailJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 5;
+
     public $backoff = 60;
+
+    public $uniqueFor = 300;
 
     /**
      * Create a new job instance.
      */
     public function __construct(
         public Ticket $ticket
-    ) {
+    ) {}
+
+    public function uniqueId(): string
+    {
+        return "ticket-created:{$this->ticket->id}:{$this->ticket->requester_id}";
     }
 
     /**

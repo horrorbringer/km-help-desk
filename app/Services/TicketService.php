@@ -78,6 +78,8 @@ class TicketService
             }
         }
 
+        $this->notificationService->notifyTicketLifecycleUpdate($ticket, $actor, $changes);
+
         // Check for escalation
         $this->escalationService->checkTicket($ticket);
 

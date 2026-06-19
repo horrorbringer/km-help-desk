@@ -3,6 +3,14 @@
 use App\Models\User;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Fortify\Features;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+
+beforeEach(function () {
+    Permission::findOrCreate('dashboard.view');
+    Permission::findOrCreate('tickets.view');
+    Role::findOrCreate('Requester');
+});
 
 test('login screen can be rendered', function () {
     $response = $this->get(route('login'));
@@ -19,7 +27,34 @@ test('users can authenticate using the login screen', function () {
     ]);
 
     $this->assertAuthenticated();
+    $response->assertRedirect(route('admin.bookings.index', absolute: false));
+});
+
+test('users with dashboard permission are redirected to the dashboard after login', function () {
+    $user = User::factory()->withoutTwoFactor()->create();
+    $user->givePermissionTo('dashboard.view');
+
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $this->assertAuthenticated();
     $response->assertRedirect(route('dashboard', absolute: false));
+});
+
+test('users without dashboard permission who were sent to dashboard are redirected to a safe landing page after login', function () {
+    $user = User::factory()->withoutTwoFactor()->create();
+
+    $this->get(route('dashboard'));
+
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $this->assertAuthenticated();
+    $response->assertRedirect(route('admin.bookings.index', absolute: false));
 });
 
 test('users with two factor enabled are redirected to two factor challenge', function () {

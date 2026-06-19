@@ -3,13 +3,17 @@
 namespace App\Services;
 
 use App\Constants\RoleConstants;
+use App\Jobs\SendPushNotificationJob;
 use App\Jobs\SendTicketAssignedEmailJob;
 use App\Jobs\SendTicketCreatedEmailJob;
+use App\Jobs\SendTicketEventEmailJob;
 use App\Models\HelpDeskNotification;
+use App\Models\Setting;
 use App\Models\Ticket;
 use App\Models\TicketComment;
 use App\Models\User;
-use App\Models\Setting;
+use App\Support\NotificationType;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
 
 class NotificationService
@@ -24,9 +28,10 @@ class NotificationService
         string $message,
         ?int $ticketId = null,
         ?int $relatedUserId = null,
-        ?array $data = null
+        ?array $data = null,
+        ?string $dedupeKey = null
     ): HelpDeskNotification {
-        return HelpDeskNotification::create([
+        $attributes = [
             'user_id' => $userId,
             'type' => $type,
             'title' => $title,
@@ -34,7 +39,24 @@ class NotificationService
             'ticket_id' => $ticketId,
             'related_user_id' => $relatedUserId,
             'data' => $data,
-        ]);
+            'dedupe_key' => $dedupeKey,
+        ];
+
+        $notification = $dedupeKey === null
+            ? HelpDeskNotification::create($attributes)
+            : HelpDeskNotification::firstOrCreate(
+                ['dedupe_key' => $dedupeKey],
+                $attributes
+            );
+
+        if (
+            $notification->wasRecentlyCreated
+            && app(PushNotificationService::class)->isConfigured()
+        ) {
+            SendPushNotificationJob::dispatch($notification->id);
+        }
+
+        return $notification;
     }
 
     /**
@@ -46,26 +68,58 @@ class NotificationService
         ?int $ticketId = null,
         ?int $relatedUserId = null,
         ?array $variables = null,
-        ?array $data = null
+        ?array $data = null,
+        ?string $dedupeKey = null
     ): ?HelpDeskNotification {
         $template = \App\Models\NotificationTemplate::active()->ofType($type)->first();
 
         if (! $template) {
-            // Fallback to default behavior if no template found
-            return null;
+            Log::warning('Notification template missing; using fallback notification content', [
+                'type' => $type,
+                'user_id' => $userId,
+                'ticket_id' => $ticketId,
+            ]);
+
+            [$title, $message] = $this->fallbackTemplateContent($type, $variables ?? []);
+
+            return $this->create(
+                $userId,
+                $type,
+                $title,
+                $message,
+                $ticketId,
+                $relatedUserId,
+                $data,
+                $dedupeKey
+            );
         }
 
         $title = $template->renderSubject($variables ?? []);
         $message = $template->renderMessage($variables ?? []);
 
-        return $this->create($userId, $type, $title, $message, $ticketId, $relatedUserId, $data);
+        return $this->create(
+            $userId,
+            $type,
+            $title,
+            $message,
+            $ticketId,
+            $relatedUserId,
+            $data,
+            $dedupeKey
+        );
     }
 
     /**
      * Notify ticket requester
      */
-    public function notifyRequester(Ticket $ticket, string $type, string $title, string $message, ?array $data = null): void
-    {
+    public function notifyRequester(
+        Ticket $ticket,
+        string $type,
+        string $title,
+        string $message,
+        ?array $data = null,
+        ?string $dedupeKey = null
+    ): void {
         if ($ticket->requester_id) {
             $this->create(
                 $ticket->requester_id,
@@ -74,7 +128,8 @@ class NotificationService
                 $message,
                 $ticket->id,
                 null,
-                $data
+                $data,
+                $dedupeKey
             );
         }
     }
@@ -82,8 +137,14 @@ class NotificationService
     /**
      * Notify assigned agent
      */
-    public function notifyAgent(Ticket $ticket, string $type, string $title, string $message, ?array $data = null): void
-    {
+    public function notifyAgent(
+        Ticket $ticket,
+        string $type,
+        string $title,
+        string $message,
+        ?array $data = null,
+        ?string $dedupeKey = null
+    ): void {
         if ($ticket->assigned_agent_id) {
             $this->create(
                 $ticket->assigned_agent_id,
@@ -92,7 +153,8 @@ class NotificationService
                 $message,
                 $ticket->id,
                 null,
-                $data
+                $data,
+                $dedupeKey
             );
         }
     }
@@ -100,8 +162,15 @@ class NotificationService
     /**
      * Notify ticket watchers
      */
-    public function notifyWatchers(Ticket $ticket, string $type, string $title, string $message, ?array $excludeUserIds = null, ?array $data = null): void
-    {
+    public function notifyWatchers(
+        Ticket $ticket,
+        string $type,
+        string $title,
+        string $message,
+        ?array $excludeUserIds = null,
+        ?array $data = null,
+        ?string $dedupeKeyPrefix = null
+    ): void {
         $watchers = $ticket->watchers()->where('is_active', true);
 
         if ($excludeUserIds) {
@@ -116,7 +185,10 @@ class NotificationService
                 $message,
                 $ticket->id,
                 null,
-                $data
+                $data,
+                $dedupeKeyPrefix
+                    ? "{$dedupeKeyPrefix}:user:{$watcher->id}"
+                    : null
             );
         }
     }
@@ -126,6 +198,17 @@ class NotificationService
      */
     public function notifyTicketCreated(Ticket $ticket): void
     {
+        if ($ticket->requester_id) {
+            $this->create(
+                $ticket->requester_id,
+                NotificationType::TICKET_CREATED,
+                'Ticket Created',
+                "Ticket #{$ticket->ticket_number} has been created: {$ticket->subject}",
+                $ticket->id,
+                dedupeKey: "ticket:{$ticket->id}:created:user:{$ticket->requester_id}"
+            );
+        }
+
         // Dispatch email notification job to requester (non-blocking)
         try {
             Log::info('NotificationService: Dispatching SendTicketCreatedEmailJob', [
@@ -202,24 +285,22 @@ class NotificationService
         if ($ticket->assigned_agent_id) {
             $this->notifyAgent(
                 $ticket,
-                'ticket_assigned',
+                NotificationType::TICKET_ASSIGNED,
                 'New Ticket Assigned',
-                "Ticket #{$ticket->ticket_number} has been assigned to you: {$ticket->subject}"
+                "Ticket #{$ticket->ticket_number} has been assigned to you: {$ticket->subject}",
+                dedupeKey: $this->assignmentDedupeKey($ticket, $ticket->assigned_agent_id)
             );
         } elseif ($ticket->assigned_team_id) {
-            // 1. Notify department managers
-            $this->notifyDepartmentManagers($ticket);
-
-            // 2. Notify all active users in the team
             $team = $ticket->assignedTeam;
             if ($team) {
                 foreach ($team->users()->where('is_active', true)->get() as $user) {
                     $this->create(
                         $user->id,
-                        'ticket_assigned',
+                        NotificationType::TICKET_ASSIGNED,
                         'New Ticket for Team',
                         "Ticket #{$ticket->ticket_number} has been assigned to your team: {$ticket->subject}",
-                        $ticket->id
+                        $ticket->id,
+                        dedupeKey: $this->assignmentDedupeKey($ticket, $user->id)
                     );
                 }
             }
@@ -232,36 +313,25 @@ class NotificationService
     public function notifyTicketUpdated(Ticket $ticket, User $updatedBy, array $changes = []): void
     {
         $excludeIds = [$updatedBy->id];
+        $eventKey = $this->ticketEventKey($ticket, NotificationType::TICKET_UPDATED);
 
-        // Send email notifications
-        try {
-            Log::info('NotificationService: Calling EmailService::sendTicketUpdated', [
-                'ticket_id' => $ticket->id,
-                'updated_by_id' => $updatedBy->id,
-                'changes' => array_keys($changes),
-            ]);
-            $emailService = app(\App\Services\EmailService::class);
-            $result = $emailService->sendTicketUpdated($ticket, $updatedBy, $changes);
-            Log::info('NotificationService: EmailService::sendTicketUpdated result', [
-                'ticket_id' => $ticket->id,
-                'result' => $result ? 'success' : 'failed',
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to send email notification: {$e->getMessage()}", [
-                'ticket_id' => $ticket->id,
-                'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
+        SendTicketEventEmailJob::dispatch(
+            NotificationType::TICKET_UPDATED,
+            $ticket->id,
+            $updatedBy->id,
+            ['changes' => $changes],
+            $eventKey
+        );
 
         // Notify requester
         if ($ticket->requester_id && $ticket->requester_id !== $updatedBy->id) {
             $this->notifyRequester(
                 $ticket,
-                'ticket_updated',
+                NotificationType::TICKET_UPDATED,
                 'Ticket Updated',
                 "Ticket #{$ticket->ticket_number} has been updated by {$updatedBy->name}",
-                $changes
+                $changes,
+                "{$eventKey}:user:{$ticket->requester_id}"
             );
             $excludeIds[] = $ticket->requester_id;
         }
@@ -270,10 +340,11 @@ class NotificationService
         if ($ticket->assigned_agent_id && $ticket->assigned_agent_id !== $updatedBy->id) {
             $this->notifyAgent(
                 $ticket,
-                'ticket_updated',
+                NotificationType::TICKET_UPDATED,
                 'Ticket Updated',
                 "Ticket #{$ticket->ticket_number} has been updated: {$ticket->subject}",
-                $changes
+                $changes,
+                "{$eventKey}:user:{$ticket->assigned_agent_id}"
             );
             $excludeIds[] = $ticket->assigned_agent_id;
         }
@@ -281,11 +352,12 @@ class NotificationService
         // Notify watchers
         $this->notifyWatchers(
             $ticket,
-            'ticket_updated',
+            NotificationType::TICKET_UPDATED,
             'Ticket Updated',
             "Ticket #{$ticket->ticket_number} has been updated by {$updatedBy->name}",
             $excludeIds,
-            $changes
+            $changes,
+            $eventKey
         );
     }
 
@@ -295,7 +367,7 @@ class NotificationService
     public function notifyTicketCommented(Ticket $ticket, User $commenter, bool $isInternal = false): void
     {
         $excludeIds = [$commenter->id];
-        $type = $isInternal ? 'ticket_commented' : 'ticket_commented';
+        $type = NotificationType::TICKET_COMMENTED;
         $title = $isInternal ? 'Internal Comment Added' : 'New Comment on Ticket';
 
         // Notify requester (only if not internal)
@@ -336,30 +408,16 @@ class NotificationService
     public function notifyCommentAdded(Ticket $ticket, TicketComment $comment, User $commenter): void
     {
         $excludeIds = [$commenter->id];
-        $type = $comment->is_internal ? 'comment_internal' : 'comment_added';
+        $type = $comment->is_internal ? NotificationType::COMMENT_INTERNAL : NotificationType::COMMENT_ADDED;
         $title = $comment->is_internal ? 'Internal Comment Added' : 'New Comment';
 
-        // Send email notifications
-        try {
-            Log::info('NotificationService: Calling EmailService::sendCommentAdded', [
-                'ticket_id' => $ticket->id,
-                'comment_id' => $comment->id,
-                'commenter_id' => $commenter->id,
-                'is_internal' => $comment->is_internal,
-            ]);
-            $emailService = app(\App\Services\EmailService::class);
-            $result = $emailService->sendCommentAdded($ticket, $comment, $commenter);
-            Log::info('NotificationService: EmailService::sendCommentAdded result', [
-                'ticket_id' => $ticket->id,
-                'result' => $result ? 'success' : 'failed',
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to send email notification: {$e->getMessage()}", [
-                'ticket_id' => $ticket->id,
-                'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
+        SendTicketEventEmailJob::dispatch(
+            NotificationType::COMMENT_ADDED,
+            $ticket->id,
+            $commenter->id,
+            ['comment_id' => $comment->id],
+            "comment:{$comment->id}"
+        );
 
         // Only notify requester if comment is not internal
         if (! $comment->is_internal && $ticket->requester_id && $ticket->requester_id !== $commenter->id) {
@@ -367,7 +425,8 @@ class NotificationService
                 $ticket,
                 $type,
                 $title,
-                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: ".substr($comment->body, 0, 100).'...'
+                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: ".substr($comment->body, 0, 100).'...',
+                dedupeKey: "comment:{$comment->id}:user:{$ticket->requester_id}"
             );
             $excludeIds[] = $ticket->requester_id;
         }
@@ -378,7 +437,8 @@ class NotificationService
                 $ticket,
                 $type,
                 $title,
-                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: ".substr($comment->body, 0, 100).'...'
+                "{$commenter->name} commented on ticket #{$ticket->ticket_number}: ".substr($comment->body, 0, 100).'...',
+                dedupeKey: "comment:{$comment->id}:user:{$ticket->assigned_agent_id}"
             );
             $excludeIds[] = $ticket->assigned_agent_id;
         }
@@ -390,7 +450,8 @@ class NotificationService
                 $type,
                 $title,
                 "{$commenter->name} commented on ticket #{$ticket->ticket_number}: ".substr($comment->body, 0, 100).'...',
-                $excludeIds
+                $excludeIds,
+                dedupeKeyPrefix: "comment:{$comment->id}"
             );
         }
     }
@@ -401,35 +462,24 @@ class NotificationService
     public function notifyTicketResolved(Ticket $ticket, User $resolvedBy): void
     {
         $excludeIds = [$resolvedBy->id];
+        $eventKey = $this->ticketEventKey($ticket, NotificationType::TICKET_RESOLVED);
 
-        // Send email notifications
-        try {
-            Log::info('NotificationService: Calling EmailService::sendTicketResolved', [
-                'ticket_id' => $ticket->id,
-                'resolved_by_id' => $resolvedBy->id,
-                'requester_email' => $ticket->requester?->email,
-            ]);
-            $emailService = app(\App\Services\EmailService::class);
-            $result = $emailService->sendTicketResolved($ticket, $resolvedBy);
-            Log::info('NotificationService: EmailService::sendTicketResolved result', [
-                'ticket_id' => $ticket->id,
-                'result' => $result ? 'success' : 'failed',
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to send email notification: {$e->getMessage()}", [
-                'ticket_id' => $ticket->id,
-                'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
+        SendTicketEventEmailJob::dispatch(
+            NotificationType::TICKET_RESOLVED,
+            $ticket->id,
+            $resolvedBy->id,
+            [],
+            $eventKey
+        );
 
         // Notify requester
         if ($ticket->requester_id && $ticket->requester_id !== $resolvedBy->id) {
             $this->notifyRequester(
                 $ticket,
-                'ticket_resolved',
+                NotificationType::TICKET_RESOLVED,
                 'Ticket Resolved',
-                "Ticket #{$ticket->ticket_number} has been resolved: {$ticket->subject}"
+                "Ticket #{$ticket->ticket_number} has been resolved: {$ticket->subject}",
+                dedupeKey: "{$eventKey}:user:{$ticket->requester_id}"
             );
             $excludeIds[] = $ticket->requester_id;
         }
@@ -437,10 +487,11 @@ class NotificationService
         // Notify watchers
         $this->notifyWatchers(
             $ticket,
-            'ticket_resolved',
+            NotificationType::TICKET_RESOLVED,
             'Ticket Resolved',
             "Ticket #{$ticket->ticket_number} has been resolved by {$resolvedBy->name}",
-            $excludeIds
+            $excludeIds,
+            dedupeKeyPrefix: $eventKey
         );
     }
 
@@ -456,9 +507,10 @@ class NotificationService
         if ($ticket->assigned_agent_id) {
             $this->notifyAgent(
                 $ticket,
-                'sla_breached',
+                NotificationType::SLA_BREACHED,
                 $title,
-                $message
+                $message,
+                dedupeKey: "ticket:{$ticket->id}:sla:{$breachType}:user:{$ticket->assigned_agent_id}"
             );
         }
 
@@ -470,10 +522,11 @@ class NotificationService
                     if ($user->id !== $ticket->assigned_agent_id) {
                         $this->create(
                             $user->id,
-                            'sla_breached',
+                            NotificationType::SLA_BREACHED,
                             $title,
                             $message,
-                            $ticket->id
+                            $ticket->id,
+                            dedupeKey: "ticket:{$ticket->id}:sla:{$breachType}:user:{$user->id}"
                         );
                     }
                 }
@@ -486,35 +539,45 @@ class NotificationService
      */
     public function notifyTicketClosed(Ticket $ticket, User $closedBy): void
     {
-        // Send email notification to requester
-        try {
-            Log::info('NotificationService: Calling EmailService::sendTicketClosed', [
-                'ticket_id' => $ticket->id,
-                'requester_email' => $ticket->requester?->email,
-            ]);
-            $emailService = app(\App\Services\EmailService::class);
-            $result = $emailService->sendTicketClosed($ticket, $closedBy);
-            Log::info('NotificationService: EmailService::sendTicketClosed result', [
-                'ticket_id' => $ticket->id,
-                'result' => $result ? 'success' : 'failed',
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to send ticket closed email: {$e->getMessage()}", [
-                'ticket_id' => $ticket->id,
-                'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
+        $eventKey = $this->ticketEventKey($ticket, NotificationType::TICKET_CLOSED);
+
+        SendTicketEventEmailJob::dispatch(
+            NotificationType::TICKET_CLOSED,
+            $ticket->id,
+            $closedBy->id,
+            [],
+            $eventKey
+        );
 
         // Notify requester
         if ($ticket->requester_id && $ticket->requester_id !== $closedBy->id) {
             $this->notifyRequester(
                 $ticket,
-                'ticket_closed',
+                NotificationType::TICKET_CLOSED,
                 'Ticket Closed',
-                "Ticket #{$ticket->ticket_number} has been closed: {$ticket->subject}"
+                "Ticket #{$ticket->ticket_number} has been closed: {$ticket->subject}",
+                dedupeKey: "{$eventKey}:user:{$ticket->requester_id}"
             );
         }
+    }
+
+    public function notifyTicketLifecycleUpdate(Ticket $ticket, User $updatedBy, array $changes): void
+    {
+        $newStatus = $changes['status']['new'] ?? null;
+
+        if ($newStatus === Ticket::STATUS_RESOLVED) {
+            $this->notifyTicketResolved($ticket, $updatedBy);
+
+            return;
+        }
+
+        if ($newStatus === Ticket::STATUS_CLOSED) {
+            $this->notifyTicketClosed($ticket, $updatedBy);
+
+            return;
+        }
+
+        $this->notifyTicketUpdated($ticket, $updatedBy, $changes);
     }
 
     /**
@@ -530,36 +593,22 @@ class NotificationService
         $title = "Approval Required: {$approvalLevelName}";
         $message = "Ticket #{$ticket->ticket_number} requires your {$approvalLevelName} approval: {$ticket->subject}";
 
-        // Send email notification
-        try {
-            Log::info('NotificationService: Calling EmailService::sendApprovalRequested', [
-                'ticket_id' => $ticket->id,
-                'approval_level' => $approvalLevel,
-                'approver_email' => $approver->email,
-            ]);
-            $emailService = app(\App\Services\EmailService::class);
-            $result = $emailService->sendApprovalRequested($ticket, $approver, $approvalLevel);
-            Log::info('NotificationService: EmailService::sendApprovalRequested result', [
-                'ticket_id' => $ticket->id,
-                'result' => $result ? 'success' : 'failed',
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to send approval request email: {$e->getMessage()}", [
-                'ticket_id' => $ticket->id,
-                'approval_level' => $approvalLevel,
-                'approver_email' => $approver->email,
-                'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
+        SendTicketEventEmailJob::dispatch(
+            NotificationType::APPROVAL_REQUESTED,
+            $ticket->id,
+            $approver->id,
+            ['approval_level' => $approvalLevel],
+            "approval:{$ticket->id}:{$approvalLevel}:requested"
+        );
 
         // Create in-app notification
         $this->create(
             $approver->id,
-            'approval_requested',
+            NotificationType::APPROVAL_REQUESTED,
             $title,
             $message,
-            $ticket->id
+            $ticket->id,
+            dedupeKey: "approval:{$ticket->id}:{$approvalLevel}:requested:user:{$approver->id}"
         );
 
         // Send Telegram notification if linked
@@ -573,30 +622,31 @@ class NotificationService
                     ->first();
 
                 if ($approval) {
-                    $url = config('app.url') . "/admin/tickets/{$ticket->id}";
+                    $url = config('app.url')."/admin/tickets/{$ticket->id}";
                     $telegramMessage = "🚨 *Approval Required*\n\n";
                     $telegramMessage .= "Ticket: #{$ticket->ticket_number}\n";
                     $telegramMessage .= "Subject: {$ticket->subject}\n";
                     $telegramMessage .= "Requester: {$ticket->requester?->name}\n";
                     $telegramMessage .= "Level: *{$approvalLevelName}*\n\n";
-                    $telegramMessage .= "Please review and take action below:";
+                    $telegramMessage .= 'Please review and take action below:';
 
-                    \Illuminate\Support\Facades\Http::timeout(15)->post("https://api.telegram.org/bot{$token}/sendMessage", [
-                        'chat_id' => $approver->telegram_chat_id,
-                        'text' => $telegramMessage,
-                        'parse_mode' => 'Markdown',
-                        'reply_markup' => json_encode([
+                    app(TelegramNotificationService::class)->queue(
+                        $approver->telegram_chat_id,
+                        $telegramMessage,
+                        [
                             'inline_keyboard' => [
                                 [
                                     ['text' => '✅ Approve', 'callback_data' => "approve_ticket:{$approval->id}"],
-                                    ['text' => '❌ Reject', 'callback_data' => "reject_ticket:{$approval->id}"]
+                                    ['text' => '❌ Reject', 'callback_data' => "reject_ticket:{$approval->id}"],
                                 ],
                                 [
-                                    ['text' => '🎫 View Ticket', 'url' => $url]
-                                ]
-                            ]
-                        ])
-                    ]);
+                                    ['text' => '🎫 View Ticket', 'url' => $url],
+                                ],
+                            ],
+                        ],
+                        User::class,
+                        $approver->id
+                    );
                 }
             }
         }
@@ -609,36 +659,25 @@ class NotificationService
     {
         $approvalLevelName = $approvalLevel === 'lm' ? RoleConstants::LINE_MANAGER : RoleConstants::HEAD_OF_DEPARTMENT;
 
-        // Send email notification to requester
-        try {
-            Log::info('NotificationService: Calling EmailService::sendApprovalApproved', [
-                'ticket_id' => $ticket->id,
+        SendTicketEventEmailJob::dispatch(
+            NotificationType::APPROVAL_APPROVED,
+            $ticket->id,
+            $approver->id,
+            [
                 'approval_level' => $approvalLevel,
-                'requester_email' => $ticket->requester?->email,
-            ]);
-            $emailService = app(\App\Services\EmailService::class);
-            $result = $emailService->sendApprovalApproved($ticket, $approver, $approvalLevel, $comments);
-            Log::info('NotificationService: EmailService::sendApprovalApproved result', [
-                'ticket_id' => $ticket->id,
-                'result' => $result ? 'success' : 'failed',
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to send approval approved email: {$e->getMessage()}", [
-                'ticket_id' => $ticket->id,
-                'approval_level' => $approvalLevel,
-                'requester_email' => $ticket->requester?->email,
-                'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
+                'comments' => $comments,
+            ],
+            "approval:{$ticket->id}:{$approvalLevel}:approved"
+        );
 
         // Notify requester
         if ($ticket->requester_id && $ticket->requester_id !== $approver->id) {
             $this->notifyRequester(
                 $ticket,
-                'approval_approved',
+                NotificationType::APPROVAL_APPROVED,
                 "Ticket Approved by {$approvalLevelName}",
-                "Ticket #{$ticket->ticket_number} has been approved by {$approver->name} ({$approvalLevelName})"
+                "Ticket #{$ticket->ticket_number} has been approved by {$approver->name} ({$approvalLevelName})",
+                dedupeKey: "approval:{$ticket->id}:{$approvalLevel}:approved:user:{$ticket->requester_id}"
             );
         }
     }
@@ -650,36 +689,25 @@ class NotificationService
     {
         $approvalLevelName = $approvalLevel === 'lm' ? RoleConstants::LINE_MANAGER : RoleConstants::HEAD_OF_DEPARTMENT;
 
-        // Send email notification to requester
-        try {
-            Log::info('NotificationService: Calling EmailService::sendApprovalRejected', [
-                'ticket_id' => $ticket->id,
+        SendTicketEventEmailJob::dispatch(
+            NotificationType::APPROVAL_REJECTED,
+            $ticket->id,
+            $approver->id,
+            [
                 'approval_level' => $approvalLevel,
-                'requester_email' => $ticket->requester?->email,
-            ]);
-            $emailService = app(\App\Services\EmailService::class);
-            $result = $emailService->sendApprovalRejected($ticket, $approver, $approvalLevel, $comments);
-            Log::info('NotificationService: EmailService::sendApprovalRejected result', [
-                'ticket_id' => $ticket->id,
-                'result' => $result ? 'success' : 'failed',
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to send approval rejected email: {$e->getMessage()}", [
-                'ticket_id' => $ticket->id,
-                'approval_level' => $approvalLevel,
-                'requester_email' => $ticket->requester?->email,
-                'exception' => get_class($e),
-                'trace' => $e->getTraceAsString(),
-            ]);
-        }
+                'comments' => $comments,
+            ],
+            "approval:{$ticket->id}:{$approvalLevel}:rejected"
+        );
 
         // Notify requester
         if ($ticket->requester_id && $ticket->requester_id !== $approver->id) {
             $this->notifyRequester(
                 $ticket,
-                'approval_rejected',
+                NotificationType::APPROVAL_REJECTED,
                 "Ticket Rejected by {$approvalLevelName}",
-                "Ticket #{$ticket->ticket_number} has been rejected by {$approver->name} ({$approvalLevelName})".($comments ? ": {$comments}" : '')
+                "Ticket #{$ticket->ticket_number} has been rejected by {$approver->name} ({$approvalLevelName})".($comments ? ": {$comments}" : ''),
+                dedupeKey: "approval:{$ticket->id}:{$approvalLevel}:rejected:user:{$ticket->requester_id}"
             );
         }
     }
@@ -701,17 +729,7 @@ class NotificationService
             }
 
             // Find all managers in the assigned department (LM, DLM, HOD, DHOD)
-            $managers = \App\Models\User::where('department_id', $ticket->assigned_team_id)
-                ->where('is_active', true)
-                ->whereHas('roles', function ($query) {
-                    $query->whereIn('name', [
-                        \App\Constants\RoleConstants::LINE_MANAGER,
-                        \App\Constants\RoleConstants::DEPUTY_LINE_MANAGER,
-                        \App\Constants\RoleConstants::HEAD_OF_DEPARTMENT,
-                        \App\Constants\RoleConstants::DEPUTY_HEAD_OF_DEPARTMENT,
-                    ]);
-                })
-                ->get();
+            $managers = $this->departmentManagers($ticket);
 
             if ($managers->isEmpty()) {
                 Log::info('No department managers found to notify', [
@@ -730,15 +748,16 @@ class NotificationService
                 // Create in-app notification
                 $this->create(
                     $manager->id,
-                    'ticket_routed_to_team',
-                    $title,
-                    $message,
+                    NotificationType::TICKET_ASSIGNED,
+                    'New Ticket for Team',
+                    "Ticket #{$ticket->ticket_number} has been assigned to your team: {$ticket->subject}",
                     $ticket->id,
                     null,
                     [
                         'team_id' => $ticket->assigned_team_id,
                         'team_name' => $team->name,
-                    ]
+                    ],
+                    $this->assignmentDedupeKey($ticket, $manager->id)
                 );
 
                 // Dispatch email notification job (non-blocking)
@@ -773,13 +792,14 @@ class NotificationService
             ]);
         }
     }
+
     /**
      * Notify all members of a specific team
      */
     public function notifyTeam(int $teamId, Ticket $ticket, string $template = 'ticket_assigned', array $additionalData = []): void
     {
         $team = \App\Models\Department::find($teamId);
-        if (!$team) {
+        if (! $team) {
             return;
         }
 
@@ -794,7 +814,8 @@ class NotificationService
                     'ticket_number' => $ticket->ticket_number,
                     'subject' => $ticket->subject,
                     'team_name' => $team->name,
-                ], $additionalData)
+                ], $additionalData),
+                dedupeKey: "ticket:{$ticket->id}:template:{$template}:team:{$teamId}:user:{$user->id}"
             );
 
             try {
@@ -828,7 +849,8 @@ class NotificationService
                     'ticket_number' => $ticket->ticket_number,
                     'subject' => $ticket->subject,
                     'role_name' => $roleName,
-                ], $additionalData)
+                ], $additionalData),
+                dedupeKey: "ticket:{$ticket->id}:template:{$template}:role:{$roleName}:user:{$user->id}"
             );
 
             try {
@@ -849,7 +871,7 @@ class NotificationService
     public function notifyUser(int $userId, Ticket $ticket, string $template = 'ticket_assigned', array $additionalData = []): void
     {
         $user = \App\Models\User::find($userId);
-        if (!$user || !$user->is_active) {
+        if (! $user || ! $user->is_active) {
             return;
         }
 
@@ -861,7 +883,8 @@ class NotificationService
             array_merge([
                 'ticket_number' => $ticket->ticket_number,
                 'subject' => $ticket->subject,
-            ], $additionalData)
+            ], $additionalData),
+            dedupeKey: "ticket:{$ticket->id}:template:{$template}:user:{$user->id}"
         );
 
         try {
@@ -880,7 +903,7 @@ class NotificationService
      */
     public function notifyTeammates(Ticket $ticket): void
     {
-        if (!$ticket->requester || !$ticket->requester->department_id) {
+        if (! $ticket->requester || ! $ticket->requester->department_id) {
             return;
         }
 
@@ -893,10 +916,11 @@ class NotificationService
         foreach ($teammates as $user) {
             $this->create(
                 $user->id,
-                'teammate_ticket_created',
+                NotificationType::TEAMMATE_TICKET_CREATED,
                 "Teammate Created Ticket: #{$ticket->ticket_number}",
                 "Your teammate {$ticket->requester->name} has created a new ticket: {$ticket->subject}",
-                $ticket->id
+                $ticket->id,
+                dedupeKey: "ticket:{$ticket->id}:teammate-created:user:{$user->id}"
             );
 
             // We could also send an email here if a "teammate_ticket_created" template exists
@@ -909,37 +933,34 @@ class NotificationService
     public function notifyTeamGroup(Ticket $ticket): void
     {
         $team = $ticket->assignedTeam;
-        if (!$team || !$team->telegram_chat_id) {
+        if (! $team || ! $team->telegram_chat_id) {
             return;
         }
 
-        $url = config('app.url') . "/admin/tickets/{$ticket->id}";
+        $url = config('app.url')."/admin/tickets/{$ticket->id}";
         $message = "🎫 *New Ticket Assigned to {$team->name}*\n\n";
         $message .= "Ticket: #{$ticket->ticket_number}\n";
         $message .= "Subject: {$ticket->subject}\n";
-        $message .= "Priority: *".ucfirst($ticket->priority)."*\n";
+        $message .= 'Priority: *'.ucfirst($ticket->priority)."*\n";
         $message .= "Requester: {$ticket->requester?->name}\n\n";
-        $message .= "Please check and handle this ticket.";
+        $message .= 'Please check and handle this ticket.';
 
         $replyMarkup = [
             'inline_keyboard' => [
                 [
                     ['text' => '✋ Claim Ticket', 'callback_data' => "pick_ticket:{$ticket->id}"],
-                    ['text' => '🎫 View Ticket', 'url' => $url]
-                ]
-            ]
+                    ['text' => '🎫 View Ticket', 'url' => $url],
+                ],
+            ],
         ];
 
-        $response = $this->sendTelegramResponse($team->telegram_chat_id, $message, $replyMarkup);
-
-        if ($response && !$response->successful()) {
-            // Handle Migration
-            $migrateToId = $response->json('parameters.migrate_to_chat_id');
-            if ($migrateToId) {
-                $team->update(['telegram_chat_id' => $migrateToId]);
-                $this->sendTelegramResponse($migrateToId, $message, $replyMarkup);
-            }
-        }
+        app(TelegramNotificationService::class)->queue(
+            $team->telegram_chat_id,
+            $message,
+            $replyMarkup,
+            \App\Models\Department::class,
+            $team->id
+        );
     }
 
     /**
@@ -948,63 +969,108 @@ class NotificationService
     public function notifyDepartmentManagersTelegram(Ticket $ticket): void
     {
         $department = $ticket->assignedTeam;
-        if (!$department) return;
+        if (! $department) {
+            return;
+        }
 
         // Managers are typically Users, who have their own telegram_chat_id.
-        // Migration of private chats is rare/impossible in this context, 
+        // Migration of private chats is rare/impossible in this context,
         // but we'll use the response helper anyway.
-        $managers = \App\Models\User::role(['Manager', 'Department Head'])
-            ->where('department_id', $department->id)
+        $managers = $this->departmentManagers($ticket)
             ->whereNotNull('telegram_chat_id')
-            ->get();
+            ->values();
 
-        $url = config('app.url') . "/admin/tickets/{$ticket->id}";
+        $url = config('app.url')."/admin/tickets/{$ticket->id}";
         $message = "🚨 *Manager Alert: New Ticket*\n\n";
         $message .= "Department: {$department->name}\n";
         $message .= "Ticket: #{$ticket->ticket_number}\n";
         $message .= "Subject: {$ticket->subject}\n\n";
-        $message .= "Please ensure this is handled.";
+        $message .= 'Please ensure this is handled.';
 
         foreach ($managers as $manager) {
             $loginUrl = \App\Http\Controllers\Api\TelegramLoginController::generateLoginUrl($manager, "/admin/tickets/{$ticket->id}");
-            
-            $response = $this->sendTelegramResponse($manager->telegram_chat_id, $message, [
-                'inline_keyboard' => [[['text' => '🎫 View Ticket', 'url' => $loginUrl]]]
-            ]);
 
-            if ($response && !$response->successful()) {
-                $migrateToId = $response->json('parameters.migrate_to_chat_id');
-                if ($migrateToId) {
-                    $manager->update(['telegram_chat_id' => $migrateToId]);
-                    $this->sendTelegramResponse($migrateToId, $message, [
-                        'inline_keyboard' => [[['text' => '🎫 View Ticket', 'url' => $loginUrl]]]
-                    ]);
-                }
-            }
+            app(TelegramNotificationService::class)->queue(
+                $manager->telegram_chat_id,
+                $message,
+                [
+                    'inline_keyboard' => [
+                        [
+                            ['text' => '🎫 View Ticket', 'url' => $loginUrl],
+                        ],
+                    ],
+                ],
+                User::class,
+                $manager->id
+            );
         }
+    }
+
+    protected function assignmentDedupeKey(Ticket $ticket, int $userId): string
+    {
+        return implode(':', [
+            'ticket',
+            $ticket->id,
+            'assignment',
+            $ticket->assigned_team_id ?? 'no-team',
+            $ticket->assigned_agent_id ?? 'no-agent',
+            'user',
+            $userId,
+        ]);
+    }
+
+    public function ticketEventKey(Ticket $ticket, string $event): string
+    {
+        $historyId = $ticket->histories()
+            ->where('action', 'not like', 'system_%')
+            ->max('id');
+        $occurrence = $historyId ?: $ticket->updated_at?->getTimestamp() ?: 'current';
+
+        return "ticket:{$ticket->id}:{$event}:{$occurrence}";
     }
 
     /**
-     * Send Telegram Response helper (returns the response object)
+     * @param  array<string, mixed>  $variables
+     * @return array{0: string, 1: string}
      */
-    protected function sendTelegramResponse(string $chatId, string $text, ?array $replyMarkup = null): ?\Illuminate\Http\Client\Response
+    protected function fallbackTemplateContent(string $type, array $variables): array
     {
-        $token = Setting::get('telegram_bot_token', config('services.telegram-bot-api.token'));
-        if (!$token) return null;
+        $ticketNumber = $variables['ticket_number'] ?? null;
+        $subject = $variables['subject'] ?? null;
+        $ticketLabel = $ticketNumber ? "Ticket #{$ticketNumber}" : 'A ticket';
 
-        $payload = [
-            'chat_id' => $chatId,
-            'text' => $text,
-            'parse_mode' => 'Markdown',
-        ];
+        return match ($type) {
+            NotificationType::TICKET_ASSIGNED => [
+                'New Ticket Assigned',
+                trim("{$ticketLabel} has been assigned".($subject ? ": {$subject}" : '').'.'),
+            ],
+            NotificationType::APPROVAL_REQUESTED => [
+                'Approval Required',
+                trim("{$ticketLabel} requires approval".($subject ? ": {$subject}" : '').'.'),
+            ],
+            default => [
+                'Notification',
+                trim("{$ticketLabel} has a new update".($subject ? ": {$subject}" : '').'.'),
+            ],
+        };
+    }
 
-        if ($replyMarkup) {
-            $payload['reply_markup'] = json_encode($replyMarkup);
+    protected function departmentManagers(Ticket $ticket): Collection
+    {
+        if (! $ticket->assigned_team_id) {
+            return new Collection;
         }
 
-        return \Illuminate\Support\Facades\Http::timeout(15)->post("https://api.telegram.org/bot{$token}/sendMessage", $payload);
+        return User::where('department_id', $ticket->assigned_team_id)
+            ->where('is_active', true)
+            ->whereHas('roles', function ($query) {
+                $query->whereIn('name', [
+                    RoleConstants::LINE_MANAGER,
+                    RoleConstants::DEPUTY_LINE_MANAGER,
+                    RoleConstants::HEAD_OF_DEPARTMENT,
+                    RoleConstants::DEPUTY_HEAD_OF_DEPARTMENT,
+                ]);
+            })
+            ->get();
     }
 }
-
-
- 

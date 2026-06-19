@@ -2,18 +2,15 @@
 
 namespace Tests;
 
-use App\Models\Department;
 use App\Models\Ticket;
-use App\Models\TicketApproval;
 use App\Models\TicketCategory;
 use App\Models\User;
 use App\Services\ApprovalWorkflowService;
 use Illuminate\Foundation\Testing\TestCase;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Approval Workflow Test Scenarios
- * 
+ *
  * Run with: php artisan test --filter ApprovalWorkflowTest
  * Or use individual methods for manual testing
  */
@@ -48,7 +45,7 @@ class ApprovalWorkflowTest extends TestCase
         $this->approvalService->initializeWorkflow($ticket);
 
         $ticket->refresh();
-        
+
         // Assertions
         $this->assertEquals(0, $ticket->approvals()->count(), 'No approvals should be created');
         $this->assertEquals('assigned', $ticket->status, 'Ticket should be assigned directly');
@@ -77,12 +74,12 @@ class ApprovalWorkflowTest extends TestCase
         $this->approvalService->initializeWorkflow($ticket);
 
         $ticket->refresh();
-        
+
         // Assertions
         $this->assertEquals(1, $ticket->approvals()->count(), 'Should have 1 approval (LM)');
         $this->assertEquals('lm', $ticket->approvals()->first()->approval_level);
         $this->assertEquals('pending', $ticket->approvals()->first()->status);
-        $this->assertEquals('pending', $ticket->status, 'Ticket should be pending approval');
+        $this->assertEquals('open', $ticket->status, 'Ticket should stay open while approval is pending');
     }
 
     /**
@@ -107,16 +104,16 @@ class ApprovalWorkflowTest extends TestCase
         $this->approvalService->initializeWorkflow($ticket);
 
         $ticket->refresh();
-        
+
         // Initially only LM approval
         $this->assertEquals(1, $ticket->approvals()->count(), 'Should have 1 approval initially (LM)');
-        
+
         // Approve LM
         $lmApproval = $ticket->approvals()->where('approval_level', 'lm')->first();
         $this->approvalService->approve($lmApproval, 'LM approved for testing');
-        
+
         $ticket->refresh();
-        
+
         // Now should have HOD approval
         $this->assertEquals(2, $ticket->approvals()->count(), 'Should have 2 approvals after LM approval');
         $hodApproval = $ticket->approvals()->where('approval_level', 'hod')->first();
@@ -238,7 +235,7 @@ class ApprovalWorkflowTest extends TestCase
 
         $ticket = Ticket::create(array_merge($defaults, $data));
         app(ApprovalWorkflowService::class)->initializeWorkflow($ticket);
-        
+
         return $ticket->fresh();
     }
 
@@ -275,4 +272,3 @@ class ApprovalWorkflowTest extends TestCase
         }
     }
 }
-

@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\AutomationRuleRequest;
 use App\Models\AutomationRule;
 use App\Models\Department;
-use App\Models\TicketCategory;
+use App\Models\Project;
 use App\Models\SlaPolicy;
-use App\Models\Ticket;
 use App\Models\Tag;
+use App\Models\Ticket;
+use App\Models\TicketCategory;
 use App\Models\User;
+use App\Support\TicketRuleCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -87,7 +89,7 @@ class AutomationRuleController extends Controller
                 'description' => $automationRule->description,
                 'trigger_event' => $automationRule->trigger_event,
                 'conditions' => $automationRule->conditions ?? [],
-                'actions' => $automationRule->actions ?? [],
+                'actions' => TicketRuleCatalog::normalizeActions($automationRule->actions),
                 'priority' => $automationRule->priority,
                 'is_active' => $automationRule->is_active,
             ],
@@ -118,36 +120,12 @@ class AutomationRuleController extends Controller
 
     protected function getConditionOperators(): array
     {
-        return [
-            'equals' => 'Equals',
-            'not_equals' => 'Not Equals',
-            'contains' => 'Contains',
-            'not_contains' => 'Not Contains',
-            'in' => 'In',
-            'not_in' => 'Not In',
-            'is_empty' => 'Is Empty',
-            'is_not_empty' => 'Is Not Empty',
-            'greater_than' => 'Greater Than',
-            'less_than' => 'Less Than',
-        ];
+        return TicketRuleCatalog::conditionOperators(true);
     }
 
     protected function getActionTypes(): array
     {
-        return [
-            'assign_to_team' => 'Assign to Team',
-            'assign_to_agent' => 'Assign to Agent',
-            'set_status' => 'Set Status',
-            'set_priority' => 'Set Priority',
-            'set_category' => 'Set Category',
-            'set_sla_policy' => 'Set SLA Policy',
-            'add_tags' => 'Add Tags',
-            'notify_team' => 'Notify Team',
-            'notify_role' => 'Notify Role',
-            'notify_user' => 'Notify User',
-            'notify_department_managers' => 'Notify Department Managers',
-            'send_telegram_message' => '📱 Send Telegram Message',
-        ];
+        return TicketRuleCatalog::automationActionTypes();
     }
 
     protected function getOptions(): array
@@ -156,6 +134,10 @@ class AutomationRuleController extends Controller
             'categories' => TicketCategory::orderBy('name')->get(['id', 'name'])->map(fn ($c) => [
                 'value' => $c->id,
                 'label' => $c->name,
+            ]),
+            'projects' => Project::orderBy('name')->get(['id', 'name'])->map(fn ($project) => [
+                'value' => $project->id,
+                'label' => $project->name,
             ]),
             'departments' => Department::orderBy('name')->get(['id', 'name'])->map(fn ($d) => [
                 'value' => $d->id,
@@ -179,6 +161,7 @@ class AutomationRuleController extends Controller
             ]),
             'statuses' => Ticket::STATUSES,
             'priorities' => Ticket::PRIORITIES,
+            'sources' => Ticket::SOURCES,
         ];
     }
 }

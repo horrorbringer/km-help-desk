@@ -73,7 +73,7 @@ return [
     |
     */
 
-    'home' => '/admin/dashboard',
+    'home' => '/admin/landing',
 
     /*
     |--------------------------------------------------------------------------
@@ -102,6 +102,11 @@ return [
     */
 
     'middleware' => ['web'],
+
+    'redirects' => [
+        'login' => '/admin/landing',
+        'email-verification' => '/admin/landing',
+    ],
 
     /*
     |--------------------------------------------------------------------------

@@ -20,7 +20,7 @@ class DefaultAutomationRuleSeeder extends Seeder
                 'priority' => 10,
                 'conditions' => [], // No conditions, always notify on creation
                 'actions' => [
-                    ['type' => 'notify_requester']
+                    ['type' => 'notify_requester'],
                 ],
                 'is_active' => true,
             ],
@@ -31,7 +31,7 @@ class DefaultAutomationRuleSeeder extends Seeder
                 'priority' => 9,
                 'conditions' => [],
                 'actions' => [
-                    ['type' => 'notify_team_managers']
+                    ['type' => 'notify_team_managers'],
                 ],
                 'is_active' => true,
             ],
@@ -41,10 +41,10 @@ class DefaultAutomationRuleSeeder extends Seeder
                 'trigger_event' => 'ticket_updated',
                 'priority' => 10,
                 'conditions' => [
-                    ['field' => 'assigned_agent_id', 'operator' => 'is_changed', 'value' => null]
+                    ['field' => 'assigned_agent_id', 'operator' => 'is_changed', 'value' => null],
                 ],
                 'actions' => [
-                    ['type' => 'notify_agent']
+                    ['type' => 'notify_agent'],
                 ],
                 'is_active' => true,
             ],
@@ -54,10 +54,10 @@ class DefaultAutomationRuleSeeder extends Seeder
                 'trigger_event' => 'ticket_updated',
                 'priority' => 9,
                 'conditions' => [
-                    ['field' => 'assigned_team_id', 'operator' => 'is_changed', 'value' => null]
+                    ['field' => 'assigned_team_id', 'operator' => 'is_changed', 'value' => null],
                 ],
                 'actions' => [
-                    ['type' => 'notify_team_managers']
+                    ['type' => 'notify_team_managers'],
                 ],
                 'is_active' => true,
             ],
@@ -67,10 +67,10 @@ class DefaultAutomationRuleSeeder extends Seeder
                 'trigger_event' => 'ticket_status_changed',
                 'priority' => 10,
                 'conditions' => [
-                    ['field' => 'status', 'operator' => 'changed_to', 'value' => 'resolved']
+                    ['field' => 'status', 'operator' => 'changed_to', 'value' => 'resolved'],
                 ],
                 'actions' => [
-                    ['type' => 'notify_requester']
+                    ['type' => 'notify_requester'],
                 ],
                 'is_active' => true,
             ],
@@ -80,10 +80,10 @@ class DefaultAutomationRuleSeeder extends Seeder
                 'trigger_event' => 'ticket_status_changed',
                 'priority' => 9,
                 'conditions' => [
-                    ['field' => 'status', 'operator' => 'changed_to', 'value' => 'closed']
+                    ['field' => 'status', 'operator' => 'changed_to', 'value' => 'closed'],
                 ],
                 'actions' => [
-                    ['type' => 'notify_requester']
+                    ['type' => 'notify_requester'],
                 ],
                 'is_active' => true,
             ],
@@ -92,9 +92,11 @@ class DefaultAutomationRuleSeeder extends Seeder
                 'description' => 'Notify requester and assigned agent when a public comment is added.',
                 'trigger_event' => 'comment_added',
                 'priority' => 10,
-                'conditions' => [], // No conditions - notify on all public comments
+                'conditions' => [
+                    ['field' => 'comment_is_internal', 'operator' => 'equals', 'value' => false],
+                ],
                 'actions' => [
-                    ['type' => 'notify_comment_participants']
+                    ['type' => 'notify_comment_participants'],
                 ],
                 'is_active' => true,
             ],
@@ -102,7 +104,7 @@ class DefaultAutomationRuleSeeder extends Seeder
 
         foreach ($rules as $rule) {
             AutomationRule::updateOrCreate(
-            ['name' => $rule['name']],
+                ['name' => $rule['name']],
                 $rule
             );
         }

@@ -90,6 +90,21 @@ class RolePermissionSeeder extends Seeder
                         if ($p) {
                             $permissionsToSync[] = $p;
                         }
+
+                        if ($permissionPattern === 'tickets.edit') {
+                            foreach ([
+                                'tickets.update-details',
+                                'tickets.change-status',
+                                'tickets.change-priority',
+                                'tickets.comment',
+                                'tickets.manage-comments',
+                            ] as $granularPermission) {
+                                $permission = Permission::where('name', $granularPermission)->first();
+                                if ($permission) {
+                                    $permissionsToSync[] = $permission;
+                                }
+                            }
+                        }
                     }
                 }
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import {
     ChevronDown,
@@ -52,6 +53,7 @@ interface WorkflowTemplateFormProps {
     formOptions: {
         categories: Array<{ value: number; label: string }>;
         departments: Array<{ value: number; label: string }>;
+        users: Array<{ value: number; label: string }>;
         approval_levels: Array<{ value: string; label: string }>;
         approver_types: Array<{ value: string; label: string }>;
         notification_types: Array<{ value: string; label: string }>;
@@ -101,14 +103,14 @@ export default function WorkflowTemplateForm({
                 data.category_id === '__none'
                     ? null
                     : data.category_id
-                        ? Number(data.category_id)
-                        : null,
+                      ? Number(data.category_id)
+                      : null,
             department_id:
                 data.department_id === '__none'
                     ? null
                     : data.department_id
-                        ? Number(data.department_id)
-                        : null,
+                      ? Number(data.department_id)
+                      : null,
             priority: Number(data.priority) || 0,
         };
     });
@@ -151,6 +153,59 @@ export default function WorkflowTemplateForm({
         const newSteps = [...data.workflow_steps];
         newSteps[index] = { ...newSteps[index], [field]: value };
         setData('workflow_steps', newSteps);
+    };
+
+    const updateWorkflowStepFields = (
+        index: number,
+        fields: Record<string, any>,
+    ) => {
+        const newSteps = [...data.workflow_steps];
+        newSteps[index] = { ...newSteps[index], ...fields };
+        setData('workflow_steps', newSteps);
+    };
+
+    const updateConditionRule = (
+        index: number,
+        step: any,
+        updates: Partial<{
+            field: string;
+            operator: string;
+            value: string;
+        }>,
+    ) => {
+        const field = updates.field ?? step.condition_field ?? 'estimated_cost';
+        const operator = updates.operator ?? step.condition_operator ?? '>=';
+        const value = updates.value ?? step.condition_value ?? '';
+
+        updateWorkflowStepFields(index, {
+            condition_field: field,
+            condition_operator: operator,
+            condition_value: value,
+            condition: [field, operator === '=' ? '==' : operator, value],
+        });
+    };
+
+    const getDefaultApproverType = (approvalLevel: string) => {
+        if (['lm', 'dlm'].includes(approvalLevel)) {
+            return 'line_manager';
+        }
+
+        if (['hod', 'dhod'].includes(approvalLevel)) {
+            return 'head_of_department';
+        }
+
+        if (['ceo', 'dceo', 'director'].includes(approvalLevel)) {
+            return 'ceo';
+        }
+
+        return 'line_manager';
+    };
+
+    const updateApprovalLevel = (index: number, approvalLevel: string) => {
+        updateWorkflowStepFields(index, {
+            approval_level: approvalLevel,
+            approver_type: getDefaultApproverType(approvalLevel),
+        });
     };
 
     const moveStep = (index: number, direction: 'up' | 'down') => {
@@ -216,21 +271,44 @@ export default function WorkflowTemplateForm({
         }
 
         if (step.type === 'notification') {
-            const types = [...formOptions.approver_types, ...formOptions.notification_types];
-            const type = types.find(
-                (t) => t.value === step.notify_type,
-            )?.label;
+            const types = [
+                ...formOptions.approver_types,
+                ...formOptions.notification_types,
+            ];
+            const type = types.find((t) => t.value === step.notify_type)?.label;
             return `${typeLabel}: ${type || step.notify_type}`;
         }
 
         if (step.type === 'routing') {
-            return `${typeLabel}: Route to ${step.route_to || '...'}`;
+            if (step.team_id) {
+                const team = formOptions.departments.find(
+                    (department) => department.value === Number(step.team_id),
+                )?.label;
+
+                return `${typeLabel}: ${team || 'Specific Team'}`;
+            }
+
+            return `${typeLabel}: Category Default Team`;
+        }
+
+        if (step.type === 'conditional_routing') {
+            const field = step.condition_field || 'estimated_cost';
+            const operator = step.condition_operator || '>=';
+            const value = step.condition_value || '...';
+
+            return `${typeLabel}: If ${field} ${operator} ${value}`;
         }
 
         if (step.type === 'assignment') {
-            const type =
-                step.assign_to === 'line_manager' ? 'Line Manager' : 'Approver';
-            return `${typeLabel}: Assign to ${type}`;
+            if (step.user_id) {
+                const user = formOptions.users.find(
+                    (option) => option.value === Number(step.user_id),
+                )?.label;
+
+                return `${typeLabel}: Assign to ${user || 'Specific User'}`;
+            }
+
+            return `${typeLabel}: Assign to Last Approver`;
         }
 
         return typeLabel;
@@ -537,13 +615,13 @@ export default function WorkflowTemplateForm({
                                                                         {!expandedSteps.has(
                                                                             index,
                                                                         ) && (
-                                                                                <span className="text-xs text-muted-foreground">
-                                                                                    Click
-                                                                                    to
-                                                                                    expand
-                                                                                    details
-                                                                                </span>
-                                                                            )}
+                                                                            <span className="text-xs text-muted-foreground">
+                                                                                Click
+                                                                                to
+                                                                                expand
+                                                                                details
+                                                                            </span>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                                 <div
@@ -586,7 +664,7 @@ export default function WorkflowTemplateForm({
                                                                             data
                                                                                 .workflow_steps
                                                                                 .length -
-                                                                            1
+                                                                                1
                                                                         }
                                                                     >
                                                                         <ChevronDown className="h-4 w-4" />
@@ -628,25 +706,286 @@ export default function WorkflowTemplateForm({
                                                         {expandedSteps.has(
                                                             index,
                                                         ) && (
-                                                                <CardContent className="space-y-4 pt-0">
-                                                                    <div className="grid gap-4 rounded-lg bg-muted/30 p-4 md:grid-cols-2">
+                                                            <CardContent className="space-y-4 pt-0">
+                                                                <div className="grid gap-4 rounded-lg bg-muted/30 p-4 md:grid-cols-2">
+                                                                    <div className="space-y-2">
+                                                                        <Label>
+                                                                            Step
+                                                                            Type
+                                                                            *
+                                                                        </Label>
+                                                                        <Select
+                                                                            value={
+                                                                                step.type ||
+                                                                                'approval'
+                                                                            }
+                                                                            onValueChange={(
+                                                                                value,
+                                                                            ) =>
+                                                                                updateWorkflowStep(
+                                                                                    index,
+                                                                                    'type',
+                                                                                    value,
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <SelectTrigger>
+                                                                                <SelectValue />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                {formOptions.step_types.map(
+                                                                                    (
+                                                                                        type,
+                                                                                    ) => (
+                                                                                        <SelectItem
+                                                                                            key={
+                                                                                                type.value
+                                                                                            }
+                                                                                            value={
+                                                                                                type.value
+                                                                                            }
+                                                                                        >
+                                                                                            {
+                                                                                                type.label
+                                                                                            }
+                                                                                        </SelectItem>
+                                                                                    ),
+                                                                                )}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                        <p className="text-xs text-muted-foreground">
+                                                                            {getStepDescription(
+                                                                                step.type,
+                                                                            )}
+                                                                        </p>
+                                                                    </div>
+
+                                                                    {(step.type ===
+                                                                        'approval' ||
+                                                                        step.type ===
+                                                                            'conditional_approval') && (
+                                                                        <>
+                                                                            <div className="space-y-2">
+                                                                                <Label>
+                                                                                    Approval
+                                                                                    Level
+                                                                                    *
+                                                                                </Label>
+                                                                                <Select
+                                                                                    value={
+                                                                                        step.approval_level ||
+                                                                                        'lm'
+                                                                                    }
+                                                                                    onValueChange={(
+                                                                                        value,
+                                                                                    ) =>
+                                                                                        updateApprovalLevel(
+                                                                                            index,
+                                                                                            value,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <SelectTrigger>
+                                                                                        <SelectValue />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        {formOptions.approval_levels.map(
+                                                                                            (
+                                                                                                level,
+                                                                                            ) => (
+                                                                                                <SelectItem
+                                                                                                    key={
+                                                                                                        level.value
+                                                                                                    }
+                                                                                                    value={
+                                                                                                        level.value
+                                                                                                    }
+                                                                                                >
+                                                                                                    {
+                                                                                                        level.label
+                                                                                                    }
+                                                                                                </SelectItem>
+                                                                                            ),
+                                                                                        )}
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                                <p className="text-xs text-muted-foreground">
+                                                                                    Select
+                                                                                    the
+                                                                                    approval
+                                                                                    stage
+                                                                                    name,
+                                                                                    such
+                                                                                    as
+                                                                                    LM,
+                                                                                    HOD,
+                                                                                    or
+                                                                                    CEO.
+                                                                                </p>
+                                                                            </div>
+
+                                                                            <div className="space-y-2">
+                                                                                <Label>
+                                                                                    Find
+                                                                                    Approver
+                                                                                    By
+                                                                                    *
+                                                                                </Label>
+                                                                                <Select
+                                                                                    value={
+                                                                                        step.approver_type ||
+                                                                                        'line_manager'
+                                                                                    }
+                                                                                    onValueChange={(
+                                                                                        value,
+                                                                                    ) =>
+                                                                                        updateWorkflowStep(
+                                                                                            index,
+                                                                                            'approver_type',
+                                                                                            value,
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <SelectTrigger>
+                                                                                        <SelectValue />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        {formOptions.approver_types.map(
+                                                                                            (
+                                                                                                type,
+                                                                                            ) => (
+                                                                                                <SelectItem
+                                                                                                    key={
+                                                                                                        type.value
+                                                                                                    }
+                                                                                                    value={
+                                                                                                        type.value
+                                                                                                    }
+                                                                                                >
+                                                                                                    {
+                                                                                                        type.label
+                                                                                                    }
+                                                                                                </SelectItem>
+                                                                                            ),
+                                                                                        )}
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                                <p className="text-xs text-muted-foreground">
+                                                                                    Who
+                                                                                    should
+                                                                                    approve
+                                                                                    this
+                                                                                    step.
+                                                                                    This
+                                                                                    auto-matches
+                                                                                    the
+                                                                                    approval
+                                                                                    level,
+                                                                                    but
+                                                                                    you
+                                                                                    can
+                                                                                    change
+                                                                                    it.
+                                                                                </p>
+                                                                            </div>
+
+                                                                            <div className="space-y-2">
+                                                                                <Label>
+                                                                                    Status
+                                                                                    Label
+                                                                                </Label>
+                                                                                <Input
+                                                                                    value={
+                                                                                        step.status_label ||
+                                                                                        ''
+                                                                                    }
+                                                                                    onChange={(
+                                                                                        e,
+                                                                                    ) =>
+                                                                                        updateWorkflowStep(
+                                                                                            index,
+                                                                                            'status_label',
+                                                                                            e
+                                                                                                .target
+                                                                                                .value,
+                                                                                        )
+                                                                                    }
+                                                                                    placeholder="e.g. Awaiting HOD Sign-off"
+                                                                                />
+                                                                                <p className="text-xs text-muted-foreground">
+                                                                                    Custom
+                                                                                    status
+                                                                                    shown
+                                                                                    to
+                                                                                    users
+                                                                                    while
+                                                                                    this
+                                                                                    step
+                                                                                    is
+                                                                                    active.
+                                                                                </p>
+                                                                            </div>
+
+                                                                            <div className="flex items-center gap-2 pt-2">
+                                                                                <Checkbox
+                                                                                    id={`auto_notify_${index}`}
+                                                                                    checked={
+                                                                                        step.auto_notify ??
+                                                                                        true
+                                                                                    }
+                                                                                    onCheckedChange={(
+                                                                                        checked,
+                                                                                    ) =>
+                                                                                        updateWorkflowStep(
+                                                                                            index,
+                                                                                            'auto_notify',
+                                                                                            checked,
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                                <div className="grid gap-1.5 leading-none">
+                                                                                    <Label
+                                                                                        htmlFor={`auto_notify_${index}`}
+                                                                                        className="cursor-pointer"
+                                                                                    >
+                                                                                        Auto-Notify
+                                                                                        Requester
+                                                                                    </Label>
+                                                                                    <p className="text-[11px] text-muted-foreground italic">
+                                                                                        Automatically
+                                                                                        tell
+                                                                                        the
+                                                                                        user
+                                                                                        when
+                                                                                        their
+                                                                                        ticket
+                                                                                        hits
+                                                                                        this
+                                                                                        stage.
+                                                                                    </p>
+                                                                                </div>
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+
+                                                                    {step.type ===
+                                                                        'notification' && (
                                                                         <div className="space-y-2">
                                                                             <Label>
-                                                                                Step
+                                                                                Notify
                                                                                 Type
-                                                                                *
                                                                             </Label>
                                                                             <Select
                                                                                 value={
-                                                                                    step.type ||
-                                                                                    'approval'
+                                                                                    step.notify_type ||
+                                                                                    'head_of_department'
                                                                                 }
                                                                                 onValueChange={(
                                                                                     value,
                                                                                 ) =>
                                                                                     updateWorkflowStep(
                                                                                         index,
-                                                                                        'type',
+                                                                                        'notify_type',
                                                                                         value,
                                                                                     )
                                                                                 }
@@ -655,7 +994,10 @@ export default function WorkflowTemplateForm({
                                                                                     <SelectValue />
                                                                                 </SelectTrigger>
                                                                                 <SelectContent>
-                                                                                    {formOptions.step_types.map(
+                                                                                    {(
+                                                                                        formOptions.notification_types ||
+                                                                                        formOptions.approver_types
+                                                                                    ).map(
                                                                                         (
                                                                                             type,
                                                                                         ) => (
@@ -676,377 +1018,709 @@ export default function WorkflowTemplateForm({
                                                                                 </SelectContent>
                                                                             </Select>
                                                                             <p className="text-xs text-muted-foreground">
-                                                                                {getStepDescription(
-                                                                                    step.type,
-                                                                                )}
+                                                                                Send
+                                                                                informational
+                                                                                notification
+                                                                                (no
+                                                                                approval
+                                                                                required)
                                                                             </p>
                                                                         </div>
+                                                                    )}
 
-                                                                        {(step.type ===
-                                                                            'approval' ||
-                                                                            step.type ===
-                                                                            'conditional_approval') && (
-                                                                                <>
+                                                                    {step.type ===
+                                                                        'routing' && (
+                                                                        <>
+                                                                            <div className="space-y-2">
+                                                                                <Label>
+                                                                                    Route
+                                                                                    To
+                                                                                </Label>
+                                                                                <Select
+                                                                                    value={
+                                                                                        step.team_id
+                                                                                            ? 'specific_team'
+                                                                                            : 'category_default_team'
+                                                                                    }
+                                                                                    onValueChange={(
+                                                                                        value,
+                                                                                    ) => {
+                                                                                        if (
+                                                                                            value ===
+                                                                                            'category_default_team'
+                                                                                        ) {
+                                                                                            updateWorkflowStepFields(
+                                                                                                index,
+                                                                                                {
+                                                                                                    route_to:
+                                                                                                        'category_default_team',
+                                                                                                    team_id:
+                                                                                                        null,
+                                                                                                },
+                                                                                            );
+                                                                                            return;
+                                                                                        }
+
+                                                                                        updateWorkflowStepFields(
+                                                                                            index,
+                                                                                            {
+                                                                                                route_to:
+                                                                                                    'specific_team',
+                                                                                                team_id:
+                                                                                                    step.team_id ??
+                                                                                                    '',
+                                                                                            },
+                                                                                        );
+                                                                                    }}
+                                                                                >
+                                                                                    <SelectTrigger>
+                                                                                        <SelectValue />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        <SelectItem value="category_default_team">
+                                                                                            Category
+                                                                                            Default
+                                                                                            Team
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="specific_team">
+                                                                                            Specific
+                                                                                            Team
+                                                                                        </SelectItem>
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                                <p className="text-xs text-muted-foreground">
+                                                                                    Choose
+                                                                                    where
+                                                                                    the
+                                                                                    ticket
+                                                                                    should
+                                                                                    go
+                                                                                    after
+                                                                                    this
+                                                                                    step.
+                                                                                </p>
+                                                                            </div>
+
+                                                                            {step.team_id !==
+                                                                                null &&
+                                                                                step.route_to ===
+                                                                                    'specific_team' && (
                                                                                     <div className="space-y-2">
                                                                                         <Label>
-                                                                                            Approval
-                                                                                            Level
-                                                                                            *
+                                                                                            Team
                                                                                         </Label>
                                                                                         <Select
                                                                                             value={
-                                                                                                step.approval_level ||
-                                                                                                'lm'
+                                                                                                step.team_id
+                                                                                                    ? String(
+                                                                                                          step.team_id,
+                                                                                                      )
+                                                                                                    : ''
                                                                                             }
                                                                                             onValueChange={(
                                                                                                 value,
                                                                                             ) =>
                                                                                                 updateWorkflowStep(
                                                                                                     index,
-                                                                                                    'approval_level',
-                                                                                                    value,
+                                                                                                    'team_id',
+                                                                                                    Number(
+                                                                                                        value,
+                                                                                                    ),
                                                                                                 )
                                                                                             }
                                                                                         >
                                                                                             <SelectTrigger>
-                                                                                                <SelectValue />
+                                                                                                <SelectValue placeholder="Select team" />
                                                                                             </SelectTrigger>
                                                                                             <SelectContent>
-                                                                                                {formOptions.approval_levels.map(
+                                                                                                {formOptions.departments.map(
                                                                                                     (
-                                                                                                        level,
+                                                                                                        department,
                                                                                                     ) => (
                                                                                                         <SelectItem
                                                                                                             key={
-                                                                                                                level.value
+                                                                                                                department.value
                                                                                                             }
-                                                                                                            value={
-                                                                                                                level.value
-                                                                                                            }
+                                                                                                            value={String(
+                                                                                                                department.value,
+                                                                                                            )}
                                                                                                         >
                                                                                                             {
-                                                                                                                level.label
+                                                                                                                department.label
                                                                                                             }
                                                                                                         </SelectItem>
                                                                                                     ),
                                                                                                 )}
                                                                                             </SelectContent>
                                                                                         </Select>
-                                                                                        <p className="text-xs text-muted-foreground">
-                                                                                            Select
-                                                                                            which
-                                                                                            level
-                                                                                            of
-                                                                                            authority
-                                                                                            is
-                                                                                            needed.
-                                                                                        </p>
                                                                                     </div>
+                                                                                )}
+                                                                        </>
+                                                                    )}
 
-                                                                                    <div className="space-y-2">
-                                                                                        <Label>
-                                                                                            Approver
-                                                                                            Type
-                                                                                            *
-                                                                                        </Label>
-                                                                                        <Select
-                                                                                            value={
-                                                                                                step.approver_type ||
-                                                                                                'line_manager'
-                                                                                            }
-                                                                                            onValueChange={(
-                                                                                                value,
-                                                                                            ) =>
-                                                                                                updateWorkflowStep(
-                                                                                                    index,
-                                                                                                    'approver_type',
-                                                                                                    value,
-                                                                                                )
-                                                                                            }
-                                                                                        >
-                                                                                            <SelectTrigger>
-                                                                                                <SelectValue />
-                                                                                            </SelectTrigger>
-                                                                                            <SelectContent>
-                                                                                                {formOptions.approver_types.map(
-                                                                                                    (
-                                                                                                        type,
-                                                                                                    ) => (
-                                                                                                        <SelectItem
-                                                                                                            key={
-                                                                                                                type.value
-                                                                                                            }
-                                                                                                            value={
-                                                                                                                type.value
-                                                                                                            }
-                                                                                                        >
-                                                                                                            {
-                                                                                                                type.label
-                                                                                                            }
-                                                                                                        </SelectItem>
-                                                                                                    ),
-                                                                                                )}
-                                                                                            </SelectContent>
-                                                                                        </Select>
-                                                                                        <p className="text-xs text-muted-foreground">
-                                                                                            Who performs the approval (e.g., immediate manager vs department head).
-                                                                                        </p>
-                                                                                    </div>
-
-                                                                                    <div className="space-y-2">
-                                                                                        <Label>Status Label</Label>
-                                                                                        <Input
-                                                                                            value={step.status_label || ''}
-                                                                                            onChange={(e) => updateWorkflowStep(index, 'status_label', e.target.value)}
-                                                                                            placeholder="e.g. Awaiting HOD Sign-off"
-                                                                                        />
-                                                                                        <p className="text-xs text-muted-foreground">
-                                                                                            Custom status shown to users while this step is active.
-                                                                                        </p>
-                                                                                    </div>
-
-                                                                                    <div className="flex items-center gap-2 pt-2">
-                                                                                        <Checkbox
-                                                                                            id={`auto_notify_${index}`}
-                                                                                            checked={step.auto_notify ?? true}
-                                                                                            onCheckedChange={(checked) => updateWorkflowStep(index, 'auto_notify', checked)}
-                                                                                        />
-                                                                                        <div className="grid gap-1.5 leading-none">
-                                                                                            <Label htmlFor={`auto_notify_${index}`} className="cursor-pointer">
-                                                                                                Auto-Notify Requester
-                                                                                            </Label>
-                                                                                            <p className="text-[11px] text-muted-foreground italic">
-                                                                                                Automatically tell the user when their ticket hits this stage.
-                                                                                            </p>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </>
-                                                                            )}
-
-                                                                        {step.type ===
-                                                                            'notification' && (
-                                                                                <div className="space-y-2">
-                                                                                    <Label>
-                                                                                        Notify
-                                                                                        Type
-                                                                                    </Label>
+                                                                    {step.type ===
+                                                                        'conditional_routing' && (
+                                                                        <>
+                                                                            <div className="space-y-2 md:col-span-2">
+                                                                                <Label>
+                                                                                    Routing
+                                                                                    Condition
+                                                                                    *
+                                                                                </Label>
+                                                                                <div className="flex flex-col gap-2 md:flex-row">
                                                                                     <Select
                                                                                         value={
-                                                                                            step.notify_type ||
-                                                                                            'head_of_department'
+                                                                                            step.condition_field ||
+                                                                                            'estimated_cost'
                                                                                         }
                                                                                         onValueChange={(
                                                                                             value,
                                                                                         ) =>
-                                                                                            updateWorkflowStep(
+                                                                                            updateConditionRule(
                                                                                                 index,
-                                                                                                'notify_type',
-                                                                                                value,
+                                                                                                step,
+                                                                                                {
+                                                                                                    field: value,
+                                                                                                },
                                                                                             )
                                                                                         }
                                                                                     >
-                                                                                        <SelectTrigger>
-                                                                                            <SelectValue />
+                                                                                        <SelectTrigger className="md:w-[190px]">
+                                                                                            <SelectValue placeholder="Field" />
                                                                                         </SelectTrigger>
                                                                                         <SelectContent>
-                                                                                            {(formOptions.notification_types || formOptions.approver_types).map(
-                                                                                                (
-                                                                                                    type,
-                                                                                                ) => (
-                                                                                                    <SelectItem
-                                                                                                        key={
-                                                                                                            type.value
-                                                                                                        }
-                                                                                                        value={
-                                                                                                            type.value
-                                                                                                        }
-                                                                                                    >
-                                                                                                        {
-                                                                                                            type.label
-                                                                                                        }
-                                                                                                    </SelectItem>
-                                                                                                ),
-                                                                                            )}
+                                                                                            <SelectItem value="estimated_cost">
+                                                                                                Estimated
+                                                                                                Cost
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value="priority">
+                                                                                                Priority
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value="status">
+                                                                                                Status
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value="category.name">
+                                                                                                Category
+                                                                                                Name
+                                                                                            </SelectItem>
                                                                                         </SelectContent>
                                                                                     </Select>
-                                                                                    <p className="text-xs text-muted-foreground">
-                                                                                        Send
-                                                                                        informational
-                                                                                        notification
-                                                                                        (no
-                                                                                        approval
-                                                                                        required)
-                                                                                    </p>
-                                                                                </div>
-                                                                            )}
-
-                                                                        {step.type ===
-                                                                            'routing' && (
-                                                                                <div className="space-y-2">
-                                                                                    <Label>
-                                                                                        Route
-                                                                                        To
-                                                                                    </Label>
+                                                                                    <Select
+                                                                                        value={
+                                                                                            step.condition_operator ||
+                                                                                            '>='
+                                                                                        }
+                                                                                        onValueChange={(
+                                                                                            value,
+                                                                                        ) =>
+                                                                                            updateConditionRule(
+                                                                                                index,
+                                                                                                step,
+                                                                                                {
+                                                                                                    operator:
+                                                                                                        value,
+                                                                                                },
+                                                                                            )
+                                                                                        }
+                                                                                    >
+                                                                                        <SelectTrigger className="md:w-[150px]">
+                                                                                            <SelectValue placeholder="Operator" />
+                                                                                        </SelectTrigger>
+                                                                                        <SelectContent>
+                                                                                            <SelectItem value="==">
+                                                                                                Equals
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value="!=">
+                                                                                                Not
+                                                                                                Equals
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value=">=">
+                                                                                                Greater
+                                                                                                or
+                                                                                                Equal
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value=">">
+                                                                                                Greater
+                                                                                                Than
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value="<=">
+                                                                                                Less
+                                                                                                or
+                                                                                                Equal
+                                                                                            </SelectItem>
+                                                                                            <SelectItem value="<">
+                                                                                                Less
+                                                                                                Than
+                                                                                            </SelectItem>
+                                                                                        </SelectContent>
+                                                                                    </Select>
                                                                                     <Input
                                                                                         value={
-                                                                                            step.route_to ||
+                                                                                            step.condition_value ||
                                                                                             ''
                                                                                         }
                                                                                         onChange={(
                                                                                             e,
                                                                                         ) =>
-                                                                                            updateWorkflowStep(
+                                                                                            updateConditionRule(
                                                                                                 index,
-                                                                                                'route_to',
-                                                                                                e
-                                                                                                    .target
-                                                                                                    .value,
+                                                                                                step,
+                                                                                                {
+                                                                                                    value: e
+                                                                                                        .target
+                                                                                                        .value,
+                                                                                                },
                                                                                             )
                                                                                         }
-                                                                                        placeholder="category_default_team"
+                                                                                        placeholder="e.g. critical, 5000, Hardware"
+                                                                                        className="flex-1"
                                                                                     />
                                                                                 </div>
-                                                                            )}
+                                                                                <p className="text-xs text-muted-foreground">
+                                                                                    The
+                                                                                    ticket
+                                                                                    routes
+                                                                                    only
+                                                                                    when
+                                                                                    this
+                                                                                    condition
+                                                                                    is
+                                                                                    true.
+                                                                                    If
+                                                                                    false,
+                                                                                    workflow
+                                                                                    continues
+                                                                                    to
+                                                                                    the
+                                                                                    next
+                                                                                    step.
+                                                                                </p>
+                                                                            </div>
 
-                                                                        {step.type ===
-                                                                            'assignment' && (
-                                                                                <div className="space-y-2">
-                                                                                    <Label>
-                                                                                        Assign
-                                                                                        To
-                                                                                    </Label>
-                                                                                    <Select
-                                                                                        value={
-                                                                                            step.assign_to ||
-                                                                                            'approver'
-                                                                                        }
-                                                                                        onValueChange={(
-                                                                                            value,
-                                                                                        ) =>
-                                                                                            updateWorkflowStep(
+                                                                            <div className="space-y-2">
+                                                                                <Label>
+                                                                                    Route
+                                                                                    To
+                                                                                </Label>
+                                                                                <Select
+                                                                                    value={
+                                                                                        step.team_id
+                                                                                            ? 'specific_team'
+                                                                                            : 'category_default_team'
+                                                                                    }
+                                                                                    onValueChange={(
+                                                                                        value,
+                                                                                    ) => {
+                                                                                        if (
+                                                                                            value ===
+                                                                                            'category_default_team'
+                                                                                        ) {
+                                                                                            updateWorkflowStepFields(
                                                                                                 index,
-                                                                                                'assign_to',
-                                                                                                value,
-                                                                                            )
+                                                                                                {
+                                                                                                    route_to:
+                                                                                                        'category_default_team',
+                                                                                                    team_id:
+                                                                                                        null,
+                                                                                                },
+                                                                                            );
+                                                                                            return;
                                                                                         }
-                                                                                    >
-                                                                                        <SelectTrigger>
-                                                                                            <SelectValue />
-                                                                                        </SelectTrigger>
-                                                                                        <SelectContent>
-                                                                                            <SelectItem value="approver">
-                                                                                                Approver
-                                                                                                (LM/DLM
-                                                                                                who
-                                                                                                approved)
-                                                                                            </SelectItem>
-                                                                                            <SelectItem value="line_manager">
-                                                                                                Line
-                                                                                                Manager
-                                                                                            </SelectItem>
-                                                                                        </SelectContent>
-                                                                                    </Select>
-                                                                                    <p className="text-xs text-muted-foreground">
-                                                                                        Assign
-                                                                                        ticket
-                                                                                        to
-                                                                                        user
-                                                                                        after
-                                                                                        routing
-                                                                                    </p>
-                                                                                </div>
-                                                                            )}
-                                                                    </div>
+
+                                                                                        updateWorkflowStepFields(
+                                                                                            index,
+                                                                                            {
+                                                                                                route_to:
+                                                                                                    'specific_team',
+                                                                                                team_id:
+                                                                                                    step.team_id ??
+                                                                                                    '',
+                                                                                            },
+                                                                                        );
+                                                                                    }}
+                                                                                >
+                                                                                    <SelectTrigger>
+                                                                                        <SelectValue />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        <SelectItem value="category_default_team">
+                                                                                            Category
+                                                                                            Default
+                                                                                            Team
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="specific_team">
+                                                                                            Specific
+                                                                                            Team
+                                                                                        </SelectItem>
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                            </div>
+
+                                                                            {step.team_id !==
+                                                                                null &&
+                                                                                step.route_to ===
+                                                                                    'specific_team' && (
+                                                                                    <div className="space-y-2">
+                                                                                        <Label>
+                                                                                            Team
+                                                                                        </Label>
+                                                                                        <Select
+                                                                                            value={
+                                                                                                step.team_id
+                                                                                                    ? String(
+                                                                                                          step.team_id,
+                                                                                                      )
+                                                                                                    : ''
+                                                                                            }
+                                                                                            onValueChange={(
+                                                                                                value,
+                                                                                            ) =>
+                                                                                                updateWorkflowStep(
+                                                                                                    index,
+                                                                                                    'team_id',
+                                                                                                    Number(
+                                                                                                        value,
+                                                                                                    ),
+                                                                                                )
+                                                                                            }
+                                                                                        >
+                                                                                            <SelectTrigger>
+                                                                                                <SelectValue placeholder="Select team" />
+                                                                                            </SelectTrigger>
+                                                                                            <SelectContent>
+                                                                                                {formOptions.departments.map(
+                                                                                                    (
+                                                                                                        department,
+                                                                                                    ) => (
+                                                                                                        <SelectItem
+                                                                                                            key={
+                                                                                                                department.value
+                                                                                                            }
+                                                                                                            value={String(
+                                                                                                                department.value,
+                                                                                                            )}
+                                                                                                        >
+                                                                                                            {
+                                                                                                                department.label
+                                                                                                            }
+                                                                                                        </SelectItem>
+                                                                                                    ),
+                                                                                                )}
+                                                                                            </SelectContent>
+                                                                                        </Select>
+                                                                                    </div>
+                                                                                )}
+                                                                        </>
+                                                                    )}
 
                                                                     {step.type ===
-                                                                        'conditional_approval' && (
-                                                                            <>
-                                                                                <div className="space-y-2">
-                                                                                    <Label>Condition Rule *</Label>
-                                                                                    <div className="flex flex-col gap-2 md:flex-row">
-                                                                                        <Select
-                                                                                            value={step.condition_field || 'total_cost'}
-                                                                                            onValueChange={(value) => updateWorkflowStep(index, 'condition_field', value)}
-                                                                                        >
-                                                                                            <SelectTrigger className="md:w-[150px]">
-                                                                                                <SelectValue placeholder="Field" />
-                                                                                            </SelectTrigger>
-                                                                                            <SelectContent>
-                                                                                                <SelectItem value="total_cost">Total Cost</SelectItem>
-                                                                                                <SelectItem value="urgency">Urgency</SelectItem>
-                                                                                                <SelectItem value="priority">Priority</SelectItem>
-                                                                                            </SelectContent>
-                                                                                        </Select>
-                                                                                        <Select
-                                                                                            value={step.condition_operator || '>'}
-                                                                                            onValueChange={(value) => updateWorkflowStep(index, 'condition_operator', value)}
-                                                                                        >
-                                                                                            <SelectTrigger className="md:w-[100px]">
-                                                                                                <SelectValue placeholder="Op" />
-                                                                                            </SelectTrigger>
-                                                                                            <SelectContent>
-                                                                                                {formOptions.operators?.map((op: any) => (
-                                                                                                    <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
-                                                                                                )) || (
-                                                                                                        <>
-                                                                                                            <SelectItem value=">">Greater Than</SelectItem>
-                                                                                                            <SelectItem value="<">Less Than</SelectItem>
-                                                                                                            <SelectItem value="=">Equals</SelectItem>
-                                                                                                        </>
-                                                                                                    )}
-                                                                                            </SelectContent>
-                                                                                        </Select>
-                                                                                        <Input
-                                                                                            value={step.condition_value || ''}
-                                                                                            onChange={(e) => updateWorkflowStep(index, 'condition_value', e.target.value)}
-                                                                                            placeholder="Value"
-                                                                                            className="flex-1"
-                                                                                        />
-                                                                                    </div>
-                                                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                                                        If true, proceed. If false, execute action below.
-                                                                                    </p>
-                                                                                </div>
-                                                                                <div className="space-y-2">
-                                                                                    <Label>
-                                                                                        If
-                                                                                        False
-                                                                                        Action
-                                                                                    </Label>
-                                                                                    <Select
-                                                                                        value={
-                                                                                            step.if_false ||
-                                                                                            'skip_step'
-                                                                                        }
-                                                                                        onValueChange={(
-                                                                                            value,
-                                                                                        ) =>
-                                                                                            updateWorkflowStep(
+                                                                        'assignment' && (
+                                                                        <>
+                                                                            <div className="space-y-2">
+                                                                                <Label>
+                                                                                    Assign
+                                                                                    To
+                                                                                </Label>
+                                                                                <Select
+                                                                                    value={
+                                                                                        step.user_id
+                                                                                            ? 'specific_user'
+                                                                                            : 'approver'
+                                                                                    }
+                                                                                    onValueChange={(
+                                                                                        value,
+                                                                                    ) => {
+                                                                                        if (
+                                                                                            value ===
+                                                                                            'specific_user'
+                                                                                        ) {
+                                                                                            updateWorkflowStepFields(
                                                                                                 index,
-                                                                                                'if_false',
-                                                                                                value,
-                                                                                            )
+                                                                                                {
+                                                                                                    assign_to:
+                                                                                                        'specific_user',
+                                                                                                    user_id:
+                                                                                                        step.user_id ??
+                                                                                                        '',
+                                                                                                },
+                                                                                            );
+                                                                                            return;
                                                                                         }
-                                                                                    >
-                                                                                        <SelectTrigger>
-                                                                                            <SelectValue />
-                                                                                        </SelectTrigger>
-                                                                                        <SelectContent>
-                                                                                            <SelectItem value="skip_step">
-                                                                                                Skip
-                                                                                                Step
-                                                                                            </SelectItem>
-                                                                                            <SelectItem value="route_directly">
-                                                                                                Route
-                                                                                                Directly
-                                                                                            </SelectItem>
-                                                                                        </SelectContent>
-                                                                                    </Select>
-                                                                                </div>
-                                                                            </>
-                                                                        )}
-                                                                </CardContent>
-                                                            )}
+
+                                                                                        updateWorkflowStepFields(
+                                                                                            index,
+                                                                                            {
+                                                                                                assign_to:
+                                                                                                    'approver',
+                                                                                                user_id:
+                                                                                                    null,
+                                                                                            },
+                                                                                        );
+                                                                                    }}
+                                                                                >
+                                                                                    <SelectTrigger>
+                                                                                        <SelectValue />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        <SelectItem value="approver">
+                                                                                            Last
+                                                                                            Approver
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="specific_user">
+                                                                                            Specific
+                                                                                            User
+                                                                                        </SelectItem>
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                                <p className="text-xs text-muted-foreground">
+                                                                                    Choose
+                                                                                    who
+                                                                                    receives
+                                                                                    ownership
+                                                                                    of
+                                                                                    the
+                                                                                    ticket
+                                                                                    after
+                                                                                    this
+                                                                                    step.
+                                                                                </p>
+                                                                            </div>
+
+                                                                            {step.user_id !==
+                                                                                null &&
+                                                                                step.assign_to ===
+                                                                                    'specific_user' && (
+                                                                                    <div className="space-y-2">
+                                                                                        <Label>
+                                                                                            User
+                                                                                        </Label>
+                                                                                        <Select
+                                                                                            value={
+                                                                                                step.user_id
+                                                                                                    ? String(
+                                                                                                          step.user_id,
+                                                                                                      )
+                                                                                                    : ''
+                                                                                            }
+                                                                                            onValueChange={(
+                                                                                                value,
+                                                                                            ) =>
+                                                                                                updateWorkflowStep(
+                                                                                                    index,
+                                                                                                    'user_id',
+                                                                                                    Number(
+                                                                                                        value,
+                                                                                                    ),
+                                                                                                )
+                                                                                            }
+                                                                                        >
+                                                                                            <SelectTrigger>
+                                                                                                <SelectValue placeholder="Select user" />
+                                                                                            </SelectTrigger>
+                                                                                            <SelectContent>
+                                                                                                {formOptions.users.map(
+                                                                                                    (
+                                                                                                        user,
+                                                                                                    ) => (
+                                                                                                        <SelectItem
+                                                                                                            key={
+                                                                                                                user.value
+                                                                                                            }
+                                                                                                            value={String(
+                                                                                                                user.value,
+                                                                                                            )}
+                                                                                                        >
+                                                                                                            {
+                                                                                                                user.label
+                                                                                                            }
+                                                                                                        </SelectItem>
+                                                                                                    ),
+                                                                                                )}
+                                                                                            </SelectContent>
+                                                                                        </Select>
+                                                                                    </div>
+                                                                                )}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+
+                                                                {step.type ===
+                                                                    'conditional_approval' && (
+                                                                    <>
+                                                                        <div className="space-y-2">
+                                                                            <Label>
+                                                                                Condition
+                                                                                Rule
+                                                                                *
+                                                                            </Label>
+                                                                            <div className="flex flex-col gap-2 md:flex-row">
+                                                                                <Select
+                                                                                    value={
+                                                                                        step.condition_field ||
+                                                                                        'estimated_cost'
+                                                                                    }
+                                                                                    onValueChange={(
+                                                                                        value,
+                                                                                    ) =>
+                                                                                        updateConditionRule(
+                                                                                            index,
+                                                                                            step,
+                                                                                            {
+                                                                                                field: value,
+                                                                                            },
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <SelectTrigger className="md:w-[150px]">
+                                                                                        <SelectValue placeholder="Field" />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        <SelectItem value="estimated_cost">
+                                                                                            Estimated
+                                                                                            Cost
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="priority">
+                                                                                            Priority
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="status">
+                                                                                            Status
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="category.name">
+                                                                                            Category
+                                                                                            Name
+                                                                                        </SelectItem>
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                                <Select
+                                                                                    value={
+                                                                                        step.condition_operator ||
+                                                                                        '>='
+                                                                                    }
+                                                                                    onValueChange={(
+                                                                                        value,
+                                                                                    ) =>
+                                                                                        updateConditionRule(
+                                                                                            index,
+                                                                                            step,
+                                                                                            {
+                                                                                                operator:
+                                                                                                    value,
+                                                                                            },
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <SelectTrigger className="md:w-[150px]">
+                                                                                        <SelectValue placeholder="Operator" />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        <SelectItem value="==">
+                                                                                            Equals
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="!=">
+                                                                                            Not
+                                                                                            Equals
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value=">=">
+                                                                                            Greater
+                                                                                            or
+                                                                                            Equal
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value=">">
+                                                                                            Greater
+                                                                                            Than
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="<=">
+                                                                                            Less
+                                                                                            or
+                                                                                            Equal
+                                                                                        </SelectItem>
+                                                                                        <SelectItem value="<">
+                                                                                            Less
+                                                                                            Than
+                                                                                        </SelectItem>
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                                <Input
+                                                                                    value={
+                                                                                        step.condition_value ||
+                                                                                        ''
+                                                                                    }
+                                                                                    onChange={(
+                                                                                        e,
+                                                                                    ) =>
+                                                                                        updateConditionRule(
+                                                                                            index,
+                                                                                            step,
+                                                                                            {
+                                                                                                value: e
+                                                                                                    .target
+                                                                                                    .value,
+                                                                                            },
+                                                                                        )
+                                                                                    }
+                                                                                    placeholder="e.g. critical, 5000, Hardware"
+                                                                                    className="flex-1"
+                                                                                />
+                                                                            </div>
+                                                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                                                Approval
+                                                                                is
+                                                                                requested
+                                                                                only
+                                                                                when
+                                                                                this
+                                                                                condition
+                                                                                is
+                                                                                true.
+                                                                                If
+                                                                                false,
+                                                                                the
+                                                                                selected
+                                                                                action
+                                                                                below
+                                                                                runs.
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="space-y-2">
+                                                                            <Label>
+                                                                                If
+                                                                                False
+                                                                                Action
+                                                                            </Label>
+                                                                            <Select
+                                                                                value={
+                                                                                    step.if_false ||
+                                                                                    'skip_step'
+                                                                                }
+                                                                                onValueChange={(
+                                                                                    value,
+                                                                                ) =>
+                                                                                    updateWorkflowStep(
+                                                                                        index,
+                                                                                        'if_false',
+                                                                                        value,
+                                                                                    )
+                                                                                }
+                                                                            >
+                                                                                <SelectTrigger>
+                                                                                    <SelectValue />
+                                                                                </SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    <SelectItem value="skip_step">
+                                                                                        Skip
+                                                                                        Step
+                                                                                    </SelectItem>
+                                                                                    <SelectItem value="route_directly">
+                                                                                        Route
+                                                                                        Directly
+                                                                                    </SelectItem>
+                                                                                </SelectContent>
+                                                                            </Select>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </CardContent>
+                                                        )}
                                                     </Card>
                                                 ),
                                             )}
@@ -1076,8 +1750,8 @@ export default function WorkflowTemplateForm({
                                     {processing
                                         ? 'Saving...'
                                         : isEdit
-                                            ? 'Update Template'
-                                            : 'Create Template'}
+                                          ? 'Update Template'
+                                          : 'Create Template'}
                                 </Button>
                             </CardFooter>
                         </Card>

@@ -6,7 +6,7 @@ use App\Models\Ticket;
 
 /**
  * Trait HandlesRuleLogic
- * 
+ *
  * Centralizes rule evaluation and condition matching logic for different rule models.
  */
 trait HandlesRuleLogic
@@ -18,7 +18,7 @@ trait HandlesRuleLogic
     {
         // For EscalationRule, is_active check is handled here
         // For AutomationRule, is_active is checked in the service but safe to check here too
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
 
@@ -33,14 +33,16 @@ trait HandlesRuleLogic
             $operator = $condition['operator'] ?? 'equals';
             $value = $condition['value'] ?? null;
 
-            if (!$field) {
+            if (! $field) {
                 continue;
             }
 
-            $ticketValue = $this->getTicketValue($ticket, $field);
+            $ticketValue = str_starts_with($field, 'comment_')
+                ? ($originalData[$field] ?? null)
+                : $this->getTicketValue($ticket, $field);
             $oldValue = $originalData[$field] ?? null;
 
-            if (!$this->evaluateCondition($ticketValue, $operator, $value, $oldValue)) {
+            if (! $this->evaluateCondition($ticketValue, $operator, $value, $oldValue)) {
                 return false;
             }
         }
@@ -60,28 +62,27 @@ trait HandlesRuleLogic
             foreach ($parts as $part) {
                 if (is_object($target)) {
                     $target = $target->$part;
-                }
-                elseif (is_array($target)) {
+                } elseif (is_array($target)) {
                     $target = $target[$part] ?? null;
-                }
-                else {
+                } else {
                     return null;
                 }
             }
+
             return $target;
         }
 
         $value = match ($field) {
-                'category_id' => $ticket->category_id,
-                'project_id' => $ticket->project_id,
-                'priority' => $ticket->priority,
-                'status' => $ticket->status,
-                'source' => $ticket->source,
-                'assigned_team_id' => $ticket->assigned_team_id,
-                'assigned_agent_id' => $ticket->assigned_agent_id,
-                'requester_id' => $ticket->requester_id,
-                default => $ticket->getAttribute($field),
-            };
+            'category_id' => $ticket->category_id,
+            'project_id' => $ticket->project_id,
+            'priority' => $ticket->priority,
+            'status' => $ticket->status,
+            'source' => $ticket->source,
+            'assigned_team_id' => $ticket->assigned_team_id,
+            'assigned_agent_id' => $ticket->assigned_agent_id,
+            'requester_id' => $ticket->requester_id,
+            default => $ticket->getAttribute($field),
+        };
 
         // If not found in standard attributes, check custom fields
         if ($value === null) {
@@ -89,7 +90,7 @@ trait HandlesRuleLogic
 
             // Check if ticket relationship is loaded or use lazy load
             $customFieldValue = $ticket->customFieldValues()
-                ->whereHas('customField', fn($q) => $q->where('slug', $slug))
+                ->whereHas('customField', fn ($q) => $q->where('slug', $slug))
                 ->first();
 
             if ($customFieldValue) {
@@ -106,25 +107,25 @@ trait HandlesRuleLogic
     protected function evaluateCondition(mixed $ticketValue, string $operator, mixed $conditionValue, mixed $oldValue = null): bool
     {
         return match ($operator) {
-                'equals', '==' => $ticketValue == $conditionValue,
-                'not_equals', '!=' => $ticketValue != $conditionValue,
-                'contains' => is_string($ticketValue) && is_string($conditionValue) && str_contains(strtolower($ticketValue), strtolower($conditionValue)),
-                'not_contains' => is_string($ticketValue) && is_string($conditionValue) && !str_contains(strtolower($ticketValue), strtolower($conditionValue)),
-                'in' => in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
-                'not_in' => !in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
-                'is_empty', 'empty' => empty($ticketValue),
-                'is_not_empty', 'not_empty' => !empty($ticketValue),
-                'greater_than', '>' => $ticketValue > $conditionValue,
-                'greater_than_or_equals', '>=' => $ticketValue >= $conditionValue,
-                'less_than', '<' => $ticketValue < $conditionValue,
-                'less_than_or_equals', '<=' => $ticketValue <= $conditionValue,
-                'starts_with' => is_string($ticketValue) && is_string($conditionValue) && str_starts_with(strtolower($ticketValue), strtolower($conditionValue)),
-                'ends_with' => is_string($ticketValue) && is_string($conditionValue) && str_ends_with(strtolower($ticketValue), strtolower($conditionValue)),
-                // Change tracking operators
-                'is_changed', 'changed' => $ticketValue != $oldValue,
-                'changed_to' => $ticketValue == $conditionValue && $oldValue != $conditionValue,
-                'changed_from' => $oldValue == $conditionValue && $ticketValue != $conditionValue,
-                default => false,
-            };
+            'equals', '==' => $ticketValue == $conditionValue,
+            'not_equals', '!=' => $ticketValue != $conditionValue,
+            'contains' => is_string($ticketValue) && is_string($conditionValue) && str_contains(strtolower($ticketValue), strtolower($conditionValue)),
+            'not_contains' => is_string($ticketValue) && is_string($conditionValue) && ! str_contains(strtolower($ticketValue), strtolower($conditionValue)),
+            'in' => in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
+            'not_in' => ! in_array($ticketValue, is_array($conditionValue) ? $conditionValue : [$conditionValue]),
+            'is_empty', 'empty' => empty($ticketValue),
+            'is_not_empty', 'not_empty' => ! empty($ticketValue),
+            'greater_than', '>' => $ticketValue > $conditionValue,
+            'greater_than_or_equals', '>=' => $ticketValue >= $conditionValue,
+            'less_than', '<' => $ticketValue < $conditionValue,
+            'less_than_or_equals', '<=' => $ticketValue <= $conditionValue,
+            'starts_with' => is_string($ticketValue) && is_string($conditionValue) && str_starts_with(strtolower($ticketValue), strtolower($conditionValue)),
+            'ends_with' => is_string($ticketValue) && is_string($conditionValue) && str_ends_with(strtolower($ticketValue), strtolower($conditionValue)),
+            // Change tracking operators
+            'is_changed', 'changed' => $ticketValue != $oldValue,
+            'changed_to' => $ticketValue == $conditionValue && $oldValue != $conditionValue,
+            'changed_from' => $oldValue == $conditionValue && $ticketValue != $conditionValue,
+            default => false,
+        };
     }
 }

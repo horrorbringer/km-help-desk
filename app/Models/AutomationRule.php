@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AutomationRule extends Model
 {
-    use HasFactory, SoftDeletes, \App\Traits\HandlesRuleLogic;
+    use \App\Traits\HandlesRuleLogic, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -44,7 +44,7 @@ class AutomationRule extends Model
     /**
      * Execute rule actions on ticket
      */
-    public function execute(Ticket $ticket): void
+    public function execute(Ticket $ticket, array $context = []): void
     {
         if (empty($this->actions)) {
             return;
@@ -54,7 +54,8 @@ class AutomationRule extends Model
             $ticket,
             $this->actions,
             'automation_rule',
-            $this->id
+            $this->id,
+            array_merge($context, ['trigger_event' => $this->trigger_event])
         );
 
         // Update execution stats

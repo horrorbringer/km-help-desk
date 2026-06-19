@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Constants\RoleConstants;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -15,19 +17,20 @@ class DashboardController extends Controller
 {
     public function index(Request $request): Response
     {
+        $user = $request->user();
         $period = $request->get('period', '7d'); // 7d, 30d, 90d, all
         $dateRange = $this->getDateRange($period);
 
         $stats = [
-            'overview' => $this->getOverviewStats($dateRange),
-            'status_breakdown' => $this->getStatusBreakdown(),
-            'priority_breakdown' => $this->getPriorityBreakdown(),
-            'sla_compliance' => $this->getSlaCompliance($dateRange),
-            'team_performance' => $this->getTeamPerformance($dateRange),
-            'category_distribution' => $this->getCategoryDistribution($dateRange),
-            'recent_tickets' => $this->getRecentTickets(),
-            'agent_workload' => $this->getAgentWorkload(),
-            'ticket_trends' => $this->getTicketTrends($dateRange),
+            'overview' => $this->getOverviewStats($dateRange, $user),
+            'status_breakdown' => $this->getStatusBreakdown($user),
+            'priority_breakdown' => $this->getPriorityBreakdown($user),
+            'sla_compliance' => $this->getSlaCompliance($dateRange, $user),
+            'team_performance' => $this->getTeamPerformance($dateRange, $user),
+            'category_distribution' => $this->getCategoryDistribution($dateRange, $user),
+            'recent_tickets' => $this->getRecentTickets($user),
+            'agent_workload' => $this->getAgentWorkload($user),
+            'ticket_trends' => $this->getTicketTrends($dateRange, $user),
         ];
 
         return Inertia::render('Admin/Dashboard', [
@@ -47,11 +50,46 @@ class DashboardController extends Controller
         };
     }
 
-    protected function getOverviewStats(array $dateRange): array
+    protected function visibleTicketQuery(User $user): Builder
+    {
+        $query = Ticket::query();
+
+        if (! $user->can('tickets.assign')) {
+            $query->where(function (Builder $q) use ($user) {
+                $q->where('requester_id', $user->id)
+                    ->orWhere('assigned_agent_id', $user->id)
+                    ->orWhereHas('watchers', function (Builder $watcherQuery) use ($user) {
+                        $watcherQuery->where('users.id', $user->id);
+                    })
+                    ->orWhereHas('approvals', function (Builder $approvalQuery) use ($user) {
+                        $approvalQuery->where('approver_id', $user->id);
+                    });
+
+                if ($user->department_id && $user->hasAnyRole(array_merge(RoleConstants::getAgentRoles(), [RoleConstants::MANAGER]))) {
+                    $q->orWhere('assigned_team_id', $user->department_id);
+                }
+            });
+
+            $query->where(function (Builder $q) use ($user) {
+                $q->whereDoesntHave('approvals', function (Builder $approvalQuery) {
+                    $approvalQuery->where('status', 'pending');
+                })
+                    ->orWhere('requester_id', $user->id)
+                    ->orWhereHas('approvals', function (Builder $approvalQuery) use ($user) {
+                        $approvalQuery->where('status', 'pending')
+                            ->where('approver_id', $user->id);
+                    });
+            });
+        }
+
+        return $query;
+    }
+
+    protected function getOverviewStats(array $dateRange, User $user): array
     {
         [$start, $end] = $dateRange;
 
-        $query = Ticket::query();
+        $query = $this->visibleTicketQuery($user);
         if ($start && $end) {
             $query->whereBetween('created_at', [$start, $end]);
         }
@@ -80,27 +118,29 @@ class DashboardController extends Controller
         ];
     }
 
-    protected function getStatusBreakdown(): array
+    protected function getStatusBreakdown(User $user): array
     {
-        return Ticket::selectRaw('status, COUNT(*) as count')
+        return $this->visibleTicketQuery($user)
+            ->selectRaw('status, COUNT(*) as count')
             ->groupBy('status')
             ->pluck('count', 'status')
             ->toArray();
     }
 
-    protected function getPriorityBreakdown(): array
+    protected function getPriorityBreakdown(User $user): array
     {
-        return Ticket::selectRaw('priority, COUNT(*) as count')
+        return $this->visibleTicketQuery($user)
+            ->selectRaw('priority, COUNT(*) as count')
             ->groupBy('priority')
             ->pluck('count', 'priority')
             ->toArray();
     }
 
-    protected function getSlaCompliance(array $dateRange): array
+    protected function getSlaCompliance(array $dateRange, User $user): array
     {
         [$start, $end] = $dateRange;
 
-        $query = Ticket::query()->whereNotNull('sla_policy_id');
+        $query = $this->visibleTicketQuery($user)->whereNotNull('sla_policy_id');
         if ($start && $end) {
             $query->whereBetween('created_at', [$start, $end]);
         }
@@ -118,11 +158,11 @@ class DashboardController extends Controller
         ];
     }
 
-    protected function getTeamPerformance(array $dateRange): array
+    protected function getTeamPerformance(array $dateRange, User $user): array
     {
         [$start, $end] = $dateRange;
 
-        $query = Ticket::query()
+        $query = $this->visibleTicketQuery($user)
             ->selectRaw('assigned_team_id, COUNT(*) as total, 
                 SUM(CASE WHEN status = "resolved" OR status = "closed" THEN 1 ELSE 0 END) as resolved')
             ->whereNotNull('assigned_team_id')
@@ -146,11 +186,11 @@ class DashboardController extends Controller
         })->toArray();
     }
 
-    protected function getCategoryDistribution(array $dateRange): array
+    protected function getCategoryDistribution(array $dateRange, User $user): array
     {
         [$start, $end] = $dateRange;
 
-        $query = Ticket::query()
+        $query = $this->visibleTicketQuery($user)
             ->selectRaw('category_id, COUNT(*) as count')
             ->whereNotNull('category_id')
             ->groupBy('category_id');
@@ -171,9 +211,10 @@ class DashboardController extends Controller
         })->sortByDesc('count')->take(10)->values()->toArray();
     }
 
-    protected function getRecentTickets(): array
+    protected function getRecentTickets(User $user): array
     {
-        return Ticket::with(['requester:id,name', 'assignedTeam:id,name', 'category:id,name'])
+        return $this->visibleTicketQuery($user)
+            ->with(['requester:id,name', 'assignedTeam:id,name', 'category:id,name'])
             ->latest()
             ->take(10)
             ->get()
@@ -191,13 +232,21 @@ class DashboardController extends Controller
             ->toArray();
     }
 
-    protected function getAgentWorkload(): array
+    protected function getAgentWorkload(User $user): array
     {
-        return User::whereHas('assignedTickets')
-            ->withCount(['assignedTickets as open_tickets' => function ($query) {
-                $query->whereIn('status', ['open', 'assigned', 'in_progress', 'pending']);
+        $visibleTicketIds = $this->visibleTicketQuery($user)->select('id');
+
+        return User::whereHas('assignedTickets', function (Builder $query) use ($visibleTicketIds) {
+            $query->whereIn('id', clone $visibleTicketIds);
+        })
+            ->withCount(['assignedTickets as open_tickets' => function ($query) use ($visibleTicketIds) {
+                $query
+                    ->whereIn('id', clone $visibleTicketIds)
+                    ->whereIn('status', ['open', 'assigned', 'in_progress', 'pending']);
             }])
-            ->withCount('assignedTickets as total_tickets')
+            ->withCount(['assignedTickets as total_tickets' => function ($query) use ($visibleTicketIds) {
+                $query->whereIn('id', clone $visibleTicketIds);
+            }])
             ->orderByDesc('open_tickets')
             ->take(10)
             ->get()
@@ -210,11 +259,11 @@ class DashboardController extends Controller
             ->toArray();
     }
 
-    protected function getTicketTrends(array $dateRange): array
+    protected function getTicketTrends(array $dateRange, User $user): array
     {
         [$start, $end] = $dateRange;
 
-        if (!$start || !$end) {
+        if (! $start || ! $end) {
             $start = Carbon::now()->subDays(30);
             $end = Carbon::now();
         }
@@ -222,8 +271,8 @@ class DashboardController extends Controller
         $days = $start->diffInDays($end);
         $interval = $days <= 7 ? 'day' : ($days <= 30 ? 'day' : 'week');
 
-        $query = Ticket::query()
-            ->selectRaw("DATE(created_at) as date, COUNT(*) as count")
+        $query = $this->visibleTicketQuery($user)
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as count')
             ->whereBetween('created_at', [$start, $end])
             ->groupBy('date')
             ->orderBy('date');
@@ -245,4 +294,3 @@ class DashboardController extends Controller
         return $trends;
     }
 }
-

@@ -107,7 +107,7 @@ class CannedResponseController extends Controller
     public function update(CannedResponseRequest $request, CannedResponse $cannedResponse): RedirectResponse
     {
         $data = $request->validated();
-        
+
         if (isset($data['category_id']) && $data['category_id'] === '__none') {
             $data['category_id'] = null;
         }
@@ -121,11 +121,47 @@ class CannedResponseController extends Controller
 
     public function destroy(CannedResponse $cannedResponse): RedirectResponse
     {
+        abort_unless(Auth::user()->can('canned-responses.delete'), 403);
+
         $cannedResponse->delete();
 
         return redirect()
             ->route('admin.canned-responses.index')
             ->with('success', 'Canned response deleted successfully.');
     }
-}
 
+    public function bulkUpdate(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('canned-responses.edit'), 403);
+
+        $validated = $request->validate([
+            'response_ids' => ['required', 'array', 'min:1'],
+            'response_ids.*' => ['integer', 'exists:canned_responses,id'],
+            'action' => ['required', 'in:activate,deactivate'],
+        ]);
+
+        $isActive = $validated['action'] === 'activate';
+        $count = CannedResponse::whereIn('id', $validated['response_ids'])
+            ->update(['is_active' => $isActive]);
+
+        return redirect()
+            ->route('admin.canned-responses.index')
+            ->with('success', "Successfully updated {$count} canned response(s).");
+    }
+
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()->can('canned-responses.delete'), 403);
+
+        $validated = $request->validate([
+            'response_ids' => ['required', 'array', 'min:1'],
+            'response_ids.*' => ['integer', 'exists:canned_responses,id'],
+        ]);
+
+        $count = CannedResponse::whereIn('id', $validated['response_ids'])->delete();
+
+        return redirect()
+            ->route('admin.canned-responses.index')
+            ->with('success', "Successfully deleted {$count} canned response(s).");
+    }
+}

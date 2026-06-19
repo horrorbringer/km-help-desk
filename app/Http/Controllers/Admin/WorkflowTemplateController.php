@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\WorkflowTemplateRequest;
 use App\Models\Department;
 use App\Models\TicketCategory;
+use App\Models\User;
 use App\Models\WorkflowTemplate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -180,15 +181,19 @@ class WorkflowTemplateController extends Controller
             ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn($dept) => ['value' => $dept->id, 'label' => $dept->name]),
+            'users' => User::where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn($user) => ['value' => $user->id, 'label' => $user->name]),
             'approval_levels' => \App\Models\ApprovalLevel::where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('label')
             ->get(['code', 'label'])
             ->map(fn($level) => ['value' => $level->code, 'label' => $level->label]),
             'approver_types' => [
-                ['value' => 'line_manager', 'label' => 'Line Manager'],
-                ['value' => 'head_of_department', 'label' => 'Head of Department'],
-                ['value' => 'ceo', 'label' => 'CEO / Executive'],
+                ['value' => 'line_manager', 'label' => "Requester's Line Manager"],
+                ['value' => 'head_of_department', 'label' => 'Department HOD'],
+                ['value' => 'ceo', 'label' => 'CEO / Director'],
             ],
             'notification_types' => [
                 ['value' => 'line_manager', 'label' => 'Line Manager'],

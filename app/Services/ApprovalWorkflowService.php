@@ -4,15 +4,13 @@ namespace App\Services;
 
 use App\Constants\ApprovalLevelConstants;
 use App\Constants\RoleConstants;
-
+use App\Helpers\LogHelper;
+use App\Models\ApprovalLevel;
+use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketApproval;
 use App\Models\User;
-use App\Models\Department;
-use App\Services\NotificationService;
-use App\Helpers\LogHelper;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 class ApprovalWorkflowService
@@ -20,7 +18,7 @@ class ApprovalWorkflowService
     /**
      * Initialize approval workflow for a ticket
      * Based on workflow: User -> LM -> Category Team -> Result/HOD
-     * 
+     *
      * Real-world improvements:
      * - Only require approval when category/priority requires it
      * - Route based on category's default team, not always ITD
@@ -29,35 +27,88 @@ class ApprovalWorkflowService
      */
     public function initializeWorkflow(Ticket $ticket): void
     {
-        // Check if workflow has already been initialized to prevent duplicate initialization
-        $existingPendingApproval = $ticket->approvals()
-            ->where('status', 'pending')
-            ->exists();
-        
-        if ($existingPendingApproval) {
-            LogHelper::warning('Workflow already initialized for ticket', [
-                'ticket_id' => $ticket->id,
-            ]);
-            return;
-        }
-        
-        // Check if workflow template exists and use WorkflowEngine
         try {
             $workflowEngine = app(WorkflowEngine::class);
             $workflowEngine->execute($ticket);
-            return;
         } catch (\Exception $e) {
             Log::error('WorkflowEngine failed to execute', [
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
             ]);
         }
+
+        $this->ensureRequiredApprovalExists($ticket->fresh(['category', 'requester', 'assignedTeam']) ?? $ticket);
+    }
+
+    protected function ensureRequiredApprovalExists(Ticket $ticket): void
+    {
+        if (! $ticket->category?->requires_approval) {
+            return;
+        }
+
+        if (in_array($ticket->status, [Ticket::STATUS_RESOLVED, Ticket::STATUS_CLOSED, Ticket::STATUS_CANCELLED], true)) {
+            return;
+        }
+
+        if ($ticket->approvals()->where('status', 'pending')->exists()) {
+            return;
+        }
+
+        $approval = TicketApproval::create([
+            'ticket_id' => $ticket->id,
+            'approval_level' => ApprovalLevelConstants::LINE_MANAGER,
+            'status' => 'pending',
+            'sequence' => ($ticket->approvals()->max('sequence') ?? 0) + 1,
+        ]);
+
+        if ($approver = $this->findLineManager($ticket)) {
+            $approval->update(['approver_id' => $approver->id]);
+        }
+
+        $ticket->histories()->create([
+            'user_id' => Auth::id() ?? $ticket->requester_id,
+            'action' => 'approval_requested',
+            'field_name' => 'approval',
+            'old_value' => null,
+            'new_value' => ApprovalLevelConstants::LINE_MANAGER,
+            'description' => 'Line Manager approval requested.',
+            'created_at' => now(),
+        ]);
     }
 
     /**
-     * Initialize default workflow (original implementation)
+     * Determine whether a user can approve or reject this approval step.
      */
+    public function canApprove(TicketApproval $approval, User $user): bool
+    {
+        if ($user->hasRole(RoleConstants::SUPER_ADMIN)) {
+            return true;
+        }
 
+        if ($approval->approver_id && $approval->approver_id === $user->id) {
+            return true;
+        }
+
+        if ($user->can('tickets.assign')) {
+            return true;
+        }
+
+        $approvalLevel = ApprovalLevel::where('code', $approval->approval_level)
+            ->where('is_active', true)
+            ->first();
+
+        $roleNames = $approvalLevel
+            ? $approvalLevel->role_names
+            : ApprovalLevelConstants::getRolesForLevel($approval->approval_level);
+
+        foreach ($roleNames ?? [] as $roleName) {
+            if ($user->hasRole($roleName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /**
      * Process approval
@@ -81,7 +132,7 @@ class ApprovalWorkflowService
             'field_name' => 'approval',
             'old_value' => 'pending',
             'new_value' => 'approved',
-            'description' => ApprovalLevelConstants::getLabel($approval->approval_level) . ' approved the ticket' . ($comments ? ': ' . $comments : ''),
+            'description' => ApprovalLevelConstants::getLabel($approval->approval_level).' approved the ticket'.($comments ? ': '.$comments : ''),
             'created_at' => now(),
         ]);
 
@@ -113,9 +164,9 @@ class ApprovalWorkflowService
                 'ticket_id' => $ticket->id,
                 'error' => $e->getMessage(),
             ]);
-            
+
             // Minimal fallback: if no next step and not routed, route to default
-            if ($ticket->status === 'open' && !$ticket->assigned_team_id) {
+            if ($ticket->status === 'open' && ! $ticket->assigned_team_id) {
                 $this->routeDirectly($ticket);
             }
         }
@@ -123,12 +174,12 @@ class ApprovalWorkflowService
 
     /**
      * Process rejection
-     * 
+     *
      * IMPORTANT: Rejected tickets are NOT deleted - they remain in the system for:
      * - Audit trail and compliance
      * - Resubmission capability
      * - Analytics and reporting
-     * 
+     *
      * The ticket status is changed to 'cancelled' but the record is preserved.
      * Use soft delete (deleted_at) only if absolutely necessary for data retention policies.
      */
@@ -153,7 +204,7 @@ class ApprovalWorkflowService
             'field_name' => 'approval',
             'old_value' => 'pending',
             'new_value' => 'rejected',
-            'description' => ApprovalLevelConstants::getLabel($approval->approval_level) . ' rejected the ticket' . ($comments ? ': ' . $comments : ''),
+            'description' => ApprovalLevelConstants::getLabel($approval->approval_level).' rejected the ticket'.($comments ? ': '.$comments : ''),
             'created_at' => now(),
         ]);
 
@@ -179,7 +230,7 @@ class ApprovalWorkflowService
 
     /**
      * Resubmit a rejected ticket for approval
-     * 
+     *
      * Real-world improvements:
      * - Limit resubmissions to prevent infinite loops (max 3 times)
      * - Clear any pending approvals before resubmitting
@@ -188,7 +239,7 @@ class ApprovalWorkflowService
     public function resubmit(Ticket $ticket): void
     {
         // Check if ticket has been rejected
-        if (!$ticket->hasRejectedApproval()) {
+        if (! $ticket->hasRejectedApproval()) {
             throw new \Exception('Ticket has not been rejected and cannot be resubmitted.');
         }
 
@@ -201,7 +252,7 @@ class ApprovalWorkflowService
         $rejectedCount = $ticket->approvals()
             ->where('status', 'rejected')
             ->count();
-        
+
         // Limit resubmissions to prevent infinite loops (max 3 resubmissions = 4 total attempts)
         $maxResubmissions = 3;
         if ($rejectedCount >= $maxResubmissions) {
@@ -212,11 +263,11 @@ class ApprovalWorkflowService
         $pendingApprovals = $ticket->approvals()
             ->where('status', 'pending')
             ->get();
-        
+
         foreach ($pendingApprovals as $approval) {
             $approval->update([
                 'status' => 'rejected',
-                'comments' => ($approval->comments ?? '') . ' [Cancelled due to resubmission]',
+                'comments' => ($approval->comments ?? '').' [Cancelled due to resubmission]',
                 'rejected_at' => now(),
             ]);
             Log::info('Cancelled pending approval due to resubmission', [
@@ -251,14 +302,6 @@ class ApprovalWorkflowService
         ]);
     }
 
-
-
-
-
-
-
-
-
     /**
      * Route ticket directly without approval
      */
@@ -277,7 +320,7 @@ class ApprovalWorkflowService
                 'field_name' => 'assigned_team_id',
                 'old_value' => null,
                 'new_value' => $ticket->category->default_team_id,
-                'description' => 'Ticket routed directly to ' . ($ticket->category->defaultTeam->name ?? 'team') . ' (no approval required)',
+                'description' => 'Ticket routed directly to '.($ticket->category->defaultTeam->name ?? 'team').' (no approval required)',
                 'created_at' => now(),
             ]);
 
@@ -294,8 +337,6 @@ class ApprovalWorkflowService
             }
         }
     }
-
-
 
     /**
      * Find Line Manager for ticket
@@ -386,8 +427,8 @@ class ApprovalWorkflowService
         $lm = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::LINE_MANAGER);
         })
-        ->where('is_active', true)
-        ->first();
+            ->where('is_active', true)
+            ->first();
 
         if ($lm) {
             return $lm;
@@ -396,8 +437,8 @@ class ApprovalWorkflowService
         $dlm = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::DEPUTY_LINE_MANAGER);
         })
-        ->where('is_active', true)
-        ->first();
+            ->where('is_active', true)
+            ->first();
 
         if ($dlm) {
             return $dlm;
@@ -406,8 +447,8 @@ class ApprovalWorkflowService
         return User::whereHas('roles', function ($query) {
             $query->whereIn('name', [RoleConstants::MANAGER, RoleConstants::SUPER_ADMIN]);
         })
-        ->where('is_active', true)
-        ->first();
+            ->where('is_active', true)
+            ->first();
     }
 
     /**
@@ -425,7 +466,7 @@ class ApprovalWorkflowService
                 })
                 ->where('is_active', true)
                 ->first();
-            
+
             if ($hod) {
                 Log::info('HOD found in assigned team', [
                     'ticket_id' => $ticket->id,
@@ -433,6 +474,7 @@ class ApprovalWorkflowService
                     'hod_name' => $hod->name,
                     'department_id' => $ticket->assigned_team_id,
                 ]);
+
                 return $hod;
             }
 
@@ -443,7 +485,7 @@ class ApprovalWorkflowService
                 })
                 ->where('is_active', true)
                 ->first();
-            
+
             if ($dhod) {
                 Log::info('DHOD found in assigned team (HOD unavailable)', [
                     'ticket_id' => $ticket->id,
@@ -451,10 +493,11 @@ class ApprovalWorkflowService
                     'dhod_name' => $dhod->name,
                     'department_id' => $ticket->assigned_team_id,
                 ]);
+
                 return $dhod;
             }
         }
-        
+
         // Priority 1.5: Find HOD in category's default team (if ticket not yet assigned)
         if ($ticket->category && $ticket->category->default_team_id) {
             // Priority 1.5.1: Find Head of Department
@@ -464,7 +507,7 @@ class ApprovalWorkflowService
                 })
                 ->where('is_active', true)
                 ->first();
-            
+
             if ($hod) {
                 Log::info('HOD found in category default team', [
                     'ticket_id' => $ticket->id,
@@ -473,6 +516,7 @@ class ApprovalWorkflowService
                     'category_id' => $ticket->category_id,
                     'default_team_id' => $ticket->category->default_team_id,
                 ]);
+
                 return $hod;
             }
 
@@ -483,7 +527,7 @@ class ApprovalWorkflowService
                 })
                 ->where('is_active', true)
                 ->first();
-            
+
             if ($dhod) {
                 Log::info('DHOD found in category default team (HOD unavailable)', [
                     'ticket_id' => $ticket->id,
@@ -492,10 +536,11 @@ class ApprovalWorkflowService
                     'category_id' => $ticket->category_id,
                     'default_team_id' => $ticket->category->default_team_id,
                 ]);
+
                 return $dhod;
             }
         }
-        
+
         // Priority 2: Find HOD in requester's department
         if ($ticket->requester && $ticket->requester->department_id) {
             // Priority 2.1: Find Head of Department
@@ -505,7 +550,7 @@ class ApprovalWorkflowService
                 })
                 ->where('is_active', true)
                 ->first();
-            
+
             if ($hod) {
                 Log::info('HOD found in requester department', [
                     'ticket_id' => $ticket->id,
@@ -513,6 +558,7 @@ class ApprovalWorkflowService
                     'hod_name' => $hod->name,
                     'requester_department_id' => $ticket->requester->department_id,
                 ]);
+
                 return $hod;
             }
 
@@ -523,7 +569,7 @@ class ApprovalWorkflowService
                 })
                 ->where('is_active', true)
                 ->first();
-            
+
             if ($dhod) {
                 Log::info('DHOD found in requester department (HOD unavailable)', [
                     'ticket_id' => $ticket->id,
@@ -531,17 +577,18 @@ class ApprovalWorkflowService
                     'dhod_name' => $dhod->name,
                     'requester_department_id' => $ticket->requester->department_id,
                 ]);
+
                 return $dhod;
             }
         }
-        
+
         // Priority 3: Find any Head of Department
         $hod = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::HEAD_OF_DEPARTMENT);
         })
-        ->where('is_active', true)
-        ->first();
-        
+            ->where('is_active', true)
+            ->first();
+
         if ($hod) {
             Log::info('HOD found (any department)', [
                 'ticket_id' => $ticket->id,
@@ -549,6 +596,7 @@ class ApprovalWorkflowService
                 'hod_name' => $hod->name,
                 'hod_department_id' => $hod->department_id,
             ]);
+
             return $hod;
         }
 
@@ -556,9 +604,9 @@ class ApprovalWorkflowService
         $dhod = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::DEPUTY_HEAD_OF_DEPARTMENT);
         })
-        ->where('is_active', true)
-        ->first();
-        
+            ->where('is_active', true)
+            ->first();
+
         if ($dhod) {
             Log::info('DHOD found (any department, HOD unavailable)', [
                 'ticket_id' => $ticket->id,
@@ -566,32 +614,34 @@ class ApprovalWorkflowService
                 'dhod_name' => $dhod->name,
                 'dhod_department_id' => $dhod->department_id,
             ]);
+
             return $dhod;
         }
-        
+
         // Priority 4: Fallback to Director
         $director = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::DIRECTOR);
         })
-        ->where('is_active', true)
-        ->first();
-        
+            ->where('is_active', true)
+            ->first();
+
         if ($director) {
             Log::warning('HOD not found, using Director as fallback', [
                 'ticket_id' => $ticket->id,
                 'director_id' => $director->id,
                 'director_name' => $director->name,
             ]);
+
             return $director;
         }
-        
+
         // Priority 5: Last resort - Super Admin (only if no HOD/Director found)
         $superAdmin = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::SUPER_ADMIN);
         })
-        ->where('is_active', true)
-        ->first();
-        
+            ->where('is_active', true)
+            ->first();
+
         if ($superAdmin) {
             Log::warning('HOD and Director not found, using Super Admin as last resort', [
                 'ticket_id' => $ticket->id,
@@ -600,7 +650,7 @@ class ApprovalWorkflowService
                 'note' => 'This should not happen if HOD users are properly configured',
             ]);
         }
-        
+
         return $superAdmin;
     }
 
@@ -612,10 +662,10 @@ class ApprovalWorkflowService
     {
         // Use the level label for history description
         $levelLabel = ApprovalLevelConstants::getLabel($approvalLevel);
-        
+
         // Generic routing for any level
         $teamId = $routedToTeamId ?? $ticket->category?->default_team_id;
-        
+
         if ($teamId) {
             $ticket->update([
                 'assigned_team_id' => $teamId,
@@ -629,7 +679,7 @@ class ApprovalWorkflowService
                 'field_name' => 'assigned_team_id',
                 'old_value' => null,
                 'new_value' => $teamId,
-                'description' => "Ticket routed to " . ($team ? $team->name : 'team') . " after {$levelLabel} approval",
+                'description' => 'Ticket routed to '.($team ? $team->name : 'team')." after {$levelLabel} approval",
                 'created_at' => now(),
             ]);
 
@@ -658,10 +708,6 @@ class ApprovalWorkflowService
 
     /**
      * Find approver for a specific approval level (dynamic method)
-     * 
-     * @param Ticket $ticket
-     * @param string $approvalLevel
-     * @return User|null
      */
     public function findApproverForLevel(Ticket $ticket, string $approvalLevel): ?User
     {
@@ -682,14 +728,10 @@ class ApprovalWorkflowService
 
     /**
      * Find approver based on role name (generic helper)
-     * 
-     * @param Ticket $ticket
-     * @param string|null $roleName
-     * @return User|null
      */
     protected function findRoleBasedApprover(Ticket $ticket, ?string $roleName): ?User
     {
-        if (!$roleName) {
+        if (! $roleName) {
             return null;
         }
 
@@ -711,8 +753,8 @@ class ApprovalWorkflowService
         return User::whereHas('roles', function ($query) use ($roleName) {
             $query->where('name', $roleName);
         })
-        ->where('is_active', true)
-        ->first();
+            ->where('is_active', true)
+            ->first();
     }
 
     /**
@@ -725,48 +767,50 @@ class ApprovalWorkflowService
         $ceo = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::CEO);
         })
-        ->where('is_active', true)
-        ->first();
-        
+            ->where('is_active', true)
+            ->first();
+
         if ($ceo) {
             Log::info('CEO found', [
                 'ticket_id' => $ticket->id,
                 'ceo_id' => $ceo->id,
                 'ceo_name' => $ceo->name,
             ]);
+
             return $ceo;
         }
-        
+
         // Priority 2: Fallback to Director
         $director = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::DIRECTOR);
         })
-        ->where('is_active', true)
-        ->first();
-        
+            ->where('is_active', true)
+            ->first();
+
         if ($director) {
             Log::warning('CEO not found, using Director as fallback', [
                 'ticket_id' => $ticket->id,
                 'director_id' => $director->id,
                 'director_name' => $director->name,
             ]);
+
             return $director;
         }
-        
+
         // Priority 3: Last resort - Super Admin
         $superAdmin = User::whereHas('roles', function ($query) {
             $query->where('name', RoleConstants::SUPER_ADMIN);
         })
-        ->where('is_active', true)
-        ->first();
-        
+            ->where('is_active', true)
+            ->first();
+
         if ($superAdmin) {
             Log::warning('CEO and Director not found, using Super Admin as last resort', [
                 'ticket_id' => $ticket->id,
                 'super_admin_id' => $superAdmin->id,
             ]);
         }
-        
+
         return $superAdmin;
     }
 }

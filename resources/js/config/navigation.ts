@@ -103,6 +103,7 @@ export const navigationConfig: NavItem[] = [
         title: 'Dashboard',
         routeName: 'dashboard',
         icon: IconDashboard,
+        permissions: ['dashboard.view'],
         order: 0,
     },
     {

@@ -17,6 +17,8 @@ export default function NotificationSettings() {
     const [isSubscribed, setIsSubscribed] = useState(false);
     const [permission, setPermission] = useState('default');
     const [loading, setLoading] = useState(true);
+    const [testLoading, setTestLoading] = useState(false);
+    const [testMessage, setTestMessage] = useState<string | null>(null);
 
     useEffect(() => {
         checkSupportAndStatus();
@@ -107,6 +109,36 @@ export default function NotificationSettings() {
         }
 
         setLoading(false);
+    };
+
+    const handleSendTestNotification = async () => {
+        setTestLoading(true);
+        setTestMessage(null);
+
+        try {
+            const response = await fetch(route('push.test'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN':
+                        document
+                            .querySelector('meta[name="csrf-token"]')
+                            ?.getAttribute('content') || '',
+                },
+            });
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || 'Test notification failed');
+            }
+
+            setTestMessage(result.message);
+        } catch (error) {
+            console.error('Failed to send test notification:', error);
+            setTestMessage('Failed to send test notification.');
+        } finally {
+            setTestLoading(false);
+        }
     };
 
     if (loading) {
@@ -214,6 +246,21 @@ export default function NotificationSettings() {
                                             <IconBellOff className="mr-2 h-4 w-4" />
                                             Disable Push Notifications
                                         </Button>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2 border-t pt-4">
+                                    <Button
+                                        variant="secondary"
+                                        onClick={handleSendTestNotification}
+                                        disabled={testLoading}
+                                    >
+                                        Send Test Notification
+                                    </Button>
+                                    {testMessage && (
+                                        <p className="text-sm text-muted-foreground">
+                                            {testMessage}
+                                        </p>
                                     )}
                                 </div>
 
