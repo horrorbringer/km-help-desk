@@ -262,6 +262,15 @@ export const modulePermissions: Record<string, ModulePermissions> = {
         delete: { permission: 'sla-policies.delete' },
     },
 
+    'software-licenses': {
+        id: 'software-licenses',
+        name: 'Software Licenses',
+        view: { permission: 'software-licenses.view' },
+        create: { permission: 'software-licenses.create' },
+        edit: { permission: 'software-licenses.edit' },
+        delete: { permission: 'software-licenses.delete' },
+    },
+
     'automation-rules': {
         id: 'automation-rules',
         name: 'Automation Rules',

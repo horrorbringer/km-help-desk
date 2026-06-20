@@ -43,9 +43,15 @@ class TicketCategorySeeder extends Seeder
                         'requires_approval' => false,
                     ],
                     [
+                        'name' => 'Software & License Issues',
+                        'description' => 'Expired software licenses, activation, subscriptions, renewals, and seat-assignment issues.',
+                        'sort_order' => 14,
+                        'requires_approval' => false,
+                    ],
+                    [
                         'name' => 'Network & Connectivity',
                         'description' => 'Network issues: VPN access, Wi-Fi problems, internet connectivity, network configuration.',
-                        'sort_order' => 14,
+                        'sort_order' => 15,
                         'requires_approval' => false,
                     ],
                 ],

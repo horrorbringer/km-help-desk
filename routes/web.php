@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SavedSearchController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SlaPolicyController;
+use App\Http\Controllers\Admin\SoftwareLicenseController;
 use App\Http\Controllers\Admin\TagController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\TicketTemplateController;
@@ -79,10 +80,6 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
         ->middleware('permission:dashboard.view');
     Route::get('system-monitor', [\App\Http\Controllers\Admin\SystemMonitorController::class, 'index'])->name('admin.system-monitor');
     Route::get('system-monitor/data', [\App\Http\Controllers\Admin\SystemMonitorController::class, 'data'])->name('admin.system-monitor.data');
-    Route::get('org-chart', [\App\Http\Controllers\Admin\OrgChartController::class, 'index'])
-        ->name('admin.org-chart')
-        ->middleware('permission:roles.view');
-
     Route::resource('projects', \App\Http\Controllers\Admin\ProjectController::class)
         ->names('admin.projects');
 
@@ -160,6 +157,14 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
 
     Route::resource('sla-policies', SlaPolicyController::class)
         ->names('admin.sla-policies');
+
+    Route::resource('software-licenses', SoftwareLicenseController::class)
+        ->except('show')
+        ->names('admin.software-licenses')
+        ->middlewareFor('index', 'permission:software-licenses.view')
+        ->middlewareFor(['create', 'store'], 'permission:software-licenses.create')
+        ->middlewareFor(['edit', 'update'], 'permission:software-licenses.edit')
+        ->middlewareFor('destroy', 'permission:software-licenses.delete');
 
     Route::resource('tags', TagController::class)
         ->names('admin.tags');

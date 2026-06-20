@@ -58,6 +58,7 @@ class HelpDeskNotification extends Model
         NotificationType::COMMENT_INTERNAL,
         NotificationType::SLA_BREACHED,
         NotificationType::SLA_WARNING,
+        NotificationType::LICENSE_EXPIRING,
         NotificationType::APPROVAL_REQUESTED,
         NotificationType::APPROVAL_APPROVED,
         NotificationType::APPROVAL_REJECTED,

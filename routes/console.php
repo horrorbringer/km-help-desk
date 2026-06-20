@@ -13,3 +13,8 @@ Schedule::command('tickets:check-escalations')
     ->everyFifteenMinutes()
     ->withoutOverlapping()
     ->runInBackground();
+
+Schedule::command('licenses:check-expiry')
+    ->dailyAt('08:00')
+    ->withoutOverlapping()
+    ->runInBackground();

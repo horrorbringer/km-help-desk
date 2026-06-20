@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\SlaPolicy;
 use App\Models\TicketCategory;
 use App\Models\TicketTemplate;
 use App\Models\User;
@@ -12,18 +13,20 @@ class TicketTemplateSeeder extends Seeder
     public function run(): void
     {
         // Get a default user for created_by
-        $defaultUser = User::role('Super Admin')->first() 
+        $defaultUser = User::role('Super Admin')->first()
             ?? User::where('email', 'makara@kimmix.com')->first()
             ?? User::first();
 
-        if (!$defaultUser) {
+        if (! $defaultUser) {
             $this->command->error('No users found. Please run UserSeeder first.');
+
             return;
         }
 
         $categories = TicketCategory::all()->keyBy('slug');
         $departments = \App\Models\Department::all();
         $itDepartment = $departments->where('code', 'IT')->first() ?? $departments->first();
+        $slaPolicies = SlaPolicy::query()->get()->keyBy('priority');
 
         $templates = [
             [
@@ -91,6 +94,24 @@ class TicketTemplateSeeder extends Seeder
                 'created_by' => $defaultUser->id,
             ],
             [
+                'name' => 'Software License Issue',
+                'slug' => 'office-license-expired',
+                'description' => 'Use when a software license, activation, or subscription issue is blocking work.',
+                'template_data' => [
+                    'subject' => 'Software license issue: [Application / Device]',
+                    'description' => "A software license, activation, or subscription is preventing normal work.\n\n1. Application affected:\n2. Exact error message:\n3. Device name:\n4. Is work currently blocked?: Yes / No\n5. Screenshot attached?: Yes / No",
+                    'category_id' => $categories->get('software-license-issues')?->id,
+                    'assigned_team_id' => $itDepartment?->id,
+                    'priority' => 'high',
+                    'status' => 'open',
+                    'source' => 'web',
+                    'sla_policy_id' => $slaPolicies->get('high')?->id,
+                ],
+                'is_active' => true,
+                'is_public' => true,
+                'created_by' => $defaultUser->id,
+            ],
+            [
                 'name' => 'Network/VPN Issue',
                 'description' => 'Template for reporting network connectivity or VPN problems',
                 'template_data' => [
@@ -150,4 +171,3 @@ class TicketTemplateSeeder extends Seeder
         $this->command->info('Ticket templates seeded successfully.');
     }
 }
-

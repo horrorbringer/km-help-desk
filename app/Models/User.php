@@ -7,16 +7,16 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, TwoFactorAuthenticatable, SoftDeletes, HasRoles;
+    use HasFactory, HasRoles, Notifiable, SoftDeletes, TwoFactorAuthenticatable;
 
     /**
      * The attributes that are mass assignable.
@@ -70,17 +70,17 @@ class User extends Authenticatable
 
     public function submittedTickets(): HasMany
     {
-        return $this->hasMany(Ticket::class , 'requester_id');
+        return $this->hasMany(Ticket::class, 'requester_id');
     }
 
     public function assignedTickets(): HasMany
     {
-        return $this->hasMany(Ticket::class , 'assigned_agent_id');
+        return $this->hasMany(Ticket::class, 'assigned_agent_id');
     }
 
     public function managedProjects(): HasMany
     {
-        return $this->hasMany(Project::class , 'project_manager_id');
+        return $this->hasMany(Project::class, 'project_manager_id');
     }
 
     public function ticketComments(): HasMany
@@ -90,7 +90,7 @@ class User extends Authenticatable
 
     public function ticketAttachments(): HasMany
     {
-        return $this->hasMany(TicketAttachment::class , 'uploaded_by');
+        return $this->hasMany(TicketAttachment::class, 'uploaded_by');
     }
 
     public function ticketHistories(): HasMany
@@ -100,16 +100,26 @@ class User extends Authenticatable
 
     public function createdCannedResponses(): HasMany
     {
-        return $this->hasMany(CannedResponse::class , 'created_by');
+        return $this->hasMany(CannedResponse::class, 'created_by');
     }
 
     public function watchingTickets(): BelongsToMany
     {
-        return $this->belongsToMany(Ticket::class , 'ticket_watchers')->withPivot('created_at');
+        return $this->belongsToMany(Ticket::class, 'ticket_watchers')->withPivot('created_at');
     }
 
     public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class);
+    }
+
+    public function ownedSoftwareLicenses(): HasMany
+    {
+        return $this->hasMany(SoftwareLicense::class, 'renewal_owner_id');
+    }
+
+    public function assignedSoftwareLicenses(): HasMany
+    {
+        return $this->hasMany(SoftwareLicense::class, 'assigned_user_id');
     }
 }

@@ -32,6 +32,8 @@ final class NotificationType
 
     public const SLA_WARNING = 'sla_warning';
 
+    public const LICENSE_EXPIRING = 'license_expiring';
+
     public const APPROVAL_REQUESTED = 'approval_requested';
 
     public const APPROVAL_APPROVED = 'approval_approved';
@@ -58,6 +60,7 @@ final class NotificationType
             self::COMMENT_INTERNAL,
             self::SLA_BREACHED,
             self::SLA_WARNING,
+            self::LICENSE_EXPIRING,
             self::APPROVAL_REQUESTED,
             self::APPROVAL_APPROVED,
             self::APPROVAL_REJECTED,
